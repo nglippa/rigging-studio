@@ -1,0 +1,20 @@
+{
+  "manifestVersion": 1,
+  "id": "character_generation_v1",
+  "capability": "CHARACTER_GENERATION",
+  "workflowFile": "character-generation.json",
+  "description": "Core-node text-to-image workflow for modular 2D character candidates.",
+  "inputs": {
+    "positivePrompt": { "nodeId": "6", "field": "text", "required": true },
+    "negativePrompt": { "nodeId": "7", "field": "text", "required": true },
+    "width": { "nodeId": "5", "field": "width", "required": true },
+    "height": { "nodeId": "5", "field": "height", "required": true },
+    "seed": { "nodeId": "3", "field": "seed", "required": true },
+    "steps": { "nodeId": "3", "field": "steps", "required": false, "defaultValue": 24 },
+    "guidance": { "nodeId": "3", "field": "cfg", "required": false, "defaultValue": 7 },
+    "checkpoint": { "nodeId": "4", "field": "ckpt_name", "required": false, "defaultValue": "model.safetensors" }
+  },
+  "outputs": { "images": { "nodeId": "9" } },
+  "requiredNodeClasses": ["CheckpointLoaderSimple", "CLIPTextEncode", "EmptyLatentImage", "KSampler", "VAEDecode", "SaveImage"],
+  "requiredModels": ["COMFYUI_CHECKPOINT"]
+}

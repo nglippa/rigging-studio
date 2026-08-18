@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1, "id": "attack", "name": "Attack", "duration": 0.85, "loop": false,
+  "tracks": [
+    { "boneId": "torso", "property": "rotation", "keyframes": [{ "time": 0, "value": 0, "easing": "easeOut" }, { "time": 0.14, "value": -8, "easing": "easeIn" }, { "time": 0.42, "value": 18, "easing": "easeOut" }, { "time": 0.85, "value": 0, "easing": "easeInOut" }] },
+    { "boneId": "torso", "property": "x", "keyframes": [{ "time": 0, "value": 0, "easing": "easeOut" }, { "time": 0.14, "value": -7, "easing": "easeIn" }, { "time": 0.42, "value": 13, "easing": "easeOut" }, { "time": 0.85, "value": 0, "easing": "easeInOut" }] },
+    { "boneId": "right-upper-arm", "property": "rotation", "keyframes": [{ "time": 0, "value": 80, "easing": "easeOut" }, { "time": 0.14, "value": 132, "easing": "easeIn" }, { "time": 0.42, "value": -22, "easing": "easeOut" }, { "time": 0.85, "value": 80, "easing": "easeInOut" }] },
+    { "boneId": "right-lower-arm", "property": "rotation", "keyframes": [{ "time": 0, "value": -8, "easing": "easeOut" }, { "time": 0.14, "value": -38, "easing": "easeIn" }, { "time": 0.42, "value": 12, "easing": "easeOut" }, { "time": 0.85, "value": -8, "easing": "easeInOut" }] },
+    { "boneId": "left-upper-arm", "property": "rotation", "keyframes": [{ "time": 0, "value": 100, "easing": "easeInOut" }, { "time": 0.42, "value": 82, "easing": "easeOut" }, { "time": 0.85, "value": 100, "easing": "easeInOut" }] }
+  ]
+}

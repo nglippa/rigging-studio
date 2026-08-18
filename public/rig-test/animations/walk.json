@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1, "id": "walk", "name": "Walk", "duration": 1, "loop": true,
+  "tracks": [
+    { "boneId": "torso", "property": "y", "keyframes": [{ "time": 0, "value": 0, "easing": "easeInOut" }, { "time": 0.25, "value": -5, "easing": "easeInOut" }, { "time": 0.5, "value": 0, "easing": "easeInOut" }, { "time": 0.75, "value": -5, "easing": "easeInOut" }, { "time": 1, "value": 0, "easing": "easeInOut" }] },
+    { "boneId": "torso", "property": "rotation", "keyframes": [{ "time": 0, "value": -2, "easing": "easeInOut" }, { "time": 0.5, "value": 2, "easing": "easeInOut" }, { "time": 1, "value": -2, "easing": "easeInOut" }] },
+    { "boneId": "left-upper-arm", "property": "rotation", "keyframes": [{ "time": 0, "value": 68, "easing": "easeInOut" }, { "time": 0.5, "value": 122, "easing": "easeInOut" }, { "time": 1, "value": 68, "easing": "easeInOut" }] },
+    { "boneId": "right-upper-arm", "property": "rotation", "keyframes": [{ "time": 0, "value": 112, "easing": "easeInOut" }, { "time": 0.5, "value": 58, "easing": "easeInOut" }, { "time": 1, "value": 112, "easing": "easeInOut" }] },
+    { "boneId": "left-upper-leg", "property": "rotation", "keyframes": [{ "time": 0, "value": 62, "easing": "easeInOut" }, { "time": 0.5, "value": 116, "easing": "easeInOut" }, { "time": 1, "value": 62, "easing": "easeInOut" }] },
+    { "boneId": "right-upper-leg", "property": "rotation", "keyframes": [{ "time": 0, "value": 120, "easing": "easeInOut" }, { "time": 0.5, "value": 66, "easing": "easeInOut" }, { "time": 1, "value": 120, "easing": "easeInOut" }] },
+    { "boneId": "left-lower-leg", "property": "rotation", "keyframes": [{ "time": 0, "value": 18, "easing": "easeInOut" }, { "time": 0.5, "value": -12, "easing": "easeInOut" }, { "time": 1, "value": 18, "easing": "easeInOut" }] },
+    { "boneId": "right-lower-leg", "property": "rotation", "keyframes": [{ "time": 0, "value": -12, "easing": "easeInOut" }, { "time": 0.5, "value": 18, "easing": "easeInOut" }, { "time": 1, "value": -12, "easing": "easeInOut" }] }
+  ]
+}

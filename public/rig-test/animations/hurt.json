@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "hurt",
+  "name": "Hurt",
+  "duration": 0.6,
+  "loop": false,
+  "tracks": [
+    { "boneId": "root", "property": "x", "keyframes": [{ "time": 0, "value": 280, "easing": "easeOut" }, { "time": 0.08, "value": 266, "easing": "stepped" }, { "time": 0.16, "value": 285, "easing": "easeOut" }, { "time": 0.32, "value": 276, "easing": "easeInOut" }, { "time": 0.6, "value": 280, "easing": "easeOut" }] },
+    { "boneId": "torso", "property": "rotation", "keyframes": [{ "time": 0, "value": 0, "easing": "easeOut" }, { "time": 0.08, "value": -14, "easing": "easeOut" }, { "time": 0.22, "value": 6, "easing": "easeInOut" }, { "time": 0.6, "value": 0, "easing": "easeOut" }] },
+    { "boneId": "head", "property": "rotation", "keyframes": [{ "time": 0, "value": 0, "easing": "easeOut" }, { "time": 0.08, "value": 18, "easing": "easeOut" }, { "time": 0.6, "value": 0, "easing": "easeInOut" }] },
+    { "boneId": "left-upper-arm", "property": "rotation", "keyframes": [{ "time": 0, "value": 100, "easing": "easeOut" }, { "time": 0.1, "value": 128, "easing": "easeOut" }, { "time": 0.6, "value": 100, "easing": "easeInOut" }] },
+    { "boneId": "right-upper-arm", "property": "rotation", "keyframes": [{ "time": 0, "value": 80, "easing": "easeOut" }, { "time": 0.1, "value": 48, "easing": "easeOut" }, { "time": 0.6, "value": 80, "easing": "easeInOut" }] }
+  ]
+}

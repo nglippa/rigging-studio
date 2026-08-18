@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "characterId": "lab-knight",
+  "visualBackend": "modularRig",
+  "rigId": "rig-lab-knight",
+  "rigPath": "/rig-test/minimal-rig.json",
+  "skinId": "default",
+  "equipmentSlots": {
+    "head": "iron-helm",
+    "face": null,
+    "hair": null,
+    "torso": "scout-tunic",
+    "legs": null,
+    "feet": null,
+    "shoulders": null,
+    "back": null,
+    "mainHand": "steel-sword",
+    "offHand": "kite-shield",
+    "accessory": null,
+    "cape": null,
+    "tail": null
+  },
+  "equipmentRigSlots": {
+    "head": "helmet-slot",
+    "torso": "torso-slot",
+    "mainHand": "weapon-slot",
+    "offHand": "shield-slot"
+  },
+  "equipmentCatalog": {
+    "iron-helm": { "id": "iron-helm", "slot": "head", "attachmentId": "helmet", "transform": { "tint": 14541555 }, "animationOverrides": {} },
+    "bronze-helm": { "id": "bronze-helm", "slot": "head", "attachmentId": "helmet", "transform": { "tint": 13395538 }, "animationOverrides": {} },
+    "scout-tunic": { "id": "scout-tunic", "slot": "torso", "attachmentId": "torso", "transform": { "tint": 13434848 }, "animationOverrides": {} },
+    "royal-tunic": { "id": "royal-tunic", "slot": "torso", "attachmentId": "torso", "transform": { "tint": 12950335 }, "animationOverrides": {} },
+    "steel-sword": { "id": "steel-sword", "slot": "mainHand", "attachmentId": "sword-a", "transform": {}, "animationOverrides": { "melee_attack": { "offsetX": 12, "rotation": -8 } } },
+    "arcane-sword": { "id": "arcane-sword", "slot": "mainHand", "attachmentId": "sword-b", "transform": {}, "animationOverrides": { "melee_attack": { "offsetX": 11, "offsetY": -1, "rotation": -5, "scaleX": 1.03, "scaleY": 1.03 } } },
+    "kite-shield": { "id": "kite-shield", "slot": "offHand", "attachmentId": "shield", "transform": {}, "animationOverrides": { "hurt": { "offsetX": 42, "offsetY": -3, "rotation": -10 } } }
+  },
+  "palette": {
+    "baseTint": 16777215,
+    "namedTints": { "natural": 16777215, "hurtFlash": 16744319, "poisoned": 11163050 }
+  },
+  "animationMapping": {
+    "idle": "idle",
+    "walk": "walk",
+    "run": "run",
+    "basicAttack": "melee_attack",
+    "hurt": "hurt",
+    "death": "death"
+  },
+  "animations": {
+    "idle": { "id": "idle", "path": "/rig-test/animations/idle.json", "legacyFramePaths": [], "legacyFps": 8, "loop": true },
+    "walk": { "id": "walk", "path": "/rig-test/animations/walk.json", "legacyFramePaths": [], "legacyFps": 8, "loop": true, "fallbackClipId": "idle" },
+    "run": { "id": "run", "path": "/rig-test/animations/run.json", "legacyFramePaths": [], "legacyFps": 10, "loop": true, "fallbackClipId": "walk" },
+    "melee_attack": { "id": "melee_attack", "path": "/rig-test/animations/melee_attack.json", "legacyFramePaths": [], "legacyFps": 10, "loop": false, "fallbackClipId": "idle" },
+    "hurt": { "id": "hurt", "path": "/rig-test/animations/hurt.json", "legacyFramePaths": [], "legacyFps": 8, "loop": false, "fallbackClipId": "idle" },
+    "death": { "id": "death", "path": "/rig-test/animations/death.json", "legacyFramePaths": [], "legacyFps": 8, "loop": false, "fallbackClipId": "idle" }
+  },
+  "fallbackAnimation": "idle",
+  "directionalBehavior": { "strategy": "horizontalFlip", "authoredFacing": "right" },
+  "scale": 0.52,
+  "worldOffset": { "x": -280, "y": -535 },
+  "snapToPixels": true,
+  "shadow": { "enabled": true, "offsetX": 0, "offsetY": 1, "radiusX": 34, "radiusY": 11, "alpha": 0.24, "color": 0 },
+  "expressionMapping": {},
+  "legacy": { "imagePath": "/rig-test/body-base.png", "width": 60, "height": 152, "anchorX": 0.5, "anchorY": 1 }
+}

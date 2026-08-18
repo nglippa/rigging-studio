@@ -1,0 +1,11 @@
+export { RiggingCommandService, getRiggingCommandService } from "./commands/RiggingCommandService";
+export type { RigEditorAdapter, AnimationEditorAdapter, CharacterProjectAdapter } from "./commands/adapters";
+export type { CommandResult, CommandError, CommandWarning } from "./commands/results";
+export { StudioEventBus, STUDIO_EVENT_TYPES } from "./events/StudioEventBus";
+export type { StudioEvent, StudioEventType } from "./events/StudioEventBus";
+export { StudioQueryService } from "./queries/StudioQueryService";
+export type { StudioReadModel } from "./queries/StudioQueryService";
+export { StudioSession } from "./session/StudioSession";
+export type { StudioSessionState } from "./session/StudioSession";
+export { TOOL_NAMES, studioToolSchemas, parseToolInput } from "./validation/toolSchemas";
+export type { StudioToolName } from "./validation/toolSchemas";

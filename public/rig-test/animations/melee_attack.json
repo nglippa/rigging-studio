@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "melee_attack",
+  "name": "Melee Attack",
+  "duration": 0.85,
+  "loop": false,
+  "tracks": [
+    { "boneId": "torso", "property": "rotation", "keyframes": [{ "time": 0, "value": 0, "easing": "easeOut" }, { "time": 0.14, "value": -10, "easing": "easeIn" }, { "time": 0.38, "value": 20, "easing": "easeOut" }, { "time": 0.85, "value": 0, "easing": "easeInOut" }] },
+    { "boneId": "torso", "property": "x", "keyframes": [{ "time": 0, "value": 0, "easing": "easeOut" }, { "time": 0.14, "value": -8, "easing": "easeIn" }, { "time": 0.38, "value": 15, "easing": "easeOut" }, { "time": 0.85, "value": 0, "easing": "easeInOut" }] },
+    { "boneId": "right-upper-arm", "property": "rotation", "keyframes": [{ "time": 0, "value": 80, "easing": "easeOut" }, { "time": 0.14, "value": 145, "easing": "easeIn" }, { "time": 0.38, "value": -30, "easing": "easeOut" }, { "time": 0.58, "value": 18, "easing": "easeOut" }, { "time": 0.85, "value": 80, "easing": "easeInOut" }] },
+    { "boneId": "right-lower-arm", "property": "rotation", "keyframes": [{ "time": 0, "value": -8, "easing": "easeOut" }, { "time": 0.14, "value": -45, "easing": "easeIn" }, { "time": 0.38, "value": 18, "easing": "easeOut" }, { "time": 0.85, "value": -8, "easing": "easeInOut" }] },
+    { "boneId": "head", "property": "rotation", "keyframes": [{ "time": 0, "value": 0, "easing": "easeOut" }, { "time": 0.38, "value": -8, "easing": "easeOut" }, { "time": 0.85, "value": 0, "easing": "easeInOut" }] }
+  ]
+}

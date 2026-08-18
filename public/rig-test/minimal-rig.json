@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "id": "rig-lab-knight",
+  "canvas": { "width": 560, "height": 600 },
+  "rootBoneId": "root",
+  "bones": [
+    { "id": "root", "parentId": null, "x": 280, "y": 365, "rotation": 0, "scaleX": 1, "scaleY": 1, "length": 30, "inheritRotation": true, "inheritScale": true },
+    { "id": "torso", "parentId": "root", "x": 0, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1, "length": 105, "inheritRotation": true, "inheritScale": true },
+    { "id": "head", "parentId": "torso", "x": 0, "y": -118, "rotation": 0, "scaleX": 1, "scaleY": 1, "length": 34, "inheritRotation": true, "inheritScale": true },
+    { "id": "left-upper-arm", "parentId": "torso", "x": -42, "y": -82, "rotation": 100, "scaleX": 1, "scaleY": 1, "length": 76, "inheritRotation": true, "inheritScale": true },
+    { "id": "left-lower-arm", "parentId": "left-upper-arm", "x": 76, "y": 0, "rotation": 8, "scaleX": 1, "scaleY": 1, "length": 68, "inheritRotation": true, "inheritScale": true },
+    { "id": "left-hand", "parentId": "left-lower-arm", "x": 68, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1, "length": 24, "inheritRotation": true, "inheritScale": true },
+    { "id": "right-upper-arm", "parentId": "torso", "x": 42, "y": -82, "rotation": 80, "scaleX": 1, "scaleY": 1, "length": 76, "inheritRotation": true, "inheritScale": true },
+    { "id": "right-lower-arm", "parentId": "right-upper-arm", "x": 76, "y": 0, "rotation": -8, "scaleX": 1, "scaleY": 1, "length": 68, "inheritRotation": true, "inheritScale": true },
+    { "id": "right-hand", "parentId": "right-lower-arm", "x": 68, "y": 0, "rotation": 0, "scaleX": 1, "scaleY": 1, "length": 24, "inheritRotation": true, "inheritScale": true },
+    { "id": "left-upper-leg", "parentId": "root", "x": -23, "y": 8, "rotation": 88, "scaleX": 1, "scaleY": 1, "length": 92, "inheritRotation": true, "inheritScale": true },
+    { "id": "left-lower-leg", "parentId": "left-upper-leg", "x": 92, "y": 0, "rotation": 2, "scaleX": 1, "scaleY": 1, "length": 86, "inheritRotation": true, "inheritScale": true },
+    { "id": "left-foot", "parentId": "left-lower-leg", "x": 86, "y": 0, "rotation": -90, "scaleX": 1, "scaleY": 1, "length": 42, "inheritRotation": true, "inheritScale": true },
+    { "id": "right-upper-leg", "parentId": "root", "x": 23, "y": 8, "rotation": 92, "scaleX": 1, "scaleY": 1, "length": 92, "inheritRotation": true, "inheritScale": true },
+    { "id": "right-lower-leg", "parentId": "right-upper-leg", "x": 92, "y": 0, "rotation": -2, "scaleX": 1, "scaleY": 1, "length": 86, "inheritRotation": true, "inheritScale": true },
+    { "id": "right-foot", "parentId": "right-lower-leg", "x": 86, "y": 0, "rotation": -90, "scaleX": 1, "scaleY": 1, "length": 42, "inheritRotation": true, "inheritScale": true }
+  ],
+  "slots": [
+    { "id": "left-foot-slot", "boneId": "left-foot", "attachmentId": "left-foot", "zIndex": -8, "visible": true, "blendMode": "normal", "tint": 16777215, "pivotX": 8, "pivotY": 12 },
+    { "id": "right-foot-slot", "boneId": "right-foot", "attachmentId": "right-foot", "zIndex": -7, "visible": true, "blendMode": "normal", "tint": 16777215, "pivotX": 8, "pivotY": 12 },
+    { "id": "left-lower-leg-slot", "boneId": "left-lower-leg", "attachmentId": "left-lower-leg", "zIndex": -6, "visible": true, "blendMode": "normal", "tint": 16777215, "pivotX": 8, "pivotY": 13.5 },
+    { "id": "right-lower-leg-slot", "boneId": "right-lower-leg", "attachmentId": "right-lower-leg", "zIndex": -5, "visible": true, "blendMode": "normal", "tint": 16777215, "pivotX": 8, "pivotY": 13.5 },
+    { "id": "left-upper-leg-slot", "boneId": "left-upper-leg", "attachmentId": "left-upper-leg", "zIndex": -4, "visible": true, "blendMode": "normal", "tint": 16777215, "pivotX": 8, "pivotY": 16 },
+    { "id": "right-upper-leg-slot", "boneId": "right-upper-leg", "attachmentId": "right-upper-leg", "zIndex": -3, "visible": true, "blendMode": "normal", "tint": 16777215, "pivotX": 8, "pivotY": 16 },
+    { "id": "left-upper-arm-slot", "boneId": "left-upper-arm", "attachmentId": "left-upper-arm", "zIndex": -2, "visible": true, "blendMode": "normal", "tint": 16777215, "pivotX": 8, "pivotY": 14 },
+    { "id": "left-lower-arm-slot", "boneId": "left-lower-arm", "attachmentId": "left-lower-arm", "zIndex": -1, "visible": true, "blendMode": "normal", "tint": 16777215, "pivotX": 7, "pivotY": 12 },
+    { "id": "torso-slot", "boneId": "torso", "attachmentId": "torso", "zIndex": 0, "visible": true, "blendMode": "normal", "tint": 16777215, "pivotX": 50, "pivotY": 120 },
+    { "id": "right-upper-arm-slot", "boneId": "right-upper-arm", "attachmentId": "right-upper-arm", "zIndex": 1, "visible": true, "blendMode": "normal", "tint": 16777215, "pivotX": 8, "pivotY": 14 },
+    { "id": "right-lower-arm-slot", "boneId": "right-lower-arm", "attachmentId": "right-lower-arm", "zIndex": 2, "visible": true, "blendMode": "normal", "tint": 16777215, "pivotX": 7, "pivotY": 12 },
+    { "id": "left-hand-slot", "boneId": "left-hand", "attachmentId": "left-hand", "zIndex": 3, "visible": true, "blendMode": "normal", "tint": 16777215, "pivotX": 6, "pivotY": 11 },
+    { "id": "right-hand-slot", "boneId": "right-hand", "attachmentId": "right-hand", "zIndex": 4, "visible": true, "blendMode": "normal", "tint": 16777215, "pivotX": 6, "pivotY": 11 },
+    { "id": "head-slot", "boneId": "head", "attachmentId": "head", "zIndex": 5, "visible": true, "blendMode": "normal", "tint": 16777215, "pivotX": 35, "pivotY": 68 },
+    { "id": "helmet-slot", "boneId": "head", "attachmentId": "helmet", "zIndex": 6, "visible": true, "blendMode": "normal", "tint": 16777215, "pivotX": 42, "pivotY": 60 },
+    { "id": "shield-slot", "boneId": "left-lower-arm", "attachmentId": "shield", "zIndex": 7, "visible": true, "blendMode": "normal", "tint": 16777215, "pivotX": 28, "pivotY": 44 },
+    { "id": "weapon-slot", "boneId": "right-hand", "attachmentId": "sword-a", "zIndex": 8, "visible": true, "blendMode": "normal", "tint": 16777215, "pivotX": 8, "pivotY": 10 }
+  ],
+  "attachments": [
+    { "id": "torso", "imagePath": "rig-test/parts/torso.png", "width": 100, "height": 142, "offsetX": 0, "offsetY": 0, "rotation": 0, "scaleX": 1, "scaleY": 1, "category": "body", "tags": ["base"] },
+    { "id": "head", "imagePath": "rig-test/parts/head.png", "width": 70, "height": 82, "offsetX": 0, "offsetY": 0, "rotation": 0, "scaleX": 1, "scaleY": 1, "category": "body", "tags": ["head"] },
+    { "id": "helmet", "imagePath": "rig-test/parts/helmet.png", "width": 84, "height": 68, "offsetX": 0, "offsetY": -5, "rotation": 0, "scaleX": 1, "scaleY": 1, "category": "helmet", "tags": ["armor"] },
+    { "id": "left-upper-arm", "imagePath": "rig-test/parts/upper-arm-left.png", "width": 82, "height": 28, "offsetX": 0, "offsetY": 0, "rotation": 0, "scaleX": 1, "scaleY": 1, "category": "body", "tags": ["arm", "left"] },
+    { "id": "right-upper-arm", "imagePath": "rig-test/parts/upper-arm-right.png", "width": 82, "height": 28, "offsetX": 0, "offsetY": 0, "rotation": 0, "scaleX": 1, "scaleY": 1, "category": "body", "tags": ["arm", "right"] },
+    { "id": "left-lower-arm", "imagePath": "rig-test/parts/lower-arm-left.png", "width": 74, "height": 24, "offsetX": 0, "offsetY": 0, "rotation": 0, "scaleX": 1, "scaleY": 1, "category": "body", "tags": ["arm", "left"] },
+    { "id": "right-lower-arm", "imagePath": "rig-test/parts/lower-arm-right.png", "width": 74, "height": 24, "offsetX": 0, "offsetY": 0, "rotation": 0, "scaleX": 1, "scaleY": 1, "category": "body", "tags": ["arm", "right"] },
+    { "id": "left-hand", "imagePath": "rig-test/parts/hand-left.png", "width": 28, "height": 22, "offsetX": 0, "offsetY": 0, "rotation": 0, "scaleX": 1, "scaleY": 1, "category": "body", "tags": ["hand", "left"] },
+    { "id": "right-hand", "imagePath": "rig-test/parts/hand-right.png", "width": 28, "height": 22, "offsetX": 0, "offsetY": 0, "rotation": 0, "scaleX": 1, "scaleY": 1, "category": "body", "tags": ["hand", "right"] },
+    { "id": "left-upper-leg", "imagePath": "rig-test/parts/upper-leg-left.png", "width": 98, "height": 32, "offsetX": 0, "offsetY": 0, "rotation": 0, "scaleX": 1, "scaleY": 1, "category": "body", "tags": ["leg", "left"] },
+    { "id": "right-upper-leg", "imagePath": "rig-test/parts/upper-leg-right.png", "width": 98, "height": 32, "offsetX": 0, "offsetY": 0, "rotation": 0, "scaleX": 1, "scaleY": 1, "category": "body", "tags": ["leg", "right"] },
+    { "id": "left-lower-leg", "imagePath": "rig-test/parts/lower-leg-left.png", "width": 92, "height": 27, "offsetX": 0, "offsetY": 0, "rotation": 0, "scaleX": 1, "scaleY": 1, "category": "body", "tags": ["leg", "left"] },
+    { "id": "right-lower-leg", "imagePath": "rig-test/parts/lower-leg-right.png", "width": 92, "height": 27, "offsetX": 0, "offsetY": 0, "rotation": 0, "scaleX": 1, "scaleY": 1, "category": "body", "tags": ["leg", "right"] },
+    { "id": "left-foot", "imagePath": "rig-test/parts/foot-left.png", "width": 46, "height": 24, "offsetX": 0, "offsetY": 0, "rotation": 0, "scaleX": 1, "scaleY": 1, "category": "body", "tags": ["foot", "left"] },
+    { "id": "right-foot", "imagePath": "rig-test/parts/foot-right.png", "width": 46, "height": 24, "offsetX": 0, "offsetY": 0, "rotation": 0, "scaleX": 1, "scaleY": 1, "category": "body", "tags": ["foot", "right"] },
+    { "id": "sword-a", "imagePath": "rig-test/parts/sword-a.png", "width": 138, "height": 20, "offsetX": 10, "offsetY": 0, "rotation": 0, "scaleX": 1, "scaleY": 1, "category": "weapon", "tags": ["sword", "steel"] },
+    { "id": "sword-b", "imagePath": "rig-test/parts/sword-b.png", "width": 138, "height": 24, "offsetX": 10, "offsetY": 0, "rotation": 0, "scaleX": 1, "scaleY": 1, "category": "weapon", "tags": ["sword", "arcane"] },
+    { "id": "shield", "imagePath": "rig-test/parts/shield.png", "width": 72, "height": 88, "offsetX": 45, "offsetY": 0, "rotation": 0, "scaleX": 1, "scaleY": 1, "category": "shield", "tags": ["shield", "wood"] }
+  ],
+  "skins": [
+    { "id": "default", "name": "Lab Knight", "slotAttachments": {
+      "left-foot-slot": "left-foot", "right-foot-slot": "right-foot", "left-lower-leg-slot": "left-lower-leg", "right-lower-leg-slot": "right-lower-leg",
+      "left-upper-leg-slot": "left-upper-leg", "right-upper-leg-slot": "right-upper-leg", "left-upper-arm-slot": "left-upper-arm", "left-lower-arm-slot": "left-lower-arm",
+      "torso-slot": "torso", "right-upper-arm-slot": "right-upper-arm", "right-lower-arm-slot": "right-lower-arm", "left-hand-slot": "left-hand",
+      "right-hand-slot": "right-hand", "head-slot": "head", "helmet-slot": "helmet", "shield-slot": "shield", "weapon-slot": "sword-a"
+    } }
+  ],
+  "defaultSkinId": "default",
+  "metadata": { "author": "Rig Studio", "rotationUnit": "degrees", "purpose": "multipart runtime lab" }
+}

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "run",
+  "name": "Run",
+  "duration": 0.65,
+  "loop": true,
+  "tracks": [
+    { "boneId": "torso", "property": "y", "keyframes": [{ "time": 0, "value": 2, "easing": "easeInOut" }, { "time": 0.1625, "value": -8, "easing": "easeInOut" }, { "time": 0.325, "value": 2, "easing": "easeInOut" }, { "time": 0.4875, "value": -8, "easing": "easeInOut" }, { "time": 0.65, "value": 2, "easing": "easeInOut" }] },
+    { "boneId": "torso", "property": "rotation", "keyframes": [{ "time": 0, "value": 7, "easing": "easeInOut" }, { "time": 0.325, "value": 11, "easing": "easeInOut" }, { "time": 0.65, "value": 7, "easing": "easeInOut" }] },
+    { "boneId": "left-upper-arm", "property": "rotation", "keyframes": [{ "time": 0, "value": 42, "easing": "easeInOut" }, { "time": 0.325, "value": 145, "easing": "easeInOut" }, { "time": 0.65, "value": 42, "easing": "easeInOut" }] },
+    { "boneId": "right-upper-arm", "property": "rotation", "keyframes": [{ "time": 0, "value": 138, "easing": "easeInOut" }, { "time": 0.325, "value": 35, "easing": "easeInOut" }, { "time": 0.65, "value": 138, "easing": "easeInOut" }] },
+    { "boneId": "left-upper-leg", "property": "rotation", "keyframes": [{ "time": 0, "value": 42, "easing": "easeInOut" }, { "time": 0.325, "value": 137, "easing": "easeInOut" }, { "time": 0.65, "value": 42, "easing": "easeInOut" }] },
+    { "boneId": "right-upper-leg", "property": "rotation", "keyframes": [{ "time": 0, "value": 140, "easing": "easeInOut" }, { "time": 0.325, "value": 45, "easing": "easeInOut" }, { "time": 0.65, "value": 140, "easing": "easeInOut" }] },
+    { "boneId": "left-lower-leg", "property": "rotation", "keyframes": [{ "time": 0, "value": 32, "easing": "easeOut" }, { "time": 0.325, "value": -18, "easing": "easeInOut" }, { "time": 0.65, "value": 32, "easing": "easeOut" }] },
+    { "boneId": "right-lower-leg", "property": "rotation", "keyframes": [{ "time": 0, "value": -18, "easing": "easeInOut" }, { "time": 0.325, "value": 32, "easing": "easeOut" }, { "time": 0.65, "value": -18, "easing": "easeInOut" }] }
+  ]
+}

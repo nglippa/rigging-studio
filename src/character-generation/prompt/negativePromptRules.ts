@@ -1,0 +1,15 @@
+export const NEGATIVE_PROMPT_RULES = [
+  "additional characters",
+  "duplicated limbs",
+  "missing hands or feet",
+  "cropped body parts",
+  "limbs hidden behind the torso",
+  "weapon crossing the body",
+  "complex scenery",
+  "text or logos",
+  "motion blur",
+  "extreme pose",
+  "dramatic perspective",
+  "strong foreshortening",
+  "merged equipment",
+] as const;

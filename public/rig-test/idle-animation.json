@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "idle",
+  "name": "Idle",
+  "duration": 2.4,
+  "loop": true,
+  "tracks": [
+    { "boneId": "torso", "property": "y", "keyframes": [{ "time": 0, "value": 0, "easing": "easeInOut" }, { "time": 1.2, "value": -4, "easing": "easeInOut" }, { "time": 2.4, "value": 0, "easing": "easeInOut" }] },
+    { "boneId": "torso", "property": "rotation", "keyframes": [{ "time": 0, "value": -1, "easing": "easeInOut" }, { "time": 1.2, "value": 1, "easing": "easeInOut" }, { "time": 2.4, "value": -1, "easing": "easeInOut" }] },
+    { "boneId": "head", "property": "rotation", "keyframes": [{ "time": 0, "value": 1.5, "easing": "easeInOut" }, { "time": 1.2, "value": -1.5, "easing": "easeInOut" }, { "time": 2.4, "value": 1.5, "easing": "easeInOut" }] },
+    { "boneId": "left-upper-arm", "property": "rotation", "keyframes": [{ "time": 0, "value": 100, "easing": "easeInOut" }, { "time": 1.2, "value": 96, "easing": "easeInOut" }, { "time": 2.4, "value": 100, "easing": "easeInOut" }] },
+    { "boneId": "right-upper-arm", "property": "rotation", "keyframes": [{ "time": 0, "value": 80, "easing": "easeInOut" }, { "time": 1.2, "value": 84, "easing": "easeInOut" }, { "time": 2.4, "value": 80, "easing": "easeInOut" }] }
+  ]
+}
