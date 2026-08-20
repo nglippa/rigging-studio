@@ -21,9 +21,14 @@ describe("Rigging Studio MCP server", () => {
     expect(tools.tools.map((tool) => tool.name)).toContain("diagnostics_export_report");
     expect(tools.tools.map((tool) => tool.name)).toContain("character_generate_with_comfy");
     expect(tools.tools.map((tool) => tool.name)).toContain("image_render_candidate_sheet");
+    expect(tools.tools.map((tool) => tool.name)).toEqual(expect.arrayContaining(["segmentation_status", "character_ai_cut", "part_refine_mask", "part_reconstruct_hidden", "part_get_reconstruction_proposal", "part_render_reconstruction_preview", "part_approve_reconstruction", "part_reject_reconstruction", "background_remove", "alpha_cleanup"]));
     expect(tools.tools.map((tool) => tool.name)).not.toContain("image_prepare_repair_context");
     expect(tools.tools.map((tool) => tool.name)).not.toContain("image_analyze_candidate_suitability");
+    expect(tools.tools.map((tool) => tool.name)).not.toContain("parts_install_ai_proposal");
+    expect(tools.tools.map((tool) => tool.name)).not.toContain("part_install_reconstruction_proposal");
     expect(tools.tools.some((tool) => /shell|eval|javascript|arbitrary_file/i.test(tool.name))).toBe(false);
+    const templates = await client.listResourceTemplates();
+    expect(templates.resourceTemplates.map((template) => template.uriTemplate)).toEqual(expect.arrayContaining(["rigging://active-project/segmentation/{proposalId}", "rigging://active-project/reconstruction/{partId}"]));
     const status = await client.callTool({ name: "studio_get_status", arguments: { includeActivity: false } });
     expect(status.isError).not.toBe(true);
     expect(status.structuredContent).toMatchObject({ connected: false });

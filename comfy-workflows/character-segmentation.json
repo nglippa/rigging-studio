@@ -1,0 +1,28 @@
+{
+  "1": { "class_type": "LoadImage", "inputs": { "image": "" } },
+  "7": {
+    "class_type": "ImageCrop",
+    "inputs": {
+      "image": ["1", 0],
+      "width": 512,
+      "height": 512,
+      "x": 0,
+      "y": 0
+    }
+  },
+  "2": { "class_type": "SAM2ModelLoader (segment anything2)", "inputs": { "model_name": "sam2_1_hiera_small.pt" } },
+  "3": { "class_type": "GroundingDinoModelLoader (segment anything2)", "inputs": { "model_name": "GroundingDINO_SwinT_OGC (694MB)" } },
+  "4": {
+    "class_type": "GroundingDinoSAM2Segment (segment anything2)",
+    "inputs": {
+      "sam_model": ["2", 0],
+      "grounding_dino_model": ["3", 0],
+      "image": ["7", 0],
+      "prompt": "character part",
+      "threshold": 0.3,
+      "keep_model_loaded": true
+    }
+  },
+  "5": { "class_type": "MaskToImage", "inputs": { "mask": ["4", 1] } },
+  "6": { "class_type": "SaveImage", "inputs": { "filename_prefix": "RiggingStudio-Segment", "images": ["5", 0] } }
+}

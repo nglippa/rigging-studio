@@ -1,0 +1,19 @@
+{
+  "manifestVersion": 1,
+  "id": "mask_refinement_v1",
+  "capability": "MASK_REFINEMENT",
+  "workflowFile": "mask-refinement.json",
+  "description": "Targeted Grounding DINO plus SAM2 correction combined with the current part mask.",
+  "inputs": {
+    "sourceImage": { "nodeId": "1", "field": "image", "required": true },
+    "currentMask": { "nodeId": "5", "field": "image", "required": true },
+    "semanticPrompt": { "nodeId": "4", "field": "prompt", "required": true },
+    "maskOperation": { "nodeId": "7", "field": "operation", "required": true },
+    "detectionThreshold": { "nodeId": "4", "field": "threshold", "required": false, "defaultValue": 0.3 },
+    "sam2Model": { "nodeId": "2", "field": "model_name", "required": true },
+    "groundingDinoModel": { "nodeId": "3", "field": "model_name", "required": true }
+  },
+  "outputs": { "images": { "nodeId": "9" } },
+  "requiredNodeClasses": ["LoadImage", "SAM2ModelLoader (segment anything2)", "GroundingDinoModelLoader (segment anything2)", "GroundingDinoSAM2Segment (segment anything2)", "ImageToMask", "MaskComposite", "MaskToImage", "SaveImage"],
+  "requiredModels": ["COMFYUI_SAM2_MODEL", "COMFYUI_GROUNDING_DINO_MODEL"]
+}

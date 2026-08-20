@@ -1,5 +1,5 @@
 import { partTypeToBoneId, partTypeToSlotId, type PartType } from "../character-generation/segmentation/partTaxonomy";
-import type { CharacterSegmentationResponse, ProposedCharacterPart, Rect, SegmentationMask } from "../character-generation/segmentation/segmentationSchema";
+import type { CharacterSegmentationResponse, Point, ProposedCharacterPart, Rect, SegmentationMask } from "../character-generation/segmentation/segmentationSchema";
 import { SEMANTIC_TAXONOMY, type PartLayerGroup, type PartSemanticType } from "./semanticTaxonomy";
 import { partCutProposalSchema, type PartCutProposal, type PartCutRecord, type PartCutterState, type ProposedPartCut } from "./schema";
 
@@ -27,7 +27,7 @@ export function createManualPart(state: PartCutterState, semanticType: PartSeman
   const defaults = SEMANTIC_TAXONOMY[semanticType]; const partId = safePartId(label, state.parts.map((part) => part.partId));
   return { partId, label, semanticType, mask, boundingBox: bounds, sourceBoundingBox: bounds, sourceCanvasSize: state.sourceCanvasSize,
     pivot: estimateSemanticPivot(semanticType, bounds), suggestedParent: defaults.suggestedParentBone, suggestedSlot: `${partId}-slot`, zOrder: layerOrder[defaults.defaultLayerGroup],
-    layer: defaults.defaultLayerGroup, confidence: 1, articulated: defaults.articulated, equipment: defaults.equipment, occlusionState: "unknown", provenance: "manual", accepted: true, notes: [], };
+    layer: defaults.defaultLayerGroup, confidence: 1, confidenceSource: "heuristic", articulated: defaults.articulated, equipment: defaults.equipment, occlusionState: "unknown", provenance: "manual", accepted: true, notes: [], };
 }
 
 const partSemanticToLegacy = (type: PartSemanticType): PartType => ({
@@ -37,7 +37,7 @@ const partSemanticToLegacy = (type: PartSemanticType): PartType => ({
 export function partCutToSegmentation(state: PartCutterState): CharacterSegmentationResponse {
   const parts: ProposedCharacterPart[] = state.parts.filter((part) => part.accepted).map((part) => {
     const semanticType = partSemanticToLegacy(part.semanticType);
-    return { id: part.partId, name: part.label, semanticType, confidence: part.confidence, bounds: part.boundingBox, mask: part.mask,
+    return { id: part.partId, name: part.label, semanticType, confidence: part.confidence, confidenceSource: part.confidenceSource, bounds: part.boundingBox, mask: part.mask,
       sourceImageRegion: part.sourceBoundingBox, suggestedBoneId: part.suggestedParent || partTypeToBoneId(semanticType), suggestedSlotId: part.suggestedSlot || partTypeToSlotId(semanticType),
       suggestedZIndex: part.zOrder, pivotHint: part.pivot, warnings: part.notes, accepted: true, provenance: part.provenance === "ai" ? "accepted" : part.provenance === "reconstructed" ? "reconstructed" : "manual", };
   });
@@ -48,11 +48,12 @@ export function proposalFromSegmentation(response: CharacterSegmentationResponse
   const parts: ProposedPartCut[] = response.parts.map((part) => {
     const semanticType = (part.semanticType === "rootReference" ? "root" : part.semanticType === "shoulderLeft" ? "leftShoulderArmor" : part.semanticType === "shoulderRight" ? "rightShoulderArmor" : part.semanticType) as PartSemanticType;
     const defaults = SEMANTIC_TAXONOMY[semanticType] ?? SEMANTIC_TAXONOMY.custom;
+    if (!part.mask && response.providerMetadata.imageConditioned === true && response.providerMetadata.mock !== true) throw new Error(`Image-conditioned provider omitted the pixel mask for ${part.id}`);
     return { proposedPartId: part.id, label: part.name, semanticType, mask: part.mask ?? fullMask(part.bounds), boundingBox: part.bounds, sourceBoundingBox: part.sourceImageRegion,
       sourceCanvasSize: { width: response.imageWidth, height: response.imageHeight }, pivot: part.pivotHint, suggestedParent: part.suggestedBoneId || defaults.suggestedParentBone,
       suggestedSlot: part.suggestedSlotId, zOrder: part.suggestedZIndex, layer: part.suggestedZIndex < -1 ? "back" : part.suggestedZIndex > 1 ? "front" : "body",
-      confidence: part.confidence, articulated: defaults.articulated, equipment: defaults.equipment, occlusionState: part.warnings.some((warning) => /hidden|occluded|beneath|overlap/i.test(warning)) ? "likely-incomplete" : "complete",
-      provenance: "ai", selected: true, notes: part.warnings,
+      confidence: part.confidence, confidenceSource: part.confidenceSource, articulated: defaults.articulated, equipment: defaults.equipment, occlusionState: part.warnings.some((warning) => /hidden|occluded|beneath|overlap/i.test(warning)) ? "likely-incomplete" : "complete",
+      provenance: "ai", selected: part.confidence !== null && part.confidence >= .8 && part.warnings.length === 0, notes: part.warnings,
     };
   });
   return partCutProposalSchema.parse({ proposalId: `cut-proposal-${Date.now().toString(36)}`, sourceImageId: response.segmentationId.replace(/^segment-/, ""), instruction, parts, warnings: response.warnings, assumptions: ["Source scale and canvas coordinates remain unchanged", "No proposed cut is accepted automatically"], status: "pending", providerMetadata: response.providerMetadata, ...(parentProposalId ? { parentProposalId } : {}), createdAt });
@@ -86,6 +87,7 @@ export function proposalToSegmentation(proposal: PartCutProposal): CharacterSegm
       name: part.label,
       semanticType: partSemanticToLegacy(part.semanticType),
       confidence: part.confidence,
+      confidenceSource: part.confidenceSource,
       bounds: part.boundingBox,
       mask: part.mask,
       sourceImageRegion: part.sourceBoundingBox,
@@ -116,17 +118,22 @@ export function diffPartCutProposals(before: PartCutProposal, after: PartCutProp
   after.parts.forEach((part) => {
     const original = prior.get(part.proposedPartId);
     if (!original) { pixelsAdded += part.mask.alpha.filter(Boolean).length; boundingBoxesChanged += 1; semanticsChanged += 1; return; }
-    const length = Math.max(original.mask.alpha.length, part.mask.alpha.length);
-    for (let index = 0; index < length; index += 1) {
-      const was = (original.mask.alpha[index] ?? 0) > 0; const next = (part.mask.alpha[index] ?? 0) > 0;
-      if (!was && next) pixelsAdded += 1; else if (was && !next) pixelsRemoved += 1;
-    }
+    const originalPixels = opaqueSourceCoordinates(original);
+    const revisedPixels = opaqueSourceCoordinates(part);
+    revisedPixels.forEach((coordinate) => { if (!originalPixels.has(coordinate)) pixelsAdded += 1; });
+    originalPixels.forEach((coordinate) => { if (!revisedPixels.has(coordinate)) pixelsRemoved += 1; });
     if (JSON.stringify(original.boundingBox) !== JSON.stringify(part.boundingBox)) boundingBoxesChanged += 1;
     if (original.semanticType !== part.semanticType) semanticsChanged += 1;
     if (original.layer !== part.layer) layersChanged += 1;
   });
   before.parts.filter((part) => !after.parts.some((candidate) => candidate.proposedPartId === part.proposedPartId)).forEach((part) => { pixelsRemoved += part.mask.alpha.filter(Boolean).length; boundingBoxesChanged += 1; });
   return { pixelsAdded, pixelsRemoved, boundingBoxesChanged, semanticsChanged, layersChanged };
+}
+
+function opaqueSourceCoordinates(part: Pick<ProposedPartCut, "mask" | "boundingBox">): Set<string> {
+  const coordinates = new Set<string>(); const left = Math.round(part.boundingBox.x); const top = Math.round(part.boundingBox.y);
+  for (let y = 0; y < part.mask.height; y += 1) for (let x = 0; x < part.mask.width; x += 1) if ((part.mask.alpha[y * part.mask.width + x] ?? 0) > 0) coordinates.add(`${left + x}:${top + y}`);
+  return coordinates;
 }
 
 export const rejectProposal = (state: PartCutterState, proposalId: string): PartCutterState => ({ ...state, proposals: state.proposals.map((proposal) => proposal.proposalId === proposalId ? { ...proposal, status: "rejected" } : proposal), activeProposalId: state.activeProposalId === proposalId ? undefined : state.activeProposalId, updatedAt: now() });
@@ -228,13 +235,25 @@ export function validateReconstructionConsistency(original: PartCutRecord, repla
 
 export type ReconstructionAssetConsistency = {
   readonly passed: boolean;
+  readonly status: "PASS" | "WARNING" | "REJECT";
   readonly sizeRatio: number;
   readonly canvasFootprintRatio: number;
   readonly aspectRatioDrift: number;
+  readonly centroidDisplacement: number;
+  readonly alphaFootprintRatio: number | null;
+  readonly pivotDisplacement: number;
+  readonly attachmentPointDistance: number;
+  readonly sourceCoordinateAlignment: number;
   readonly warnings: readonly string[];
 };
 
-export function validateReconstructionAsset(original: PartCutRecord, width: number, height: number): ReconstructionAssetConsistency {
+export type ReconstructionAssetGeometry = {
+  readonly alpha?: readonly number[];
+  readonly pivot?: Point;
+  readonly sourceBoundingBox?: Rect;
+};
+
+export function validateReconstructionAsset(original: PartCutRecord, width: number, height: number, geometry: ReconstructionAssetGeometry = {}): ReconstructionAssetConsistency {
   const expectedArea = Math.max(1, original.boundingBox.width * original.boundingBox.height);
   const sourceArea = Math.max(1, original.sourceCanvasSize.width * original.sourceCanvasSize.height);
   const sizeRatio = width * height / expectedArea;
@@ -242,12 +261,41 @@ export function validateReconstructionAsset(original: PartCutRecord, width: numb
   const originalAspect = original.boundingBox.width / Math.max(1, original.boundingBox.height);
   const replacementAspect = width / Math.max(1, height);
   const aspectRatioDrift = Math.max(originalAspect, replacementAspect) / Math.max(.0001, Math.min(originalAspect, replacementAspect));
-  const warnings: string[] = [];
-  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) warnings.push("Reconstruction has invalid image dimensions");
-  if (sizeRatio < .45 || sizeRatio > 2.25) warnings.push("Reconstruction dimensions do not match the selected part");
-  if (canvasFootprintRatio > .5 && expectedArea / sourceArea < .3) warnings.push("Reconstruction resembles a full-character canvas rather than one part");
-  if (aspectRatioDrift > 2) warnings.push("Reconstruction aspect ratio drifted too far from the source part");
-  return { passed: warnings.length === 0, sizeRatio, canvasFootprintRatio, aspectRatioDrift, warnings };
+  const originalCentroid = maskCentroid(original.mask.alpha, original.mask.width, original.mask.height);
+  const candidateAlpha = geometry.alpha?.length === width * height ? geometry.alpha : undefined;
+  const candidateCentroid = candidateAlpha ? maskCentroid(candidateAlpha, width, height) : { x: width / 2, y: height / 2 };
+  const scaleX = original.boundingBox.width / Math.max(1, width); const scaleY = original.boundingBox.height / Math.max(1, height);
+  const centroidDisplacement = Math.hypot(candidateCentroid.x * scaleX - originalCentroid.x, candidateCentroid.y * scaleY - originalCentroid.y);
+  const originalOpaque = original.mask.alpha.filter((alpha) => alpha > 0).length / Math.max(1, original.mask.alpha.length);
+  const candidateOpaque = candidateAlpha ? candidateAlpha.filter((alpha) => alpha > 0).length / Math.max(1, candidateAlpha.length) : null;
+  const alphaFootprintRatio = candidateOpaque === null ? null : candidateOpaque / Math.max(.0001, originalOpaque);
+  const pivot = geometry.pivot ?? original.pivot; const pivotDisplacement = Math.hypot(pivot.x - original.pivot.x, pivot.y - original.pivot.y);
+  const attachmentPointDistance = pivotDisplacement;
+  const sourceCoordinateAlignment = geometry.sourceBoundingBox ? rectangleIoU(original.sourceBoundingBox, geometry.sourceBoundingBox) : 1;
+  const hardRejects: string[] = []; const warnings: string[] = [];
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) hardRejects.push("Reconstruction has invalid image dimensions");
+  if (sizeRatio < .45 || sizeRatio > 2.25) hardRejects.push("Reconstruction dimensions do not match the selected part");
+  if (canvasFootprintRatio > .5 && expectedArea / sourceArea < .3) hardRejects.push("Reconstruction resembles a full-character canvas rather than one part");
+  if (aspectRatioDrift > 2) hardRejects.push("Reconstruction aspect ratio drifted too far from the source part");
+  const diagonal = Math.max(1, Math.hypot(original.boundingBox.width, original.boundingBox.height));
+  if (centroidDisplacement > diagonal * .35) hardRejects.push("Reconstruction centroid moved too far from the source part"); else if (centroidDisplacement > diagonal * .15) warnings.push("Reconstruction centroid shifted from the visible fragment");
+  if (pivotDisplacement > diagonal * .25) hardRejects.push("Reconstruction pivot moved too far from the attachment point"); else if (pivotDisplacement > diagonal * .1) warnings.push("Reconstruction pivot displacement needs review");
+  if (sourceCoordinateAlignment < .5) hardRejects.push("Reconstruction no longer aligns with source coordinates"); else if (sourceCoordinateAlignment < .85) warnings.push("Reconstruction source-coordinate alignment changed");
+  if (alphaFootprintRatio !== null && (alphaFootprintRatio < .25 || alphaFootprintRatio > 4)) hardRejects.push("Reconstruction alpha footprint is implausible"); else if (alphaFootprintRatio !== null && (alphaFootprintRatio < .6 || alphaFootprintRatio > 1.8)) warnings.push("Reconstruction alpha footprint differs from the visible fragment");
+  const status = hardRejects.length ? "REJECT" as const : warnings.length ? "WARNING" as const : "PASS" as const;
+  return { passed: status !== "REJECT", status, sizeRatio, canvasFootprintRatio, aspectRatioDrift, centroidDisplacement, alphaFootprintRatio, pivotDisplacement, attachmentPointDistance, sourceCoordinateAlignment, warnings: [...hardRejects, ...warnings] };
+}
+
+function maskCentroid(alpha: readonly number[], width: number, height: number): Point {
+  let xTotal = 0; let yTotal = 0; let weight = 0;
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) { const value = alpha[y * width + x] ?? 0; if (value <= 0) continue; xTotal += x * value; yTotal += y * value; weight += value; }
+  return weight ? { x: xTotal / weight, y: yTotal / weight } : { x: width / 2, y: height / 2 };
+}
+
+function rectangleIoU(a: Rect, b: Rect): number {
+  const left = Math.max(a.x, b.x); const top = Math.max(a.y, b.y); const right = Math.min(a.x + a.width, b.x + b.width); const bottom = Math.min(a.y + a.height, b.y + b.height);
+  const intersection = Math.max(0, right - left) * Math.max(0, bottom - top); const union = a.width * a.height + b.width * b.height - intersection;
+  return union ? intersection / union : 0;
 }
 
 export function reviseProposal(proposal: PartCutProposal, instruction: string): PartCutProposal {
@@ -260,8 +308,33 @@ export function reviseProposal(proposal: PartCutProposal, instruction: string): 
   return partCutProposalSchema.parse({ ...proposal, proposalId: `cut-proposal-${Date.now().toString(36)}`, instruction, parts, parentProposalId: proposal.proposalId, status: "pending", createdAt: now(), assumptions: [...proposal.assumptions, "Unmentioned proposed parts were preserved"] });
 }
 
-export function renderProposalSvg(proposal: PartCutProposal, width: number, height: number): string {
+export function renderProposalSvg(proposal: PartCutProposal, width: number, height: number, sourceImage?: string): string {
   const colors = ["#59d8f0", "#f4c966", "#63dab5", "#f08b7e", "#a8c7ff", "#d7a6ff"];
   const escape = (value: string): string => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll('"', "&quot;");
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}">${proposal.parts.map((part, index) => `<g><rect x="${part.boundingBox.x}" y="${part.boundingBox.y}" width="${part.boundingBox.width}" height="${part.boundingBox.height}" fill="${colors[index % colors.length]}33" stroke="${colors[index % colors.length]}"/><text x="${part.boundingBox.x + 3}" y="${part.boundingBox.y + 12}" fill="#fff" stroke="#091013" paint-order="stroke">${escape(part.label)}</text></g>`).join("")}</svg>`;
+  const maskPath = (part: PartCutProposal["parts"][number]): string => {
+    const path: string[] = [];
+    for (let y = 0; y < part.mask.height; y += 1) {
+      let x = 0;
+      while (x < part.mask.width) {
+        while (x < part.mask.width && (part.mask.alpha[y * part.mask.width + x] ?? 0) === 0) x += 1;
+        const start = x;
+        while (x < part.mask.width && (part.mask.alpha[y * part.mask.width + x] ?? 0) > 0) x += 1;
+        if (x > start) path.push(`M${part.boundingBox.x + start} ${part.boundingBox.y + y}h${x - start}v1h-${x - start}z`);
+      }
+    }
+    return path.join("");
+  };
+  const panels = proposal.parts.map((part, index) => {
+    const color = colors[index % colors.length];
+    const audit = part.notes.find((note) => note.startsWith("Audit:")) ?? "";
+    const gate = part.notes.find((note) => note.startsWith("Gate:")) ?? "Gate: REVIEW";
+    const status = gate.includes("SAFE") ? "SAFE" : "REVIEW";
+    const phrase = /phrase="([^"]+)"/.exec(audit)?.[1] ?? "phrase unavailable";
+    const confidence = part.confidence === null ? "unavailable" : `${part.confidenceSource} ${part.confidence.toFixed(3)}`;
+    const x = Math.max(3, part.boundingBox.x + 3); const y = Math.max(15, part.boundingBox.y + 12);
+    return `<g data-part-id="${escape(part.proposedPartId)}" data-status="${status}"><path d="${maskPath(part)}" fill="${color}" fill-opacity=".34" stroke="${color}" stroke-width=".9"/><text x="${x}" y="${y}" fill="#fff" stroke="#091013" stroke-width="3" paint-order="stroke" font-family="system-ui" font-size="11" font-weight="700">${escape(`${part.label} [${status}]`)}</text><text x="${x}" y="${y + 11}" fill="${color}" stroke="#091013" stroke-width="2.5" paint-order="stroke" font-family="system-ui" font-size="9">${escape(`${phrase} · ${confidence}`)}</text></g>`;
+  }).join("");
+  const safeCount = proposal.parts.filter((part) => part.notes.some((note) => note.startsWith("Gate: SAFE"))).length;
+  const source = sourceImage ? `<image href="${escape(sourceImage)}" x="0" y="0" width="${width}" height="${height}" preserveAspectRatio="none"/>` : `<rect width="100%" height="100%" fill="#091013"/>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}">${source}<rect x="0" y="0" width="${Math.min(width, 300)}" height="25" fill="#091013" fill-opacity=".82"/><text x="8" y="17" fill="#fff" font-family="system-ui" font-size="11" font-weight="700">${safeCount} SAFE · ${proposal.parts.length - safeCount} REVIEW · staged masks</text>${panels}</svg>`;
 }

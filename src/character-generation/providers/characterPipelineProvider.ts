@@ -2,8 +2,10 @@ import { z } from "zod";
 import type { RigDefinition } from "../../rigging/schema/types";
 import type { CharacterPromptControls } from "../prompt/generationPreset";
 import { characterSegmentationResponseSchema, type CharacterSegmentationResponse, type ProposedCharacterPart } from "../segmentation/segmentationSchema";
+import type { CharacterConsistencyContext } from "../context/characterConsistencyContext";
+import type { CharacterSegmentationRequest } from "../segmentation/segmentationProvider";
 
-export type ProviderMetadata = Readonly<Record<string, string | number | boolean>>;
+export type ProviderMetadata = Readonly<Record<string, string | number | boolean | null>>;
 export const GENERATION_MODES = ["fixture", "provider_generated", "imported_external"] as const;
 export type GenerationMode = (typeof GENERATION_MODES)[number];
 export type CharacterGenerationRequest = {
@@ -39,16 +41,47 @@ export type SuitabilityIssue = { readonly type: SuitabilityIssueType; readonly s
 export type SuitabilityReview = { readonly usable: boolean; readonly score: number; readonly issues: readonly SuitabilityIssue[]; readonly summary: string };
 export type SuitabilityRequest = { readonly image: string; readonly width: number; readonly height: number; readonly userPrompt: string };
 
-export type OcclusionReconstructionRequest = { readonly generationId: string; readonly image: string; readonly part: ProposedCharacterPart; readonly stylePrompt: string };
-export type OcclusionReconstructionResult = { readonly reconstructionId: string; readonly partId: string; readonly image: string; readonly width: number; readonly height: number; readonly providerMetadata: ProviderMetadata; readonly warnings: readonly string[] };
+export type OcclusionReconstructionRequest = {
+  readonly generationId: string;
+  readonly image: string;
+  readonly part: ProposedCharacterPart;
+  readonly stylePrompt: string;
+  readonly visiblePartImage?: string;
+  readonly reconstructionMask?: { readonly width: number; readonly height: number; readonly alpha: readonly number[] };
+  readonly reconstructionMaskBounds?: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
+  readonly expectedPivot?: { readonly x: number; readonly y: number };
+  readonly consistencyContext?: CharacterConsistencyContext;
+};
+export type OcclusionReconstructionResult = {
+  readonly reconstructionId: string;
+  readonly partId: string;
+  readonly image: string;
+  readonly width: number;
+  readonly height: number;
+  readonly providerMetadata: ProviderMetadata;
+  readonly warnings: readonly string[];
+  readonly runtimeMs?: number;
+};
 export type RigProposalProviderRequest = { readonly segmentation: CharacterSegmentationResponse; readonly userPrompt: string };
 export type RigProposalProviderResult = { readonly rig: RigDefinition; readonly confidence: Readonly<Record<string, number>>; readonly warnings: readonly string[] };
 export type VisualRigValidationRequest = { readonly rig: RigDefinition; readonly rotationDegrees: number };
 export type VisualRigValidationResult = { readonly passed: boolean; readonly warnings: readonly string[]; readonly providerMetadata: ProviderMetadata };
+export type CharacterPipelineCapability = {
+  readonly available: boolean;
+  readonly imageConditioned: boolean;
+  readonly mode: "provider" | "mock" | "unavailable";
+  readonly provider: string;
+  readonly workflow?: string;
+  readonly modelFamily?: string;
+  readonly confidenceSource?: "provider" | "heuristic" | "unavailable" | "mock-fixture";
+  readonly reason?: string;
+};
 export type CharacterPipelineCapabilities = {
-  readonly segmentation: { readonly available: boolean; readonly imageConditioned: boolean; readonly mode: "provider" | "mock" | "unavailable" };
-  readonly maskRefinement: { readonly available: boolean; readonly imageConditioned: boolean };
-  readonly reconstruction: { readonly available: boolean; readonly mode: "provider" | "mock" | "unavailable" };
+  readonly segmentation: CharacterPipelineCapability;
+  readonly maskRefinement: CharacterPipelineCapability;
+  readonly reconstruction: CharacterPipelineCapability;
+  readonly backgroundRemoval: CharacterPipelineCapability;
+  readonly alphaCleanup: CharacterPipelineCapability;
 };
 export type CharacterMaskRefinementRequest = {
   readonly generationId: string;
@@ -57,9 +90,13 @@ export type CharacterMaskRefinementRequest = {
   readonly height: number;
   readonly current: CharacterSegmentationResponse;
   readonly instruction: string;
+  readonly targetPartId?: string;
+  readonly boxHint?: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
+  readonly clickHints?: readonly { readonly x: number; readonly y: number; readonly positive: boolean }[];
+  readonly consistencyContext?: CharacterConsistencyContext;
 };
 
-const metadataSchema = z.record(z.string(), z.union([z.string(), z.number().finite(), z.boolean()]));
+const metadataSchema = z.record(z.string(), z.union([z.string(), z.number().finite(), z.boolean(), z.null()]));
 export const characterImageGenerationResultSchema: z.ZodType<CharacterImageGenerationResult> = z.object({
   generationId: z.string().min(1), image: z.string().min(1), width: z.number().int().positive(), height: z.number().int().positive(),
   generationPrompt: z.string().min(1), generationSettings: metadataSchema, seed: z.number().int().optional(), providerMetadata: metadataSchema, warnings: z.array(z.string()),
@@ -69,7 +106,7 @@ export const suitabilityReviewSchema: z.ZodType<SuitabilityReview> = z.object({
   usable: z.boolean(), score: z.number().min(0).max(1), issues: z.array(z.object({ type: z.enum(SUITABILITY_ISSUES), severity: z.enum(["info", "warning", "blocking"]), message: z.string().min(1), confidence: z.number().min(0).max(1) }).strict()), summary: z.string().min(1),
 }).strict();
 export const occlusionReconstructionResultSchema: z.ZodType<OcclusionReconstructionResult> = z.object({
-  reconstructionId: z.string().min(1), partId: z.string().min(1), image: z.string().min(1), width: z.number().int().positive(), height: z.number().int().positive(), providerMetadata: metadataSchema, warnings: z.array(z.string()),
+  reconstructionId: z.string().min(1), partId: z.string().min(1), image: z.string().min(1), width: z.number().int().positive(), height: z.number().int().positive(), providerMetadata: metadataSchema, warnings: z.array(z.string()), runtimeMs: z.number().nonnegative().optional(),
 }).strict();
 
 export interface CharacterImageGenerationProvider {
@@ -85,7 +122,8 @@ export interface CharacterPipelineProvider extends CharacterImageGenerationProvi
   readonly id: string;
   readonly name: string;
   readonly capabilities: CharacterPipelineCapabilities;
-  segmentCharacter(request: { readonly generationId: string; readonly image: string; readonly width: number; readonly height: number; readonly expectedEquipment: readonly string[] }): Promise<CharacterSegmentationResponse>;
+  refreshCapabilities?(): Promise<CharacterPipelineCapabilities>;
+  segmentCharacter(request: CharacterSegmentationRequest): Promise<CharacterSegmentationResponse>;
   refinePartMasks?(request: CharacterMaskRefinementRequest): Promise<CharacterSegmentationResponse>;
 }
 

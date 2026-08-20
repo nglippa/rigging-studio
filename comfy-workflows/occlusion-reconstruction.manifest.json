@@ -1,0 +1,21 @@
+{
+  "manifestVersion": 1,
+  "id": "occlusion_reconstruction_v1",
+  "capability": "OCCLUSION_RECONSTRUCTION",
+  "workflowFile": "occlusion-reconstruction.json",
+  "description": "Localized source-conditioned inpainting for one incomplete articulated part.",
+  "inputs": {
+    "sourceImage": { "nodeId": "1", "field": "image", "required": true },
+    "maskImage": { "nodeId": "2", "field": "image", "required": true },
+    "positivePrompt": { "nodeId": "5", "field": "text", "required": true },
+    "negativePrompt": { "nodeId": "6", "field": "text", "required": true },
+    "seed": { "nodeId": "8", "field": "seed", "required": true },
+    "steps": { "nodeId": "8", "field": "steps", "required": false, "defaultValue": 28 },
+    "guidance": { "nodeId": "8", "field": "cfg", "required": false, "defaultValue": 6.5 },
+    "denoise": { "nodeId": "8", "field": "denoise", "required": false, "defaultValue": 0.65 },
+    "checkpoint": { "nodeId": "4", "field": "ckpt_name", "required": true }
+  },
+  "outputs": { "images": { "nodeId": "11" } },
+  "requiredNodeClasses": ["LoadImage", "ImageToMask", "CheckpointLoaderSimple", "CLIPTextEncode", "VAEEncodeForInpaint", "KSampler", "VAEDecode", "ImageCompositeMasked", "SaveImage"],
+  "requiredModels": ["COMFYUI_CHECKPOINT"]
+}

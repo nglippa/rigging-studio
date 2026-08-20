@@ -2,6 +2,8 @@ import { z } from "zod";
 import { suitabilityReviewSchema } from "../../character-generation/providers/characterPipelineProvider";
 
 export const IMAGE_PRODUCTION_CAPABILITIES = [
+  "CHARACTER_SEGMENTATION",
+  "MASK_REFINEMENT",
   "CHARACTER_GENERATION",
   "CHARACTER_VARIANT",
   "OCCLUSION_RECONSTRUCTION",

@@ -59,6 +59,7 @@ const suitabilitySchema: z.ZodType<SuitabilityReview> = z.object({
 }).strict();
 const occlusionSchema: z.ZodType<OcclusionReview> = z.object({
   partId: z.string(), likelyOccluded: z.boolean(), confidence: z.number().min(0).max(1), reason: z.string(), decision: z.enum(["unreviewed", "keep-visible-fragment", "reconstruct", "acceptable", "regenerate-source"]), reconstructedImage: z.string().optional(), reconstructionAccepted: z.boolean(),
+  previewResourceInspected: z.string().optional(), inspectedAt: z.string().optional(), inspectedBy: z.string().optional(),
 }).strict();
 export const generatedCharacterProjectSchema: z.ZodType<GeneratedCharacterProject> = z.object({
   projectVersion: z.literal(1), id: z.string().min(1), name: z.string().min(1), stage: z.enum(CHARACTER_PROJECT_STAGES), originalUserPrompt: z.string(), generationPrompt: z.string(),

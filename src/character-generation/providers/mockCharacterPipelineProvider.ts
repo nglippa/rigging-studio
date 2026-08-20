@@ -24,7 +24,7 @@ const fixtureParts: readonly FixturePart[] = [
 ] as const;
 
 const proposedPart = (part: FixturePart, index: number): ProposedCharacterPart => ({
-  id: part.type, name: part.type, semanticType: part.type, confidence: part.warnings ? 0.72 : 0.92, bounds: part.bounds, sourceImageRegion: part.bounds,
+  id: part.type, name: part.type, semanticType: part.type, confidence: part.warnings ? 0.72 : 0.92, confidenceSource: "mock-fixture", bounds: part.bounds, sourceImageRegion: part.bounds,
   suggestedBoneId: partTypeToBoneId(part.type), suggestedSlotId: partTypeToSlotId(part.type), suggestedZIndex: part.z,
   pivotHint: { x: part.bounds.x + part.bounds.width / 2, y: part.bounds.y + Math.min(part.bounds.height * .2, 18) }, warnings: part.warnings ?? [],
   fixtureImagePath: part.path, accepted: true, provenance: index === 0 ? "accepted" : "generated",
@@ -34,9 +34,11 @@ export class MockCharacterPipelineProvider implements CharacterPipelineProvider 
   readonly id = "local-mock";
   readonly name = "Local deterministic fixture";
   readonly capabilities = {
-    segmentation: { available: false, imageConditioned: false, mode: "mock" as const },
-    maskRefinement: { available: false, imageConditioned: false },
-    reconstruction: { available: false, mode: "mock" as const },
+    segmentation: { available: false, imageConditioned: false, mode: "mock" as const, provider: this.id, confidenceSource: "mock-fixture" as const, reason: "Development fixture masks are not source-conditioned" },
+    maskRefinement: { available: false, imageConditioned: false, mode: "mock" as const, provider: this.id, reason: "Development fixture does not refine imported artwork" },
+    reconstruction: { available: false, imageConditioned: false, mode: "mock" as const, provider: this.id, reason: "Development fixture is not a reconstruction model" },
+    backgroundRemoval: { available: false, imageConditioned: false, mode: "unavailable" as const, provider: this.id, reason: "No background-removal workflow is configured" },
+    alphaCleanup: { available: false, imageConditioned: false, mode: "unavailable" as const, provider: this.id, reason: "No alpha-cleanup workflow is configured" },
   };
   private sequence = 0;
   private imageResult(request: CharacterGenerationRequest, mode: string): CharacterImageGenerationResult {

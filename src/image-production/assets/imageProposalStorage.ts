@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { imageProposalSchema, parseImageProposal, type ImageProposal } from "../proposals/imageProposal";
+import { imageProposalSchema, parseImageProposal, type ImageApprovalPolicy, type ImageProposal } from "../proposals/imageProposal";
 
 const SAFE_ID = /^[a-zA-Z0-9_-]{1,160}$/;
 const SAFE_IMAGE_FILE = /^[a-zA-Z0-9._-]+\.(png|jpg|jpeg)$/;
@@ -23,8 +23,47 @@ export type ImageProposalStorageOptions = { readonly cwd?: string };
 
 export class ImageProposalStorage {
   readonly rootDirectory: string;
+  readonly approvalPolicyDirectory: string;
   constructor(options: ImageProposalStorageOptions = {}) {
     this.rootDirectory = path.resolve(options.cwd ?? process.cwd(), ".rigging-studio", "image-production", "proposals");
+    this.approvalPolicyDirectory = path.resolve(this.rootDirectory, "..", "approval-policies");
+  }
+
+  async readApprovalPolicy(projectId: string): Promise<ImageApprovalPolicy> {
+    this.assertId(projectId, "project ID");
+    const file = path.join(this.approvalPolicyDirectory, `${projectId}.json`);
+    try {
+      const value = JSON.parse(await readFile(file, "utf8")) as { readonly projectId?: unknown; readonly approvalPolicy?: unknown };
+      if (value.projectId !== projectId || (value.approvalPolicy !== "manual" && value.approvalPolicy !== "agent_recommendation")) throw new Error("Invalid approval policy record");
+      return value.approvalPolicy;
+    } catch (error: unknown) {
+      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return "manual";
+      throw error;
+    }
+  }
+
+  async writeApprovalPolicy(projectId: string, approvalPolicy: ImageApprovalPolicy): Promise<void> {
+    this.assertId(projectId, "project ID");
+    await mkdir(this.approvalPolicyDirectory, { recursive: true });
+    const target = path.join(this.approvalPolicyDirectory, `${projectId}.json`);
+    type PolicyChange = { readonly from: ImageApprovalPolicy; readonly to: ImageApprovalPolicy; readonly changedAt: string };
+    let previous: { readonly projectId: string; readonly approvalPolicy: ImageApprovalPolicy; readonly initialPolicy: "manual"; readonly changes: readonly PolicyChange[] } = {
+      projectId, approvalPolicy: "manual", initialPolicy: "manual", changes: [],
+    };
+    try {
+      const value = JSON.parse(await readFile(target, "utf8")) as typeof previous;
+      if (value.projectId !== projectId || (value.approvalPolicy !== "manual" && value.approvalPolicy !== "agent_recommendation") || !Array.isArray(value.changes)) throw new Error("Invalid approval policy record");
+      previous = value;
+    } catch (error: unknown) {
+      if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) throw error;
+    }
+    const changes = previous.approvalPolicy === approvalPolicy
+      ? previous.changes
+      : [...previous.changes, { from: previous.approvalPolicy, to: approvalPolicy, changedAt: new Date().toISOString() }];
+    const record = { projectId, approvalPolicy, initialPolicy: "manual" as const, changes };
+    const temporary = path.join(this.approvalPolicyDirectory, `${projectId}-${crypto.randomUUID()}.tmp`);
+    await writeFile(temporary, `${JSON.stringify(record, null, 2)}\n`, { flag: "wx" });
+    await rename(temporary, target);
   }
 
   proposalDirectory(proposalId: string): string {

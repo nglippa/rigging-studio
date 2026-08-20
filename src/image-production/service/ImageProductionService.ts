@@ -77,7 +77,8 @@ export class ImageProductionService {
   async status(refreshWorkflows = false) {
     const [provider, capabilities] = await Promise.all([this.provider.status(), this.registry.listCapabilities(refreshWorkflows)]);
     const checked = await Promise.all(capabilities.map(async (capability) => {
-      if (!provider.reachable || !capability.capabilityAvailable) return capability;
+      if (!provider.reachable) return { ...capability, capabilityAvailable: false, reason: `ComfyUI offline at ${provider.url}: ${provider.message}` };
+      if (!capability.capabilityAvailable) return capability;
       try {
         const workflow = await this.registry.require(capability.capability);
         const dependencies = await this.provider.inspectDependencies(workflow);
@@ -119,9 +120,11 @@ export class ImageProductionService {
     const proposalId = `proposal-${crypto.randomUUID()}`;
     const timestamp = this.now().toISOString();
     const parent = request.parentProposalId ? await this.storage.readProposal(request.parentProposalId) : undefined;
+    const approvalPolicy = this.policies.get(request.projectId) ?? await this.storage.readApprovalPolicy(request.projectId);
+    this.policies.set(request.projectId, approvalPolicy);
     let proposal: ImageProposal = {
       proposalVersion: 1, proposalId, projectId: request.projectId, operationType: capability, provider: "comfyui", workflowId: workflow.manifest.id,
-      status: "generating", approvalPolicy: this.policies.get(request.projectId) ?? "manual", createdAt: timestamp, updatedAt: timestamp,
+      status: "generating", approvalPolicy, createdAt: timestamp, updatedAt: timestamp,
       sourcePrompt: prompt, negativePrompt,
       generationParameters: {
         candidateCount, preset: request.preset ?? "MODULAR_2D_RIG_CHARACTER", width: request.width ?? 768, height: request.height ?? 768,
@@ -282,8 +285,19 @@ export class ImageProductionService {
     });
   }
 
-  setApprovalPolicy(projectId: string, policy: ImageApprovalPolicy): ImageApprovalPolicy { this.policies.set(projectId, policy); return policy; }
-  getApprovalPolicy(projectId: string): ImageApprovalPolicy { return this.policies.get(projectId) ?? "manual"; }
+  async setApprovalPolicy(projectId: string, policy: ImageApprovalPolicy): Promise<ImageApprovalPolicy> {
+    await this.storage.writeApprovalPolicy(projectId, policy);
+    this.policies.set(projectId, policy);
+    return policy;
+  }
+
+  async getApprovalPolicy(projectId: string): Promise<ImageApprovalPolicy> {
+    const cached = this.policies.get(projectId);
+    if (cached) return cached;
+    const policy = await this.storage.readApprovalPolicy(projectId);
+    this.policies.set(projectId, policy);
+    return policy;
+  }
 
   async cancel(proposalId: string): Promise<boolean> {
     const promptId = this.activePromptIds.get(proposalId); if (!promptId || !this.provider.cancel) return false;

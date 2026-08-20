@@ -3,7 +3,8 @@ import { ANIMATED_PROPERTIES, EASING_TYPES } from "../../rigging/schema/types";
 import { PART_TYPES } from "../../character-generation/segmentation/partTaxonomy";
 import { jsonValueSchema } from "../../rigging/schema/schemas";
 import { PART_SEMANTIC_TYPES } from "../../part-cutter/semanticTaxonomy";
-import { maskSchema } from "../../character-generation/segmentation/segmentationSchema";
+import { characterSegmentationResponseSchema, maskSchema, rectSchema } from "../../character-generation/segmentation/segmentationSchema";
+import { occlusionReconstructionResultSchema } from "../../character-generation/providers/characterPipelineProvider";
 
 const id = z.string().trim().min(1).max(160);
 const projectId = z.object({ projectId: id.optional() }).strict();
@@ -28,6 +29,8 @@ export const TOOL_NAMES = [
   "image_approve_candidate", "image_reject_candidate", "image_regenerate_proposal", "image_set_approval_policy", "image_cancel_proposal",
   "image_analyze_candidate_suitability",
   "image_prepare_repair_context",
+  "segmentation_status", "character_ai_cut", "part_refine_mask", "part_reconstruct_hidden", "part_get_reconstruction_proposal", "part_render_reconstruction_preview", "part_approve_reconstruction", "part_reject_reconstruction", "background_remove", "alpha_cleanup",
+  "parts_install_ai_proposal", "part_install_reconstruction_proposal",
 ] as const;
 
 export type StudioToolName = (typeof TOOL_NAMES)[number];
@@ -51,7 +54,7 @@ const schemas = {
     generationId: id, provider: id, prompt: z.string().max(8000), accepted: z.boolean().default(false),
     metadata: z.record(z.string(), jsonValueSchema).default({}),
   }).strict(),
-  character_get_generation: projectId,
+  character_get_generation: z.object({ projectId: id.optional(), includeHistory: z.boolean().default(true) }).strict(),
   character_accept_generation: z.object({ projectId: id.optional(), generationId: id, confirm: explicitConfirm }).strict(),
   character_run_suitability_check: projectId,
   character_segment: projectId,
@@ -147,6 +150,18 @@ const schemas = {
     proposalId: id, candidateId: id, imageUrl: z.string().url().max(4096), width: z.number().int().positive().max(8192), height: z.number().int().positive().max(8192), prompt: z.string().max(8000),
   }).strict(),
   image_prepare_repair_context: z.object({ projectId: id, targetPartId: id }).strict(),
+  segmentation_status: z.object({}).strict(),
+  character_ai_cut: z.object({ projectId: id.optional(), instruction: z.string().trim().min(1).max(8000).default("Cut this character into riggable body and equipment parts") }).strict(),
+  part_refine_mask: z.object({ projectId: id.optional(), targetPartId: id, instruction: z.string().trim().min(1).max(8000), proposalId: id.optional() }).strict(),
+  part_reconstruct_hidden: z.object({ projectId: id.optional(), partId: id, reconstructionMask: maskSchema, reconstructionMaskBounds: rectSchema }).strict(),
+  part_get_reconstruction_proposal: z.object({ projectId: id.optional(), partId: id, includeImage: z.boolean().default(false) }).strict(),
+  part_render_reconstruction_preview: z.object({ projectId: id.optional(), partId: id, recordInspection: z.boolean().default(true) }).strict(),
+  part_approve_reconstruction: z.object({ projectId: id.optional(), partId: id, confirm: explicitConfirm }).strict(),
+  part_reject_reconstruction: z.object({ projectId: id.optional(), partId: id, reason: z.string().trim().min(1).max(1000), confirm: explicitConfirm }).strict(),
+  background_remove: z.object({ projectId: id.optional() }).strict(),
+  alpha_cleanup: z.object({ projectId: id.optional(), partId: id }).strict(),
+  parts_install_ai_proposal: z.object({ projectId: id.optional(), instruction: z.string().trim().min(1).max(8000), parentProposalId: id.optional(), segmentation: characterSegmentationResponseSchema }).strict(),
+  part_install_reconstruction_proposal: z.object({ projectId: id.optional(), partId: id, result: occlusionReconstructionResultSchema }).strict(),
 } satisfies Record<StudioToolName, z.ZodType>;
 
 export const studioToolSchemas: Readonly<Record<StudioToolName, z.ZodType>> = schemas;

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { maskSchema, pointSchema, rectSchema, type Point, type Rect, type SegmentationMask } from "../character-generation/segmentation/segmentationSchema";
+import { CONFIDENCE_SOURCES, maskSchema, pointSchema, rectSchema, type ConfidenceSource, type Point, type Rect, type SegmentationMask } from "../character-generation/segmentation/segmentationSchema";
 import { PART_SEMANTIC_TYPES, type PartLayerGroup, type PartSemanticType } from "./semanticTaxonomy";
 
 export const PART_CUT_MODES = ["auto", "assisted", "manual"] as const;
@@ -20,7 +20,8 @@ export type PartCutRecord = {
   readonly suggestedSlot: string;
   readonly zOrder: number;
   readonly layer: PartLayerGroup;
-  readonly confidence: number;
+  readonly confidence: number | null;
+  readonly confidenceSource: ConfidenceSource;
   readonly articulated: boolean;
   readonly equipment: boolean;
   readonly occlusionState: PartOcclusionState;
@@ -68,7 +69,7 @@ const semanticSchema = z.enum(PART_SEMANTIC_TYPES);
 const partShape = {
   label: z.string().trim().min(1).max(120), semanticType: semanticSchema, mask: maskSchema, boundingBox: rectSchema,
   sourceBoundingBox: rectSchema, sourceCanvasSize: sizeSchema, pivot: pointSchema, suggestedParent: z.string().nullable(), suggestedSlot: z.string().min(1),
-  zOrder: z.number().int().min(-10000).max(10000), layer: z.enum(["front", "body", "back"]), confidence: z.number().min(0).max(1),
+  zOrder: z.number().int().min(-10000).max(10000), layer: z.enum(["front", "body", "back"]), confidence: z.number().min(0).max(1).nullable(), confidenceSource: z.enum(CONFIDENCE_SOURCES).default("heuristic"),
   articulated: z.boolean(), equipment: z.boolean(), occlusionState: z.enum(OCCLUSION_STATES), reconstructionImage: z.string().min(1).optional(),
   provenance: z.enum(["manual", "ai", "reconstructed"]), notes: z.array(z.string().max(1000)),
 };

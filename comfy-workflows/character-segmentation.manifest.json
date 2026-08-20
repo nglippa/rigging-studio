@@ -1,0 +1,21 @@
+{
+  "manifestVersion": 1,
+  "id": "character_segmentation_staged_v2",
+  "capability": "CHARACTER_SEGMENTATION",
+  "workflowFile": "character-segmentation.json",
+  "description": "Staged contextual crops for Grounding DINO semantic detection followed by SAM2 source-conditioned pixel segmentation.",
+  "inputs": {
+    "sourceImage": { "nodeId": "1", "field": "image", "required": true },
+    "cropWidth": { "nodeId": "7", "field": "width", "required": true },
+    "cropHeight": { "nodeId": "7", "field": "height", "required": true },
+    "cropX": { "nodeId": "7", "field": "x", "required": true },
+    "cropY": { "nodeId": "7", "field": "y", "required": true },
+    "semanticPrompt": { "nodeId": "4", "field": "prompt", "required": true },
+    "detectionThreshold": { "nodeId": "4", "field": "threshold", "required": false, "defaultValue": 0.3 },
+    "sam2Model": { "nodeId": "2", "field": "model_name", "required": true },
+    "groundingDinoModel": { "nodeId": "3", "field": "model_name", "required": true }
+  },
+  "outputs": { "images": { "nodeId": "6" } },
+  "requiredNodeClasses": ["LoadImage", "ImageCrop", "SAM2ModelLoader (segment anything2)", "GroundingDinoModelLoader (segment anything2)", "GroundingDinoSAM2Segment (segment anything2)", "MaskToImage", "SaveImage"],
+  "requiredModels": ["COMFYUI_SAM2_MODEL", "COMFYUI_GROUNDING_DINO_MODEL"]
+}

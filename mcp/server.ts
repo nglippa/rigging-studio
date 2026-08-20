@@ -8,6 +8,10 @@ import { READ_ONLY_TOOLS, toolDescription } from "./tools/toolCatalog";
 import { StudioBridgeServer } from "./transport/StudioBridgeServer";
 import type { DiagnosticReportRequest } from "./storage/diagnosticReportExporter";
 import type { GenerationImportRequest } from "./storage/managedGenerationStorage";
+import { partCutProposalSchema } from "../src/part-cutter/schema";
+import { proposalToSegmentation } from "../src/part-cutter/operations";
+import type { CharacterImageGenerationResult } from "../src/character-generation/providers/characterPipelineProvider";
+import type { ProposedCharacterPart } from "../src/character-generation/segmentation/segmentationSchema";
 
 const toolResponse = (structured: Record<string, unknown>) => ({
   content: [{ type: "text" as const, text: JSON.stringify(structured, null, 2) }],
@@ -28,7 +32,7 @@ export const createRiggingStudioMcpServer = (bridge: StudioBridgeServer): McpSer
   const server = new McpServer({ name: "rigging-studio", version: "1.0.0" }, { capabilities: { resources: { listChanged: false }, tools: { listChanged: false } } });
 
   for (const name of TOOL_NAMES) {
-    if (name === "image_analyze_candidate_suitability" || name === "image_prepare_repair_context") continue;
+    if (name === "image_analyze_candidate_suitability" || name === "image_prepare_repair_context" || name === "parts_install_ai_proposal" || name === "part_install_reconstruction_proposal") continue;
     const readOnly = READ_ONLY_TOOLS.has(name);
     server.registerTool(name, {
       title: name.replaceAll("_", " "),
@@ -41,6 +45,55 @@ export const createRiggingStudioMcpServer = (bridge: StudioBridgeServer): McpSer
         return { content: [{ type: "text", text: JSON.stringify(disconnected, null, 2) }], structuredContent: disconnected };
       }
       try {
+        if (name === "segmentation_status") {
+          const status = await bridge.characterPipeline.status();
+          return toolResponse({ success: true, ...status });
+        }
+        if (name === "character_ai_cut") {
+          const parsed = studioToolSchemas.character_ai_cut.parse(input) as { readonly projectId?: string; readonly instruction: string };
+          const projectId = await activeProjectId(bridge, parsed.projectId); const generation = await activeGeneration(bridge, projectId);
+          const segmentation = await bridge.characterPipeline.segmentCharacter({ generationId: generation.generationId, image: generation.image, width: generation.width, height: generation.height, expectedEquipment: [], semanticPrompt: parsed.instruction });
+          const installed = await bridge.request("parts_install_ai_proposal", { projectId, instruction: parsed.instruction, segmentation });
+          const proposalId = installed && typeof installed === "object" && typeof (installed as Record<string, unknown>).proposalId === "string" ? String((installed as Record<string, unknown>).proposalId) : segmentation.segmentationId;
+          return toolResponse({ success: true, projectId, segmentationId: segmentation.segmentationId, proposalId, detectedParts: segmentation.parts.length, unresolved: segmentation.warnings, providerMetadata: segmentation.providerMetadata, proposal: installed, previewResource: `rigging://active-project/segmentation/${proposalId}`, requiresReview: true });
+        }
+        if (name === "part_refine_mask") {
+          const parsed = studioToolSchemas.part_refine_mask.parse(input) as { readonly projectId?: string; readonly targetPartId: string; readonly instruction: string; readonly proposalId?: string };
+          const projectId = await activeProjectId(bridge, parsed.projectId); const generation = await activeGeneration(bridge, projectId);
+          const currentResult = await bridge.request("parts_get_proposal", { projectId, proposalId: parsed.proposalId, includeMasks: true });
+          const currentRecord = currentResult as Record<string, unknown>; const proposal = partCutProposalSchema.parse(currentRecord.proposal);
+          const segmentation = await bridge.characterPipeline.refinePartMasks({ generationId: generation.generationId, image: generation.image, width: generation.width, height: generation.height, current: proposalToSegmentation(proposal), instruction: parsed.instruction, targetPartId: parsed.targetPartId });
+          const installed = await bridge.request("parts_install_ai_proposal", { projectId, instruction: parsed.instruction, parentProposalId: proposal.proposalId, segmentation });
+          return toolResponse({ success: true, projectId, targetPartId: parsed.targetPartId, parentProposalId: proposal.proposalId, proposal: installed, providerMetadata: segmentation.providerMetadata, requiresReview: true, unrelatedPartsPreserved: true });
+        }
+        if (name === "part_reconstruct_hidden") {
+          const parsed = studioToolSchemas.part_reconstruct_hidden.parse(input) as { readonly projectId?: string; readonly partId: string; readonly reconstructionMask: import("../src/character-generation/segmentation/segmentationSchema").SegmentationMask; readonly reconstructionMaskBounds: import("../src/character-generation/segmentation/segmentationSchema").Rect };
+          const projectId = await activeProjectId(bridge, parsed.projectId); const generation = await activeGeneration(bridge, projectId);
+          const partsResult = await bridge.request("character_get_parts", { projectId, includeFull: true }) as Record<string, unknown>;
+          const part = (partsResult.parts as readonly ProposedCharacterPart[] | undefined)?.find((candidate) => candidate.id === parsed.partId);
+          if (!part) throw new Error(`Part ${parsed.partId} is unavailable in the active segmentation`);
+          const result = await bridge.characterPipeline.reconstructPart({
+            generationId: generation.generationId, image: generation.image, part, stylePrompt: generation.generationPrompt,
+            reconstructionMask: parsed.reconstructionMask, reconstructionMaskBounds: parsed.reconstructionMaskBounds, expectedPivot: part.pivotHint,
+            consistencyContext: { projectId, sourceImageId: generation.generationId, sourceCanvasWidth: generation.width, sourceCanvasHeight: generation.height, characterPrompt: generation.generationPrompt, stylePrompt: generation.generationPrompt, generationProvider: generation.provider, ...(generation.seed === undefined ? {} : { generationSeed: generation.seed }), canonicalScale: { width: generation.width, height: generation.height }, acceptedParts: (partsResult.parts as readonly ProposedCharacterPart[] | undefined)?.filter((candidate) => candidate.accepted).map((candidate) => candidate.id) ?? [], semanticBBoxes: Object.fromEntries(((partsResult.parts as readonly ProposedCharacterPart[] | undefined) ?? []).map((candidate) => [candidate.semanticType, candidate.bounds])), jointHints: Object.fromEntries(((partsResult.parts as readonly ProposedCharacterPart[] | undefined) ?? []).map((candidate) => [candidate.semanticType, candidate.pivotHint])), paletteHints: [], equipmentHints: [], referenceAssetIds: [generation.sourceArtifact] },
+          });
+          const installed = await bridge.request("part_install_reconstruction_proposal", { projectId, partId: parsed.partId, result });
+          return toolResponse({ success: true, projectId, partId: parsed.partId, reconstructionId: result.reconstructionId, runtimeMs: result.runtimeMs ?? null, proposal: installed, previewResource: `rigging://active-project/reconstruction/${encodeURIComponent(parsed.partId)}`, requiresVisualInspection: true, requiresApproval: true });
+        }
+        if (name === "part_render_reconstruction_preview") {
+          const parsed = studioToolSchemas.part_render_reconstruction_preview.parse(input) as { readonly projectId?: string; readonly partId: string; readonly recordInspection: boolean };
+          await activeProjectId(bridge, parsed.projectId);
+          const rendered = await bridge.request(name, parsed) as Record<string, unknown>;
+          if (rendered.success === false) return toolResponse(rendered);
+          if (typeof rendered.imageBase64 !== "string") throw new Error("Studio did not return a reconstruction preview image");
+          const { imageBase64, ...metadata } = rendered;
+          return imageToolResponse(metadata, { bytes: Buffer.from(imageBase64, "base64"), mimeType: "image/png" });
+        }
+        if (name === "background_remove" || name === "alpha_cleanup") {
+          const status = await bridge.characterPipeline.status(); const capability = name === "background_remove" ? status.capabilities.backgroundRemoval : status.capabilities.alphaCleanup;
+          if (!capability.available) return toolResponse({ success: false, capability: name, available: false, warnings: [], errors: [{ code: "capability_unavailable", message: capability.reason ?? `${name} trusted workflow is unavailable` }] });
+          return toolResponse({ success: false, capability: name, available: true, warnings: [], errors: [{ code: "capability_not_bound", message: `${name} requires a reviewed narrow source-binding implementation before it can execute` }] });
+        }
         if (name === "image_provider_status" || name === "image_provider_list_capabilities" || name === "comfy_get_status") {
           const refresh = name === "image_provider_list_capabilities" && Boolean((studioToolSchemas.image_provider_list_capabilities.parse(input) as { readonly refresh: boolean }).refresh);
           const status = await bridge.imageProviderStatus(refresh);
@@ -119,7 +172,7 @@ export const createRiggingStudioMcpServer = (bridge: StudioBridgeServer): McpSer
         }
         if (name === "image_set_approval_policy") {
           const parsed = studioToolSchemas.image_set_approval_policy.parse(input) as { readonly projectId: string; readonly policy: "manual" | "agent_recommendation" }; await assertActiveProject(bridge, parsed.projectId);
-          return toolResponse({ success: true, projectId: parsed.projectId, approvalPolicy: bridge.setImageApprovalPolicy(parsed.projectId, parsed.policy) });
+          return toolResponse({ success: true, projectId: parsed.projectId, approvalPolicy: await bridge.setImageApprovalPolicy(parsed.projectId, parsed.policy) });
         }
         if (name === "image_cancel_proposal") {
           const parsed = studioToolSchemas.image_cancel_proposal.parse(input) as { readonly proposalId: string }; return toolResponse({ success: true, proposalId: parsed.proposalId, cancellationRequested: await bridge.cancelImageProposal(parsed.proposalId) });
@@ -158,6 +211,21 @@ export const createRiggingStudioMcpServer = (bridge: StudioBridgeServer): McpSer
 async function assertActiveProject(bridge: StudioBridgeServer, projectId: string): Promise<void> {
   const status = await bridge.request("studio_get_status", { includeActivity: false });
   if (!status || typeof status !== "object" || (status as Record<string, unknown>).activeProjectId !== projectId) throw new Error(`Project ${projectId} is not the active Studio project`);
+}
+
+async function activeProjectId(bridge: StudioBridgeServer, requested?: string): Promise<string> {
+  const status = await bridge.request("studio_get_status", { includeActivity: false });
+  const active = status && typeof status === "object" ? (status as Record<string, unknown>).activeProjectId : null;
+  if (typeof active !== "string") throw new Error("No active Rigging Studio project");
+  if (requested && requested !== active) throw new Error(`Project ${requested} is not the active Studio project`);
+  return active;
+}
+
+async function activeGeneration(bridge: StudioBridgeServer, projectId: string): Promise<CharacterImageGenerationResult> {
+  const result = await bridge.request("character_get_generation", { projectId, includeHistory: false });
+  const generation = result && typeof result === "object" ? (result as Record<string, unknown>).generation : null;
+  if (!generation || typeof generation !== "object") throw new Error("The active project has no source generation");
+  return generation as CharacterImageGenerationResult;
 }
 
 export const main = async (): Promise<void> => {

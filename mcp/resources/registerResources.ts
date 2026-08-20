@@ -20,6 +20,16 @@ export const registerStudioResources = (server: McpServer, bridge: StudioBridgeS
     if (!path) return textResource("rigging://active-project/preview/latest", { available: false, message: "Render a preview first" });
     return { contents: [{ uri: "rigging://active-project/preview/latest", mimeType: "image/png", blob: (await readFile(path)).toString("base64") }] };
   });
+  server.registerResource("segmentation-proposal", new ResourceTemplate("rigging://active-project/segmentation/{proposalId}", { list: undefined }), { mimeType: "image/svg+xml", description: "Actual alpha silhouettes for one reviewable part-cut proposal" }, async (uri, variables) => {
+    const result = await bridge.request("parts_render_proposal", { proposalId: String(variables.proposalId) }) as Record<string, unknown>;
+    if (typeof result.svg !== "string") throw new Error("Studio did not return a segmentation preview");
+    return { contents: [{ uri: uri.href, mimeType: "image/svg+xml", text: result.svg }] };
+  });
+  server.registerResource("reconstruction-review", new ResourceTemplate("rigging://active-project/reconstruction/{partId}", { list: undefined }), { mimeType: "image/png", description: "Original, visible, reconstructed, and ±20° review sheet; reading it records inspection evidence" }, async (uri, variables) => {
+    const result = await bridge.request("part_render_reconstruction_preview", { partId: String(variables.partId), recordInspection: true }) as Record<string, unknown>;
+    if (typeof result.imageBase64 !== "string") throw new Error("Studio did not return a reconstruction preview");
+    return { contents: [{ uri: uri.href, mimeType: "image/png", blob: result.imageBase64 }] };
+  });
   server.registerResource("image-proposal-candidate", new ResourceTemplate("rigging://image-proposals/{proposalId}/candidates/{candidateId}", { list: undefined }), { mimeType: "image/png", description: "One managed ComfyUI proposal candidate; reading records inspection evidence" }, async (uri, variables) => {
     const result = await bridge.getImageCandidate(String(variables.proposalId), String(variables.candidateId));
     return { contents: [{ uri: uri.href, mimeType: result.mimeType, blob: Buffer.from(result.bytes).toString("base64") }] };

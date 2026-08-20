@@ -84,6 +84,17 @@ describe("trusted ComfyUI image production", () => {
     } finally { if (previous === undefined) delete process.env.COMFYUI_CHECKPOINT; else process.env.COMFYUI_CHECKPOINT = previous; }
   });
 
+  it("reports missing trusted nodes and bounds a never-completing provider prompt", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "comfy-bounds-")); const workflow = await (await trustedRegistry(cwd)).require("CHARACTER_GENERATION");
+    const previous = process.env.COMFYUI_CHECKPOINT; process.env.COMFYUI_CHECKPOINT = "test.safetensors";
+    try {
+      const missing = new ComfyUIAdapter({ fetcher: async (input) => String(input).endsWith("/object_info") ? new Response(JSON.stringify({ CheckpointLoaderSimple: { input: { required: { ckpt_name: [["test.safetensors"]] } } } })) : new Response(JSON.stringify({})) });
+      await expect(missing.inspectDependencies(workflow)).resolves.toMatchObject({ available: false, missingNodeClasses: expect.arrayContaining(["KSampler", "SaveImage"]) });
+      const stalled = new ComfyUIAdapter({ timeoutMs: 4, pollIntervalMs: 1, fetcher: async (input) => String(input).includes("/history/") ? new Response(JSON.stringify({})) : new Response(JSON.stringify({ queue_running: [], queue_pending: [] })) });
+      await expect(stalled.waitForCompletion("never-finishes", "9")).rejects.toThrow("timed out");
+    } finally { if (previous === undefined) delete process.env.COMFYUI_CHECKPOINT; else process.env.COMFYUI_CHECKPOINT = previous; }
+  });
+
   it("validates manifests, injects prompts and deterministic seeds, preserves partial success, and stores suitability metadata", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "comfy-service-")); const bytes = await readFile(fixture); const provider = new MockImageProvider(bytes, [2]);
     const service = new ImageProductionService({ provider, registry: await trustedRegistry(cwd), storage: new ImageProposalStorage({ cwd }), randomSeed: () => 100, currentSessionId: () => "session-a", analyzeCandidate: async () => ({ usable: true, score: .82, issues: [], summary: "Review aid" }) });
@@ -112,12 +123,20 @@ describe("trusted ComfyUI image production", () => {
     await service.getCandidate(manual.proposalId, "candidate-01", "human-ui");
     await expect(service.approve(manual.proposalId, "candidate-01", "human")).resolves.toMatchObject({ proposal: { status: "approved" } });
 
-    service.setApprovalPolicy("character-agent", "agent_recommendation");
+    await service.setApprovalPolicy("character-agent", "agent_recommendation");
     const agent = await service.generateCandidates({ projectId: "character-agent", operation: "character_generation", prompt: "witch", candidateCount: 1 });
     await expect(service.approve(agent.proposalId, "candidate-01", "agent")).rejects.toThrow("visually inspected");
     await service.getCandidate(agent.proposalId, "candidate-01");
     await service.review({ proposalId: agent.proposalId, recommendedCandidateId: "candidate-01", candidateReviews: [{ candidateId: "candidate-01", decision: "recommend", reasons: ["clean silhouette"] }] }, "Codex");
     await expect(service.approve(agent.proposalId, "candidate-01", "agent")).resolves.toMatchObject({ proposal: { status: "approved" } });
+    const restarted = new ImageProductionService({ provider: new MockImageProvider(bytes), registry: await trustedRegistry(cwd), storage: new ImageProposalStorage({ cwd }), currentSessionId: () => "agent-session-2" });
+    expect(await restarted.getApprovalPolicy("character-agent")).toBe("agent_recommendation");
+    expect(await restarted.getApprovalPolicy("unrelated-project")).toBe("manual");
+    const persistedPolicy = await restarted.generateCandidates({ projectId: "character-agent", operation: "character_generation", prompt: "witch restart", candidateCount: 1 });
+    expect(persistedPolicy.approvalPolicy).toBe("agent_recommendation");
+    const policyRecord = await readFile(path.join(cwd, ".rigging-studio", "image-production", "approval-policies", "character-agent.json"), "utf8");
+    expect(policyRecord).toContain('"from": "manual"');
+    expect(policyRecord).toContain('"to": "agent_recommendation"');
 
     const first = await service.generateCandidates({ projectId: "character-rounds", operation: "character_generation", prompt: "first", candidateCount: 1 });
     const second = await service.regenerate(first.proposalId, "second");

@@ -57,12 +57,17 @@ export class ComfyUIAdapter implements ImageProductionProvider {
     const knownClasses = new Set(isRecord(objectInfo) ? Object.keys(objectInfo) : []);
     const missingNodeClasses = workflow.manifest.requiredNodeClasses.filter((nodeClass) => !knownClasses.has(nodeClass));
     const checkpoint = process.env.COMFYUI_CHECKPOINT;
-    const missingModels = workflow.manifest.requiredModels.filter((model) => model === "COMFYUI_CHECKPOINT" ? !checkpoint : true);
+    const objectInfoText = JSON.stringify(objectInfo);
+    const missingModels = workflow.manifest.requiredModels.flatMap((environmentName) => {
+      const configured = process.env[environmentName];
+      if (!configured) return [environmentName];
+      return objectInfoText.includes(configured) ? [] : [`${environmentName}:${configured}`];
+    });
     if (checkpoint && isRecord(objectInfo)) {
       const loader = objectInfo.CheckpointLoaderSimple;
       const required = isRecord(loader) && isRecord(loader.input) && isRecord(loader.input.required) ? loader.input.required.ckpt_name : undefined;
       const installed = Array.isArray(required) && Array.isArray(required[0]) ? required[0].filter((value): value is string => typeof value === "string") : [];
-      if (installed.length && !installed.includes(checkpoint)) missingModels.push(`checkpoint:${checkpoint}`);
+      if (installed.length && !installed.includes(checkpoint) && !missingModels.includes(`COMFYUI_CHECKPOINT:${checkpoint}`)) missingModels.push(`COMFYUI_CHECKPOINT:${checkpoint}`);
     }
     return { available: missingNodeClasses.length === 0 && missingModels.length === 0, missingNodeClasses, missingModels };
   }

@@ -9,7 +9,8 @@ export function clampPointToBounds(point: Point, bounds: Rect): Point {
 export function estimatePartPivot(part: ProposedCharacterPart): PivotEstimate {
   const point = clampPointToBounds(part.pivotHint, part.bounds);
   const atEdge = point.x === part.bounds.x || point.x === part.bounds.x + part.bounds.width || point.y === part.bounds.y || point.y === part.bounds.y + part.bounds.height;
-  return { point, confidence: Math.max(.25, Math.min(.95, part.confidence - (atEdge ? .15 : 0))), basis: part.pivotHint === point ? "provider pivot hint" : "provider hint clamped to part bounds" };
+  const sourceConfidence = part.confidence ?? .5;
+  return { point, confidence: Math.max(.25, Math.min(.95, sourceConfidence - (atEdge ? .15 : 0))), basis: part.pivotHint === point ? "provider pivot hint" : "provider hint clamped to part bounds" };
 }
 
 export function localPivot(point: Point, bounds: Rect, attachmentWidth = bounds.width, attachmentHeight = bounds.height): Point {

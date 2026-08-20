@@ -20,12 +20,12 @@ The completed architecture, setup, workflow manifest format, security boundaries
 ```text
 Claude Code / Codex
   → Rigging Studio MCP tools
-  → ImageProductionService
+  → ImageProductionService / ComfyCharacterPipelineService
   → trusted workflow registry
   → ComfyUIAdapter
   → localhost ComfyUI
-  → managed ImageProposal candidates
-  → inspection + structured review
+  → managed image/mask/reconstruction proposals
+  → semantic mask or reconstruction inspection
   → explicit approval
   → existing managed generation ingress
   → GeneratedCharacterProject / existing repair records
@@ -42,11 +42,14 @@ ComfyUI defaults to `http://127.0.0.1:8188`. `COMFYUI_BASE_URL` accepts only pla
 Recommended Mac mini startup:
 
 ```bash
-# Terminal 1 — from the local ComfyUI checkout/installation
-python main.py --listen 127.0.0.1 --port 8188
+# Terminal 1 — from the user's local ComfyUI checkout (no checkout path is configured in this repository)
+python3 main.py --listen 127.0.0.1 --port 8188
 
-# Terminal 2 — Rigging Studio repository
+# Terminal 2 — configured Rigging Studio repository
+cd /Users/nicholaslippa/Projects/rigging-studio
 export COMFYUI_CHECKPOINT='your-installed-checkpoint.safetensors'
+export COMFYUI_SAM2_MODEL='exact SAM2 loader option'
+export COMFYUI_GROUNDING_DINO_MODEL='exact Grounding DINO loader option'
 npm run dev:agent
 ```
 
@@ -77,7 +80,9 @@ Trusted workflows live in `comfy-workflows/` as an API-format JSON graph plus a 
 
 All manifest paths, node IDs, input fields, required classes, and the declared output node validate before use. The service clones the trusted graph and binds only declared values. MCP input has no graph field, base-URL field, or output-path field.
 
-The repository includes one honest core-node `CHARACTER_GENERATION` graph. It becomes available when `COMFYUI_CHECKPOINT` names an installed checkpoint. `CHARACTER_VARIANT`, `OCCLUSION_RECONSTRUCTION`, `PART_REPAIR`, `BACKGROUND_REMOVAL`, `ALPHA_EDGE_CLEANUP`, `EQUIPMENT_VARIANT`, and `HAND_REPAIR` remain explicitly unavailable until a reviewed manifest/API-workflow pair is installed. Missing files, renamed nodes, missing custom node classes, and missing checkpoints are reported rather than simulated.
+The repository includes trusted graphs for `CHARACTER_GENERATION`, `CHARACTER_SEGMENTATION`, `MASK_REFINEMENT`, and `OCCLUSION_RECONSTRUCTION`. Segmentation/refinement require the `ComfyUI-SAM2` custom nodes `SAM2ModelLoader (segment anything2)`, `GroundingDinoModelLoader (segment anything2)`, and `GroundingDinoSAM2Segment (segment anything2)`, plus model selector values in `COMFYUI_SAM2_MODEL` and `COMFYUI_GROUNDING_DINO_MODEL`. Reconstruction uses standard `VAEEncodeForInpaint` and `ImageCompositeMasked` nodes plus `COMFYUI_CHECKPOINT`. Other capabilities remain explicitly unavailable until a reviewed pair is installed. Missing files, manifest mismatches, node classes, and model settings are reported rather than simulated.
+
+The upstream [`ComfyUI-SAM2` installation](https://github.com/neverbiasu/ComfyUI-SAM2) requires its `requirements.txt`. Its README places Grounding DINO config/checkpoint files under `<ComfyUI>/models/grounding-dino`, SAM2 checkpoints under `<ComfyUI>/models/sam2`, and BERT files under `<ComfyUI>/models/bert-base-uncased` (or permits supported automatic downloads). Rigging Studio does not clone the node or download these models. After ComfyUI starts, use the exact loader option strings shown by ComfyUI for the two environment variables; the startup dependency check verifies those values against `/object_info`.
 
 To add or replace a workflow, export it from ComfyUI in API format, keep all input/output file behavior inside ComfyUI's own managed directories, add a strict manifest beside it, restart `npm run mcp`, and call `image_provider_list_capabilities`. Do not add arbitrary pass-through bindings.
 
@@ -109,11 +114,15 @@ New proposals default to `manual`:
 
 `agent_recommendation` is an explicit per-project/session choice through `image_set_approval_policy`. Agent approval then requires both current-session pixel inspection and a structured review whose decision is not reject. There is no unattended score-based policy.
 
-Approval verifies proposal ownership and state, copies the selected candidate into `.rigging-studio/generations/`, marks it `novelArtwork: true`, `generationMode: provider_generated`, and `provider: comfyui`, and sends the normalized image through `character_import_generation`. Character/background/alpha generation approvals become the normal project generation. Occlusion, part, and hand repair approvals update the existing reconstructed-part review while preserving the original. Project `imageProductionHistory` records proposal, candidate, workflow, operation, policy, target part, and acceptance time.
+Generic generation approval verifies proposal ownership and state, copies the selected candidate into `.rigging-studio/generations/`, marks it `novelArtwork: true`, `generationMode: provider_generated`, and `provider: comfyui`, and sends it through `character_import_generation`. Segmentation, mask-refinement, and occlusion-reconstruction artifacts are deliberately blocked from that ingress: they must use the part-review acceptance tools, which preserve the original mask/fragment and update the normal `GeneratedCharacterProject` only after review.
 
-## Repair workflows
+## Segmentation, refinement, and reconstruction
 
-Occlusion reconstruction, part repair, and hand repair use the same proposal lifecycle and require `targetPartId`. Trusted workflows may bind an uploaded source and mask to declared Comfy input nodes; the adapter exposes upload support, but no repair capability is advertised until its complete manifest/workflow pair exists. An approved reconstruction is stored beside the original and enters `reconstructedParts`; it never silently replaces the source fragment.
+`CHARACTER_SEGMENTATION` runs a staged source-conditioned plan: foreground and equipment anchors first, then head/torso, explicit anatomical left/right limb chains, and optional detail targets. Each target uses a configurable registry of short detector phrases and a declared contextual source crop; crop masks are remapped to exact source coordinates before scoring. The scorer uses size, position, hierarchy, semantic geometry, and cross-mask overlap to record a clearly labeled `heuristic` confidence and a `SAFE` or `REVIEW` gate. Empty, broad, duplicate, semantically implausible, or catastrophically overlapping masks remain unresolved or review-only. The installed combined GroundingDINO→SAM2 node does not expose detector boxes, calibrated detector confidence, separate detector/SAM timing, point prompts, or multimask choice, so those fields are explicitly recorded as unavailable rather than invented. The Part Cutter renders the source plus actual alpha overlays, safety status, detector phrase, and confidence source; no part is accepted automatically.
+
+`MASK_REFINEMENT` requires one unambiguous `targetPartId`. It uploads the current full-canvas mask, produces a new source-conditioned SAM2 mask from the correction prompt, and adds or subtracts it using the trusted graph. Unrelated proposal objects are copied byte-for-byte. The review UI reports source-coordinate pixels added/removed and bounding-box changes; rejection leaves the parent proposal intact.
+
+`OCCLUSION_RECONSTRUCTION` requires a user-reviewed missing-area mask and `CharacterConsistencyContext`. It performs localized inpainting on the original full canvas, composites only that missing region back over the original source, crops to the locked part bounds, and rebuilds alpha from the visible-part plus reconstruction masks so neighboring anatomy/background cannot become part pixels. The candidate remains separate from the source until consistency metrics, the -20°/0°/+20° view, and explicit approval are complete.
 
 Background removal and alpha-edge cleanup are similarly proposal-driven. Alpha cleanup targets matte fringe, bright/dark halos, and rough transparency only when explicitly requested. Originals remain in generation history. The repository does not automatically run cleanup on every asset.
 
@@ -141,22 +150,28 @@ Comfy offline, queue rejection, graph validation, missing nodes/models, executio
 
 ## MCP tools and resources
 
-- Status: `image_provider_status`, `image_provider_list_capabilities`, `comfy_get_status`.
+- Status: `image_provider_status`, `image_provider_list_capabilities`, `comfy_get_status`, `segmentation_status`.
+- Cut/repair: `character_ai_cut`, `part_refine_mask`, `part_reconstruct_hidden`.
+- Reconstruction review: `part_get_reconstruction_proposal`, `part_render_reconstruction_preview`, `part_approve_reconstruction`, `part_reject_reconstruction`.
+- Optional repair status: `background_remove`, `alpha_cleanup` return exact unavailable reasons until trusted graphs exist.
 - Generate: `image_generate_candidates`, `character_generate_with_comfy`.
 - Inspect: `image_get_proposal`, `image_get_candidates`, `image_get_candidate`, `image_render_candidate_sheet`.
 - Decide: `image_review_proposal`, `image_approve_candidate`, `image_reject_candidate`, `image_regenerate_proposal`, `image_set_approval_policy`, `image_cancel_proposal`.
 - Images: `rigging://image-proposals/{proposalId}/candidates/{candidateId}` and `rigging://image-proposals/{proposalId}/contact-sheet`.
+- Part review: `rigging://active-project/segmentation/{proposalId}` and `rigging://active-project/reconstruction/{partId}`. Reading the reconstruction sheet records inspection evidence.
 
 The contact sheet contains only candidates, IDs, seeds, true dimensions, and optional suitability scores; it does not capture editor chrome.
 
 ## Known limitations
 
 - The checked-in generation graph is a generic core-node baseline; final art quality depends on the user's checkpoint and prompt compatibility.
-- Repair/variant/background/alpha capabilities require user-supplied reviewed workflows and remain unavailable until installed.
+- `ComfyUI-SAM2` and its SAM2/Grounding DINO models are user-installed dependencies; Rigging Studio does not install nodes or download models.
+- Background removal, alpha cleanup, generic part repair, and variants remain unavailable until reviewed trusted workflows are installed.
 - Suitability analysis depends on the configured character pipeline provider; the local fixture analyzer is deterministic and not a vision-quality guarantee.
 - Candidate sheets require the browser Studio because browser canvas safely composes the managed images and labels.
 - Progress polling reports queue/sampling/collecting phases; granular percentage is available only when the provider supplies it.
 - One local Studio session is authoritative, and Comfy candidate concurrency is intentionally one.
+- No ComfyUI checkout path or required model selector is configured in this repository; startup diagnostics remain unavailable until the user supplies them.
 
 ## First agent prompt after setup
 

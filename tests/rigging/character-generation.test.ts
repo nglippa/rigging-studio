@@ -52,7 +52,13 @@ describe("prompt-to-rig character pipeline", () => {
   it("allows image-conditioned providers to return image-specific masks with explicit confidence provenance", async () => {
     const fixture = new MockCharacterPipelineProvider();
     const provider: CharacterPipelineProvider = {
-      id: "image-conditioned-test", name: "Image conditioned test", capabilities: { segmentation: { available: true, imageConditioned: true, mode: "provider" }, maskRefinement: { available: false, imageConditioned: false }, reconstruction: { available: false, mode: "unavailable" } },
+      id: "image-conditioned-test", name: "Image conditioned test", capabilities: {
+        segmentation: { available: true, imageConditioned: true, mode: "provider", provider: "image-conditioned-test", confidenceSource: "provider" },
+        maskRefinement: { available: false, imageConditioned: false, mode: "unavailable", provider: "image-conditioned-test" },
+        reconstruction: { available: false, imageConditioned: false, mode: "unavailable", provider: "image-conditioned-test" },
+        backgroundRemoval: { available: false, imageConditioned: false, mode: "unavailable", provider: "image-conditioned-test" },
+        alphaCleanup: { available: false, imageConditioned: false, mode: "unavailable", provider: "image-conditioned-test" },
+      },
       generateCharacter: (request) => fixture.generateCharacter(request), regenerateCharacter: (request) => fixture.regenerateCharacter(request), generateVariant: (request) => fixture.generateVariant(request), checkSuitability: (request) => fixture.checkSuitability(request), reconstructPart: (request) => fixture.reconstructPart(request),
       segmentCharacter: async (request) => { const base = await fixture.segmentCharacter(request); const shift = request.image.includes("second") ? 7 : 0; return { ...base, segmentationId: `conditioned-${shift}`, parts: base.parts.map((part, index) => index === 0 ? { ...part, bounds: { ...part.bounds, x: part.bounds.x + shift }, sourceImageRegion: { ...part.sourceImageRegion, x: part.sourceImageRegion.x + shift } } : part), providerMetadata: { provider: "image-conditioned-test", imageConditioned: true, confidenceSource: "provider" } }; },
     };

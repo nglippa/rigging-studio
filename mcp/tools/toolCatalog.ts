@@ -82,6 +82,16 @@ const descriptions: Readonly<Partial<Record<StudioToolName, string>>> = {
   image_cancel_proposal: "Request cancellation of the currently executing ComfyUI job for one proposal.",
   image_analyze_candidate_suitability: "Run the existing provider-neutral rig-suitability analyzer on one managed proposal candidate.",
   image_prepare_repair_context: "Prepare the active project's managed source and selected-part mask for an installed trusted repair workflow.",
+  segmentation_status: "Inspect truthful image-conditioned segmentation, refinement, and reconstruction readiness with exact missing dependencies.",
+  character_ai_cut: "Run the trusted Grounding DINO plus SAM2 character cut and install a reviewable proposal without accepting parts.",
+  part_refine_mask: "Refine one named part mask through the trusted image-conditioned workflow while preserving every unrelated mask.",
+  part_reconstruct_hidden: "Create one localized hidden-area reconstruction proposal from an explicit reviewed occlusion mask.",
+  part_get_reconstruction_proposal: "Inspect one reconstruction proposal, consistency metrics, rotation checks, and inspection/approval state.",
+  part_render_reconstruction_preview: "Render Original, Visible Part, Reconstructed, and ±20° rotation views; this records visual inspection evidence.",
+  part_approve_reconstruction: "Approve an inspected reconstruction proposal that passed the structural consistency gate.",
+  part_reject_reconstruction: "Reject one reconstruction proposal and preserve the original visible fragment.",
+  background_remove: "Request trusted background removal when the capability is installed; otherwise return the exact missing dependency.",
+  alpha_cleanup: "Request targeted trusted alpha-edge cleanup when installed; otherwise return the exact missing dependency.",
 };
 
 export const toolDescription = (name: StudioToolName): string => descriptions[name] ?? `Rigging Studio operation: ${name}`;
@@ -91,4 +101,5 @@ export const READ_ONLY_TOOLS = new Set<StudioToolName>([
   "image_provider_status", "image_provider_list_capabilities", "comfy_get_status", "image_get_proposal", "image_get_candidates", "image_get_candidate",
   "image_analyze_candidate_suitability",
   "image_prepare_repair_context",
+  "segmentation_status", "part_get_reconstruction_proposal",
 ]);

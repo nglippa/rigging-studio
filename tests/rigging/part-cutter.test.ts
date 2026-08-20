@@ -7,7 +7,7 @@ import { RiggingCommandService } from "../../src/agent-control/commands/RiggingC
 import { parseToolInput } from "../../src/agent-control/validation/toolSchemas";
 import {
   SnapshotCommandHistory, acceptProposal, analyzeCoverage, createManualPart, createPartCutterState, evaluateRotationTest,
-  applyMaskSelection, changedMaskPixels, mergeParts, paintMask, partCutProposalSchema, partCutToSegmentation, proposalFromSegmentation, reviseProposal, splitPart,
+  applyMaskSelection, changedMaskPixels, diffPartCutProposals, mergeParts, paintMask, partCutProposalSchema, partCutToSegmentation, proposalFromSegmentation, reviseProposal, splitPart,
   validatePrepare, validateReassembly, validateReconstructionAsset, validateReconstructionConsistency, viewportPointToSource,
 } from "../../src/part-cutter";
 
@@ -41,6 +41,7 @@ describe("semantic Part Cutter", () => {
     const proposal = proposalFromSegmentation(response, "Cut a riggable character"); expect(partCutProposalSchema.safeParse(proposal).success).toBe(true);
     const revised = reviseProposal(proposal, "Put the shield behind the torso"); const shield = revised.parts.find((part) => part.semanticType === "offHandEquipment"); expect(shield?.layer).toBe("back"); expect(revised.parts).toHaveLength(proposal.parts.length);
     const initial = { ...createPartCutterState("mock", 256, 320, "auto"), proposals: [revised], activeProposalId: revised.proposalId }; const accepted = acceptProposal(initial, revised.proposalId, [shield!.proposedPartId]); expect(accepted.parts).toHaveLength(1); expect(accepted.proposals[0].status).toBe("pending"); expect(accepted.proposals[0].parts.length).toBe(revised.parts.length - 1); expect(accepted.activeProposalId).toBe(revised.proposalId); expect("proposedPartId" in accepted.parts[0]).toBe(false); expect("selected" in accepted.parts[0]).toBe(false);
+    const preservedShield = accepted.parts[0]; const nextId = accepted.proposals[0].parts[0].proposedPartId; const acceptedNext = acceptProposal(accepted, revised.proposalId, [nextId]); expect(acceptedNext.parts.find((part) => part.partId === preservedShield.partId)).toEqual(preservedShield);
     const manualHead = createManualPart(createPartCutterState("mock", 256, 320), "head", { x: 90, y: 20, width: 70, height: 70 }); const colliding = { ...createPartCutterState("mock", 256, 320, "auto"), parts: [manualHead], proposals: [proposal], activeProposalId: proposal.proposalId }; const coexist = acceptProposal(colliding, proposal.proposalId, ["head"]); expect(coexist.parts.map((part) => [part.partId, part.provenance])).toEqual(expect.arrayContaining([[manualHead.partId, "manual"], ["head-ai", "ai"]]));
   });
 
@@ -77,9 +78,17 @@ describe("semantic Part Cutter", () => {
   });
 
   it("rejects a full-character reconstruction for a small part and makes accepted repair undoable", () => {
-    const initial = stateWithParts(); const head = initial.parts[0]; expect(validateReconstructionAsset(head, 16, 16).passed).toBe(false);
+    const initial = stateWithParts(); const head = initial.parts[0]; expect(validateReconstructionAsset(head, 16, 16)).toMatchObject({ passed: false, status: "REJECT" });
+    expect(validateReconstructionAsset(head, 12, 10).status).toBe("REJECT");
+    expect(validateReconstructionAsset(head, 6, 5, { pivot: { x: head.pivot.x + 1, y: head.pivot.y + 1 } }).status).toBe("WARNING");
     const history = new SnapshotCommandHistory(initial); history.execute("Use reconstructed head", (state) => ({ ...state, parts: state.parts.map((part) => part.partId === head.partId ? { ...part, reconstructionImage: "data:image/png;base64,repair", provenance: "reconstructed" as const, occlusionState: "reconstructed" as const } : part) }));
     expect(history.present.parts[0].provenance).toBe("reconstructed"); expect(history.undo().parts[0].reconstructionImage).toBeUndefined();
+  });
+
+  it("calculates refinement diffs in stable source coordinates when the bounding box changes", () => {
+    const mask = { width: 2, height: 2, alpha: [255, 255, 255, 255] }; const base = proposalFromSegmentation({ segmentationId: "source", imageWidth: 8, imageHeight: 8, warnings: [], providerMetadata: { provider: "test", imageConditioned: true }, parts: [{ id: "head", name: "Head", semanticType: "head", confidence: null, confidenceSource: "unavailable", bounds: { x: 2, y: 2, width: 2, height: 2 }, mask, sourceImageRegion: { x: 2, y: 2, width: 2, height: 2 }, suggestedBoneId: "torso", suggestedSlotId: "head-slot", suggestedZIndex: 1, pivotHint: { x: 3, y: 3 }, warnings: [], accepted: false, provenance: "generated" }] }, "initial");
+    const revised = { ...base, proposalId: "revised", parentProposalId: base.proposalId, parts: base.parts.map((part) => ({ ...part, boundingBox: { x: 1, y: 2, width: 3, height: 2 }, sourceBoundingBox: { x: 1, y: 2, width: 3, height: 2 }, mask: { width: 3, height: 2, alpha: [255, 255, 255, 0, 255, 255] } })) };
+    expect(diffPartCutProposals(base, revised)).toMatchObject({ pixelsAdded: 1, pixelsRemoved: 0, boundingBoxesChanged: 1 });
   });
 
   it("blocks missing humanoid chains but permits an explicit incomplete override", () => {
@@ -98,6 +107,9 @@ describe("Part Cutter MCP boundary", () => {
     expect(parseToolInput("parts_set_mask", { partId: "head", mask: { width: 1, height: 1, alpha: [255] } }).success).toBe(true);
     expect(parseToolInput("parts_set_mask", { partId: "head", path: "/tmp/image.png", mask: { width: 1, height: 1, alpha: [255] } }).success).toBe(false);
     expect(parseToolInput("parts_accept_proposal", { proposalId: "proposal", confirm: true }).success).toBe(true);
+    expect(parseToolInput("part_approve_reconstruction", { partId: "head" }).success).toBe(false);
+    expect(parseToolInput("part_approve_reconstruction", { partId: "head", confirm: true }).success).toBe(true);
+    expect(parseToolInput("character_ai_cut", { instruction: "cut", workflow: { arbitrary: true } }).success).toBe(false);
   });
 
   it("creates a reviewable AI proposal and accepts only an explicit selection", async () => {
@@ -105,5 +117,17 @@ describe("Part Cutter MCP boundary", () => {
     await service.executeTool("character_generate_image", { mode: "generate" }); const proposal = await service.executeTool("parts_auto_cut", { instruction: "Cut this sprite into riggable parts" }); expect(proposal.success).toBe(true); if (!proposal.success) throw new Error("Proposal failed"); expect(proposal.requiresReview).toBe(true); expect(proposal.productionReady).toBe(false); expect(proposal.provider).toMatchObject({ mock: true, imageConditioned: false });
     const proposalId = String(proposal.proposalId); const accepted = await service.executeTool("parts_accept_proposal", { proposalId, partIds: ["head"], confirm: true }); expect(accepted.success).toBe(true); const status = await service.executeTool("parts_get_status", { includeParts: true }); expect(status.success).toBe(true); if (!status.success) throw new Error("Status failed"); expect(status.partCount).toBe(1);
     const revision = await service.executeTool("parts_prompt_cut", { instruction: "Remove torso pixels from the forearm", proposalId }); expect(revision.success).toBe(false); if (revision.success) throw new Error("Expected refinement failure"); expect(revision.errors[0]?.message).toMatch(/image-conditioned mask refinement/i);
+  });
+
+  it("installs reconstruction as a proposal and rejection preserves the accepted source part", async () => {
+    const service = new RiggingCommandService({ characterProvider: new MockCharacterPipelineProvider() });
+    await service.executeTool("project_create", { name: "Repair", prompt: "knight" }); await service.executeTool("character_generate_image", { mode: "generate" });
+    const cut = await service.executeTool("parts_auto_cut", { instruction: "Cut parts" }); if (!cut.success) throw new Error("Cut proposal failed");
+    await service.executeTool("parts_accept_proposal", { proposalId: String(cut.proposalId), partIds: ["head"], confirm: true });
+    const status = await service.executeTool("parts_get_status", { includeParts: true }); if (!status.success) throw new Error("Part status failed"); const head = (status.parts as readonly { readonly partId: string; readonly boundingBox: { readonly width: number; readonly height: number }; readonly reconstructionImage?: string }[])[0];
+    const installed = await service.executeTool("part_install_reconstruction_proposal", { partId: head.partId, result: { reconstructionId: "repair-1", partId: head.partId, image: "data:image/png;base64,AAAA", width: head.boundingBox.width, height: head.boundingBox.height, providerMetadata: { provider: "fake-image-conditioned", scaleLocked: true }, warnings: [], runtimeMs: 12 } });
+    expect(installed).toMatchObject({ success: true, requiresVisualInspection: true, requiresApproval: true });
+    const rejected = await service.executeTool("part_reject_reconstruction", { partId: head.partId, reason: "attachment edge is inconsistent", confirm: true }); expect(rejected).toMatchObject({ success: true, originalPreserved: true });
+    const after = await service.executeTool("parts_get_status", { includeParts: true }); if (!after.success) throw new Error("Part status failed"); expect((after.parts as readonly { readonly reconstructionImage?: string }[])[0]?.reconstructionImage).toBeUndefined();
   });
 });

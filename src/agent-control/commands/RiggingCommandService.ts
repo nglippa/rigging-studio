@@ -5,7 +5,7 @@ import { createGeneratedCharacterProject, parseGeneratedCharacterProject, serial
 import { getGeneratedCharacterStorage } from "../../character-generation/project/generatedCharacterStorage";
 import { HttpCharacterPipelineProvider } from "../../character-generation/providers/httpCharacterPipelineProvider";
 import { MockCharacterPipelineProvider } from "../../character-generation/providers/mockCharacterPipelineProvider";
-import type { CharacterImageGenerationResult, CharacterPipelineProvider } from "../../character-generation/providers/characterPipelineProvider";
+import type { CharacterImageGenerationResult, CharacterPipelineProvider, OcclusionReconstructionResult } from "../../character-generation/providers/characterPipelineProvider";
 import { buildRigProposal } from "../../character-generation/rigging/rigProposalBuilder";
 import type { RigProposal } from "../../character-generation/rigging/rigProposalSchema";
 import { validateRigProposal } from "../../character-generation/rigging/rigProposalValidator";
@@ -32,11 +32,11 @@ import { managedGenerationIngressSchema, type ManagedGenerationIngress } from ".
 import type { AnimationEditorAdapter, CharacterProjectAdapter, RigEditorAdapter } from "./adapters";
 import type { CommandResult } from "./results";
 import { extractPartToDataUrl } from "../../character-generation/segmentation/partImageProcessor";
-import type { SegmentationMask } from "../../character-generation/segmentation/segmentationSchema";
+import type { CharacterSegmentationResponse, SegmentationMask } from "../../character-generation/segmentation/segmentationSchema";
 import {
-  SEMANTIC_TAXONOMY, acceptProposal as acceptPartCutProposal, analyzeCoverage, createPartCutterState, mergeParts as mergePartCuts,
+  SEMANTIC_TAXONOMY, acceptProposal as acceptPartCutProposal, analyzeCoverage, createPartCutterState, evaluateRotationTest, mergeParts as mergePartCuts,
   partCutToSegmentation, proposalFromSegmentation, proposalToSegmentation, rejectProposal as rejectPartCutProposal, renderProposalSvg,
-  splitPart as splitPartCut, type PartCutterState, type PartSemanticType,
+  splitPart as splitPartCut, validateReconstructionAsset, type PartCutterState, type PartSemanticType,
 } from "../../part-cutter";
 
 type JsonObject = Readonly<Record<string, unknown>>;
@@ -74,6 +74,49 @@ const blobBase64 = async (blob: Blob): Promise<string> => {
   let binary = "";
   for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
   return btoa(binary);
+};
+const loadBrowserImage = async (source: string): Promise<HTMLImageElement> => {
+  if (typeof Image === "undefined") throw new Error("Visual reconstruction review requires the running browser workspace");
+  const image = new Image();
+  if (!source.startsWith("data:")) image.crossOrigin = "anonymous";
+  await new Promise<void>((resolve, reject) => {
+    image.onload = () => resolve();
+    image.onerror = () => reject(new Error("Reconstruction review image could not be decoded"));
+    image.src = source;
+  });
+  if (typeof image.decode === "function") await image.decode().catch(() => undefined);
+  return image;
+};
+const browserImagePixels = async (source: string): Promise<{ readonly width: number; readonly height: number; readonly alpha: readonly number[] }> => {
+  const image = await loadBrowserImage(source);
+  const canvas = document.createElement("canvas");
+  canvas.width = image.naturalWidth || image.width;
+  canvas.height = image.naturalHeight || image.height;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) throw new Error("Reconstruction review canvas is unavailable");
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const rgba = context.getImageData(0, 0, canvas.width, canvas.height).data;
+  const alpha = new Array<number>(canvas.width * canvas.height);
+  for (let index = 0; index < alpha.length; index += 1) alpha[index] = rgba[index * 4 + 3] ?? 0;
+  return { width: canvas.width, height: canvas.height, alpha };
+};
+const drawContained = (
+  context: CanvasRenderingContext2D,
+  image: CanvasImageSource,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  options: { readonly crop?: { readonly x: number; readonly y: number; readonly width: number; readonly height: number } } = {},
+): void => {
+  const crop = options.crop;
+  const sourceWidth = crop?.width ?? (image as HTMLImageElement).naturalWidth ?? (image as HTMLImageElement).width;
+  const sourceHeight = crop?.height ?? (image as HTMLImageElement).naturalHeight ?? (image as HTMLImageElement).height;
+  const scale = Math.min(width / Math.max(1, sourceWidth), height / Math.max(1, sourceHeight));
+  const targetWidth = sourceWidth * scale; const targetHeight = sourceHeight * scale;
+  const targetX = x + (width - targetWidth) / 2; const targetY = y + (height - targetHeight) / 2;
+  if (crop) context.drawImage(image, crop.x, crop.y, crop.width, crop.height, targetX, targetY, targetWidth, targetHeight);
+  else context.drawImage(image, targetX, targetY, targetWidth, targetHeight);
 };
 
 export class RiggingCommandService {
@@ -268,7 +311,7 @@ export class RiggingCommandService {
       case "character_set_prompt": return this.setCharacterPrompt(asString(args.prompt), actor);
       case "character_generate_image": return this.generateImage(asString(args.mode) as "generate" | "regenerate" | "variant", actor);
       case "character_import_generation": throw new Error("External generations must be normalized by the MCP managed-ingress service");
-      case "character_get_generation": return this.getGeneration();
+      case "character_get_generation": return this.getGeneration(asBoolean(args.includeHistory));
       case "character_accept_generation": return this.acceptGeneration(asString(args.generationId), actor);
       case "character_run_suitability_check": return this.runSuitability(actor);
       case "character_segment": return this.segmentCharacter(actor);
@@ -278,6 +321,7 @@ export class RiggingCommandService {
       case "parts_get_status": return this.getPartCutterStatus(asBoolean(args.includeParts));
       case "parts_auto_cut": return this.createPartCutProposal(asString(args.instruction), actor);
       case "parts_prompt_cut": return this.promptPartCut(asString(args.instruction), asOptionalString(args.proposalId), actor);
+      case "parts_install_ai_proposal": return this.installPartCutProposal(args.segmentation as CharacterSegmentationResponse, asString(args.instruction), asOptionalString(args.parentProposalId), actor);
       case "parts_get_proposal": return this.getPartCutProposal(asOptionalString(args.proposalId), asBoolean(args.includeMasks));
       case "parts_render_proposal": return this.renderPartCutProposal(asOptionalString(args.proposalId));
       case "parts_accept_proposal": return this.acceptPartCutProposal(asString(args.proposalId), args.partIds as readonly string[] | undefined, actor);
@@ -290,6 +334,11 @@ export class RiggingCommandService {
       case "parts_set_z_order": return this.mutatePartCut(asString(args.partId), { zOrder: asNumber(args.zOrder), ...(args.layer ? { layer: asString(args.layer) as "front" | "body" | "back" } : {}) }, `Set ${asString(args.partId)} draw order`, actor);
       case "parts_mark_occluded": return this.mutatePartCut(asString(args.partId), { occlusionState: asString(args.state) as "complete" | "likely-incomplete" | "unknown" }, `Marked ${asString(args.partId)} ${asString(args.state)}`, actor);
       case "parts_reconstruct": return this.repairOcclusion(asString(args.partId), actor);
+      case "part_install_reconstruction_proposal": return this.installReconstructionProposal(asString(args.partId), args.result as OcclusionReconstructionResult, actor);
+      case "part_get_reconstruction_proposal": return this.getReconstructionProposal(asString(args.partId), asBoolean(args.includeImage));
+      case "part_render_reconstruction_preview": return this.renderReconstructionPreview(asString(args.partId), asBoolean(args.recordInspection), actor);
+      case "part_approve_reconstruction": return this.approveReconstructionProposal(asString(args.partId), actor);
+      case "part_reject_reconstruction": return this.rejectReconstructionProposal(asString(args.partId), asString(args.reason), actor);
       case "parts_get_unassigned_regions": return this.getUnassignedPartRegions();
       case "parts_finalize": return this.finalizePartCuts(actor);
       case "rig_create_proposal": return this.createRigProposal(actor);
@@ -327,6 +376,12 @@ export class RiggingCommandService {
       case "image_render_candidate_sheet": return this.renderImageCandidateSheet(asString(args.proposalId), asNumber(args.width));
       case "image_analyze_candidate_suitability": return this.analyzeImageCandidateSuitability(asString(args.proposalId), asString(args.candidateId), asString(args.imageUrl), asNumber(args.width), asNumber(args.height), asString(args.prompt));
       case "image_prepare_repair_context": return this.prepareImageRepairContext(asString(args.projectId), asString(args.targetPartId));
+      case "segmentation_status":
+      case "character_ai_cut":
+      case "part_refine_mask":
+      case "part_reconstruct_hidden":
+      case "background_remove":
+      case "alpha_cleanup": throw new Error("Trusted character image-provider commands are handled by the MCP server-side service");
       case "image_provider_status":
       case "image_provider_list_capabilities":
       case "comfy_get_status":
@@ -415,9 +470,9 @@ export class RiggingCommandService {
     }, result.warnings);
   }
 
-  private getGeneration(): CommandResult<JsonObject> {
+  private getGeneration(includeHistory: boolean): CommandResult<JsonObject> {
     const project = this.requireProject();
-    return this.ok({ generation: project.sourceImage ? { ...project.sourceImage, image: project.sourceImage.image } : null, generationHistory: project.generationHistory, suitability: project.suitability ?? null });
+    return this.ok({ generation: project.sourceImage ? { ...project.sourceImage, image: project.sourceImage.image } : null, ...(includeHistory ? { generationHistory: project.generationHistory } : {}), suitability: project.suitability ?? null });
   }
 
   private importManagedGeneration(input: ManagedGenerationIngress, actor: string): CommandResult<JsonObject> {
@@ -545,6 +600,20 @@ export class RiggingCommandService {
     return this.ok({ proposalId: proposal.proposalId, partCount: proposal.parts.length, parts: proposal.parts.map(({ mask, ...part }) => ({ ...part, mask: { width: mask.width, height: mask.height } })), requiresReview: true, provider: proposal.providerMetadata ?? {}, productionReady: this.characterProvider.capabilities.segmentation.available && this.characterProvider.capabilities.segmentation.imageConditioned }, proposal.warnings);
   }
 
+  private installPartCutProposal(segmentation: CharacterSegmentationResponse, instruction: string, parentProposalId: string | undefined, actor: string): CommandResult<JsonObject> {
+    const validation = validateSegmentationResponse(segmentation);
+    if (!validation.success || !validation.data) throw new Error(`Segmentation proposal is invalid: ${validation.errors.join("; ")}`);
+    const state = this.requirePartCutterState();
+    const proposal = proposalFromSegmentation(validation.data, instruction, parentProposalId ?? state.activeProposalId);
+    const next = {
+      ...state, mode: "auto" as const,
+      proposals: [...state.proposals.map((item) => item.proposalId === (parentProposalId ?? state.activeProposalId) ? { ...item, status: "superseded" as const } : item), proposal],
+      activeProposalId: proposal.proposalId, updatedAt: now(),
+    };
+    this.setPartCutterState(next, actor, `Installed trusted AI cut proposal ${proposal.proposalId}`);
+    return this.ok({ proposalId: proposal.proposalId, segmentationId: validation.data.segmentationId, partCount: proposal.parts.length, readyCount: proposal.parts.filter((part) => part.selected).length, reviewCount: proposal.parts.filter((part) => !part.selected).length, warnings: proposal.warnings, requiresReview: true });
+  }
+
   private async promptPartCut(instruction: string, proposalId: string | undefined, actor: string): Promise<CommandResult<JsonObject>> {
     const state = this.requirePartCutterState(); const current = state.proposals.find((proposal) => proposal.proposalId === (proposalId ?? state.activeProposalId));
     if (!current) return this.createPartCutProposal(instruction, actor);
@@ -563,7 +632,7 @@ export class RiggingCommandService {
 
   private renderPartCutProposal(proposalId: string | undefined): CommandResult<JsonObject> {
     const state = this.requirePartCutterState(); const proposal = state.proposals.find((item) => item.proposalId === (proposalId ?? state.activeProposalId)); if (!proposal) throw new Error("No part-cut proposal is active");
-    const svg = renderProposalSvg(proposal, state.sourceCanvasSize.width, state.sourceCanvasSize.height); return this.ok({ proposalId: proposal.proposalId, mimeType: "image/svg+xml", svg, width: state.sourceCanvasSize.width, height: state.sourceCanvasSize.height });
+    const svg = renderProposalSvg(proposal, state.sourceCanvasSize.width, state.sourceCanvasSize.height, this.requireProject().sourceImage?.image); return this.ok({ proposalId: proposal.proposalId, mimeType: "image/svg+xml", svg, width: state.sourceCanvasSize.width, height: state.sourceCanvasSize.height, includesSourceImage: Boolean(this.requireProject().sourceImage?.image), labelsInclude: ["safety status", "detector phrase", "confidence source"] });
   }
 
   private acceptPartCutProposal(proposalId: string, partIds: readonly string[] | undefined, actor: string): CommandResult<JsonObject> {
@@ -583,6 +652,74 @@ export class RiggingCommandService {
   private splitPartCut(partId: string, axis: "horizontal" | "vertical", actor: string): CommandResult<JsonObject> { const next = splitPartCut(this.requirePartCutterState(), partId, axis); this.setPartCutterState(next, actor, `Split ${partId}`); return this.ok({ partIds: [`${partId}-a`, `${partId}-b`], partCount: next.parts.length }); }
   private setPartMask(partId: string, mask: SegmentationMask, actor: string): CommandResult<JsonObject> { const part = this.requirePartCutterState().parts.find((item) => item.partId === partId); if (!part) throw new Error(`Part ${partId} does not exist`); if (mask.width !== Math.round(part.boundingBox.width) || mask.height !== Math.round(part.boundingBox.height)) throw new Error("Mask dimensions must match the part bounding box"); return this.mutatePartCut(partId, { mask }, `Updated ${partId} mask`, actor); }
   private getUnassignedPartRegions(): CommandResult<JsonObject> { const coverage = analyzeCoverage(this.requirePartCutterState()); return this.ok({ ...coverage, note: "Background-aware foreground analysis is performed in the visual workspace; MCP reports accepted-mask coverage only" }); }
+
+  private installReconstructionProposal(partId: string, result: OcclusionReconstructionResult, actor: string): CommandResult<JsonObject> {
+    const state = this.requirePartCutterState(); const part = state.parts.find((candidate) => candidate.partId === partId);
+    if (!part) throw new Error(`Part ${partId} does not exist`);
+    if (result.partId !== partId) throw new Error(`Reconstruction result belongs to ${result.partId}, not ${partId}`);
+    const consistency = validateReconstructionAsset(part, result.width, result.height);
+    const rotationTests = ([-20, 0, 20] as const).map((angle) => evaluateRotationTest({ ...part, occlusionState: "reconstructed" }, angle));
+    if (consistency.status === "REJECT") throw new Error(`Reconstruction rejected by the structural gate: ${consistency.warnings.join("; ")}`);
+    const notes = [...part.notes, ...result.warnings, `${consistency.status} · bbox ratio ${consistency.sizeRatio.toFixed(2)} · centroid ${consistency.centroidDisplacement.toFixed(1)}px · pivot ${consistency.pivotDisplacement.toFixed(1)}px`, ...rotationTests.map((test) => `Rotation ${test.angle}° · ${test.passed ? "PASS" : `WARNING: ${test.warnings.join(", ")}`}`)];
+    const nextState = { ...state, parts: state.parts.map((candidate) => candidate.partId === partId ? { ...candidate, reconstructionImage: result.image, occlusionState: "likely-incomplete" as const, notes } : candidate), finalized: false, updatedAt: now() };
+    this.setPartCutterState(nextState, actor, `Created reconstruction proposal for ${partId}`);
+    const project = this.requireProject(); const existing = project.reconstructedParts.find((review) => review.partId === partId);
+    const review = { ...(existing ?? { partId, likelyOccluded: true, confidence: .55, reason: "Hidden-area reconstruction requested" }), decision: "unreviewed" as const, reconstructedImage: result.image, reconstructionAccepted: false, previewResourceInspected: undefined, inspectedAt: undefined, inspectedBy: undefined };
+    this.setProject(updatedProject(project, { reconstructedParts: [...project.reconstructedParts.filter((candidate) => candidate.partId !== partId), review] }));
+    this.emit("project.changed", actor, `Reconstruction proposal ${result.reconstructionId} awaits visual review`, partId);
+    return this.ok({ reconstructionId: result.reconstructionId, partId, status: consistency.status, consistency, rotationTests, providerMetadata: result.providerMetadata, runtimeMs: result.runtimeMs ?? null, requiresVisualInspection: true, requiresApproval: true });
+  }
+
+  private async getReconstructionProposal(partId: string, includeImage: boolean): Promise<CommandResult<JsonObject>> {
+    const project = this.requireProject(); const state = this.requirePartCutterState(); const part = state.parts.find((candidate) => candidate.partId === partId); const review = project.reconstructedParts.find((candidate) => candidate.partId === partId);
+    if (!part?.reconstructionImage || !review) throw new Error(`Part ${partId} has no reconstruction proposal`);
+    const pixels = await browserImagePixels(part.reconstructionImage); const consistency = validateReconstructionAsset(part, pixels.width, pixels.height, { alpha: pixels.alpha });
+    const rotationTests = ([-20, 0, 20] as const).map((angle) => evaluateRotationTest({ ...part, mask: { width: pixels.width, height: pixels.height, alpha: pixels.alpha }, occlusionState: "reconstructed" }, angle));
+    return this.ok({ partId, status: review.reconstructionAccepted ? "approved" : review.decision === "keep-visible-fragment" ? "rejected" : "awaiting_review", consistency, rotationTests, inspectedResource: review.previewResourceInspected ?? null, inspectedAt: review.inspectedAt ?? null, inspectedBy: review.inspectedBy ?? null, requiresVisualInspection: !review.previewResourceInspected, requiresApproval: !review.reconstructionAccepted, ...(includeImage ? { image: part.reconstructionImage } : {}) });
+  }
+
+  private async renderReconstructionPreview(partId: string, recordInspection: boolean, actor: string): Promise<CommandResult<JsonObject>> {
+    const project = this.requireProject(); const source = project.sourceImage; const state = this.requirePartCutterState(); const part = state.parts.find((candidate) => candidate.partId === partId);
+    if (!source || !part?.reconstructionImage) throw new Error(`Part ${partId} has no renderable reconstruction proposal`);
+    const visible = await extractPartToDataUrl(source.image, part.boundingBox, part.mask, 0);
+    const [sourceImage, visibleImage, reconstructedImage] = await Promise.all([loadBrowserImage(source.image), loadBrowserImage(visible), loadBrowserImage(part.reconstructionImage)]);
+    const canvas = document.createElement("canvas"); canvas.width = 1200; canvas.height = 360; const context = canvas.getContext("2d"); if (!context) throw new Error("Reconstruction preview canvas is unavailable");
+    context.fillStyle = "#0b1012"; context.fillRect(0, 0, canvas.width, canvas.height); context.font = "600 15px system-ui"; context.textAlign = "center"; context.textBaseline = "middle";
+    const panels = [{ x: 20, width: 210, label: "Original" }, { x: 245, width: 210, label: "Visible Part" }, { x: 470, width: 210, label: "Reconstructed" }];
+    panels.forEach((panel) => { context.fillStyle = "#171f22"; context.fillRect(panel.x, 20, panel.width, 320); context.fillStyle = "#dce6e8"; context.fillText(panel.label, panel.x + panel.width / 2, 40); });
+    drawContained(context, sourceImage, 35, 60, 180, 260, { crop: part.boundingBox }); drawContained(context, visibleImage, 260, 60, 180, 260); drawContained(context, reconstructedImage, 485, 60, 180, 260);
+    context.fillStyle = "#171f22"; context.fillRect(695, 20, 485, 320); context.fillStyle = "#dce6e8"; context.fillText("Rotation Test", 937, 40);
+    const angles = [-20, 0, 20] as const; angles.forEach((angle, index) => { const centerX = 775 + index * 160; const centerY = 190; context.save(); context.translate(centerX, centerY); context.rotate(angle * Math.PI / 180); const scale = Math.min(120 / reconstructedImage.width, 220 / reconstructedImage.height); context.drawImage(reconstructedImage, -reconstructedImage.width * scale / 2, -reconstructedImage.height * scale / 2, reconstructedImage.width * scale, reconstructedImage.height * scale); context.restore(); context.fillStyle = "#8fa0a5"; context.fillText(`${angle}°`, centerX, 320); });
+    const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((value) => value ? resolve(value) : reject(new Error("Reconstruction preview could not be encoded")), "image/png"));
+    const resourceId = `rigging://active-project/reconstruction/${encodeURIComponent(partId)}`; const inspectedAt = now();
+    if (recordInspection) {
+      const reviews = project.reconstructedParts.map((review) => review.partId === partId ? { ...review, previewResourceInspected: resourceId, inspectedAt, inspectedBy: actor } : review);
+      this.setProject(updatedProject(project, { reconstructedParts: reviews }));
+      this.emit("project.changed", actor, `Inspected reconstruction preview for ${partId}`, partId);
+    }
+    return this.ok({ partId, mimeType: "image/png", imageBase64: await blobBase64(blob), width: canvas.width, height: canvas.height, resourceId, inspectionRecorded: recordInspection, inspectedAt: recordInspection ? inspectedAt : null });
+  }
+
+  private async approveReconstructionProposal(partId: string, actor: string): Promise<CommandResult<JsonObject>> {
+    const project = this.requireProject(); const state = this.requirePartCutterState(); const part = state.parts.find((candidate) => candidate.partId === partId); const review = project.reconstructedParts.find((candidate) => candidate.partId === partId);
+    if (!part?.reconstructionImage || !review) throw new Error(`Part ${partId} has no reconstruction proposal`);
+    if (!review.previewResourceInspected || !review.inspectedAt) throw new Error("Reconstruction approval requires visual inspection of the managed preview in the current review flow");
+    const pixels = await browserImagePixels(part.reconstructionImage); const consistency = validateReconstructionAsset(part, pixels.width, pixels.height, { alpha: pixels.alpha });
+    if (consistency.status === "REJECT") throw new Error(`Reconstruction cannot be approved: ${consistency.warnings.join("; ")}`);
+    const nextState = { ...state, parts: state.parts.map((candidate) => candidate.partId === partId ? { ...candidate, provenance: "reconstructed" as const, occlusionState: "reconstructed" as const } : candidate), finalized: false, updatedAt: now() };
+    this.setPartCutterState(nextState, actor, `Approved reconstruction for ${partId}`);
+    const current = this.requireProject(); this.setProject(updatedProject(current, { reconstructedParts: current.reconstructedParts.map((candidate) => candidate.partId === partId ? { ...candidate, decision: "reconstruct" as const, reconstructionAccepted: true } : candidate) }));
+    return this.ok({ partId, approved: true, consistency, inspection: { resourceId: review.previewResourceInspected, inspectedAt: review.inspectedAt, inspectedBy: review.inspectedBy } });
+  }
+
+  private rejectReconstructionProposal(partId: string, reason: string, actor: string): CommandResult<JsonObject> {
+    const state = this.requirePartCutterState(); const part = state.parts.find((candidate) => candidate.partId === partId);
+    if (!part?.reconstructionImage) throw new Error(`Part ${partId} has no reconstruction proposal`);
+    const nextState = { ...state, parts: state.parts.map((candidate) => { if (candidate.partId !== partId) return candidate; const { reconstructionImage, ...original } = candidate; void reconstructionImage; return { ...original, provenance: "manual" as const, occlusionState: "likely-incomplete" as const, notes: [...original.notes, `Reconstruction rejected: ${reason}`] }; }), finalized: false, updatedAt: now() };
+    this.setPartCutterState(nextState, actor, `Rejected reconstruction for ${partId}`);
+    const current = this.requireProject(); this.setProject(updatedProject(current, { reconstructedParts: current.reconstructedParts.map((candidate) => candidate.partId === partId ? { ...candidate, decision: "keep-visible-fragment" as const, reconstructedImage: undefined, reconstructionAccepted: false, reason: `${candidate.reason}; rejected: ${reason}` } : candidate) }));
+    return this.ok({ partId, rejected: true, originalPreserved: true });
+  }
 
   private async finalizePartCuts(actor: string): Promise<CommandResult<JsonObject>> {
     const project = this.requireProject(); const source = project.sourceImage; if (!source) throw new Error("A source image is required"); const state = this.requirePartCutterState(); const segmentationData = partCutToSegmentation(state); if (!segmentationData.parts.length) throw new Error("Accept at least one part before finalizing");

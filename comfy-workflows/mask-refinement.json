@@ -1,0 +1,21 @@
+{
+  "1": { "class_type": "LoadImage", "inputs": { "image": "" } },
+  "2": { "class_type": "SAM2ModelLoader (segment anything2)", "inputs": { "model_name": "sam2_1_hiera_small.pt" } },
+  "3": { "class_type": "GroundingDinoModelLoader (segment anything2)", "inputs": { "model_name": "GroundingDINO_SwinT_OGC (694MB)" } },
+  "4": {
+    "class_type": "GroundingDinoSAM2Segment (segment anything2)",
+    "inputs": {
+      "sam_model": ["2", 0],
+      "grounding_dino_model": ["3", 0],
+      "image": ["1", 0],
+      "prompt": "character part",
+      "threshold": 0.3,
+      "keep_model_loaded": true
+    }
+  },
+  "5": { "class_type": "LoadImage", "inputs": { "image": "" } },
+  "6": { "class_type": "ImageToMask", "inputs": { "image": ["5", 0], "channel": "red" } },
+  "7": { "class_type": "MaskComposite", "inputs": { "destination": ["6", 0], "source": ["4", 1], "x": 0, "y": 0, "operation": "add" } },
+  "8": { "class_type": "MaskToImage", "inputs": { "mask": ["7", 0] } },
+  "9": { "class_type": "SaveImage", "inputs": { "filename_prefix": "RiggingStudio-RefinedMask", "images": ["8", 0] } }
+}

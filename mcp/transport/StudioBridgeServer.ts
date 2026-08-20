@@ -9,6 +9,7 @@ import type { StudioToolName } from "../../src/agent-control/validation/toolSche
 import { DiagnosticReportExporter, type DiagnosticReportRequest } from "../storage/diagnosticReportExporter";
 import { ManagedGenerationStorage, type GenerationImportRequest } from "../storage/managedGenerationStorage";
 import { ImageProductionService, type GenerateImageCandidatesRequest } from "../../src/image-production/service/ImageProductionService";
+import { ComfyCharacterPipelineService } from "../../src/image-production/service/ComfyCharacterPipelineService";
 import { suitabilityReviewSchema } from "../../src/character-generation/providers/characterPipelineProvider";
 import type { ImageApprovalPolicy, ImageProposalReviewInput } from "../../src/image-production/proposals/imageProposal";
 import { ImageProposalStorage } from "../../src/image-production/assets/imageProposalStorage";
@@ -33,6 +34,7 @@ export class StudioBridgeServer {
   private readonly generationStorage: ManagedGenerationStorage;
   private readonly diagnosticExporter: DiagnosticReportExporter;
   readonly imageProduction: ImageProductionService;
+  readonly characterPipeline: ComfyCharacterPipelineService;
 
   constructor(options: StudioBridgeOptions = {}) {
     this.requestTimeoutMs = options.requestTimeoutMs ?? 30_000;
@@ -63,6 +65,7 @@ export class StudioBridgeServer {
         };
       },
     });
+    this.characterPipeline = new ComfyCharacterPipelineService(this.imageProduction);
     this.httpServer = createServer((request, response) => { void this.onHttpRequest(request, response); });
     this.server = new WebSocketServer({ server: this.httpServer });
     this.listening = new Promise((resolve, reject) => {
@@ -136,6 +139,8 @@ export class StudioBridgeServer {
   }
 
   async approveImageCandidate(proposalId: string, candidateId: string, source: "agent" | "human"): Promise<unknown> {
+    const pending = await this.imageProduction.getProposal(proposalId);
+    if (pending.operationType === "CHARACTER_SEGMENTATION" || pending.operationType === "MASK_REFINEMENT" || pending.operationType === "OCCLUSION_RECONSTRUCTION") throw new Error(`${pending.operationType} must be accepted through the part-review tools, not generation ingress`);
     const approved = await this.imageProduction.approve(proposalId, candidateId, source);
     const port = await this.waitUntilListening();
     const normalized = await this.generationStorage.ingest({
@@ -143,7 +148,7 @@ export class StudioBridgeServer {
       imageSource: { type: "provider_asset", path: approved.filePath, assetId: approved.candidate.imageAssetId },
       generationId: `${approved.proposal.proposalId}-${approved.candidate.candidateId}`,
       provider: "comfyui", prompt: approved.proposal.sourcePrompt, accepted: true,
-      operation: approved.proposal.operationType, targetPartId: approved.proposal.targetPartId, generationMode: "provider_generated",
+      operation: pending.operationType, targetPartId: approved.proposal.targetPartId, generationMode: "provider_generated",
       metadata: {
         proposalId: approved.proposal.proposalId, candidateId: approved.candidate.candidateId, workflowId: approved.proposal.workflowId,
         seed: approved.candidate.seed, approvalPolicy: approved.proposal.approvalPolicy, proposalRound: approved.proposal.proposalRound,
@@ -195,6 +200,24 @@ export class StudioBridgeServer {
     response.setHeader("Access-Control-Allow-Headers", "content-type");
     response.setHeader("Cache-Control", "no-store");
     if (request.method === "OPTIONS") { response.writeHead(204).end(); return; }
+    if (request.method === "POST" && request.url === "/character-pipeline") {
+      try {
+        const input = await this.readJsonBody(request, 32_000_000);
+        if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Character pipeline request must be an object");
+        const record = input as Record<string, unknown>;
+        if (!record.body || typeof record.body !== "object" || Array.isArray(record.body)) throw new Error("Character pipeline body must be an object");
+        let result: unknown;
+        if (record.capability === "status") result = await this.characterPipeline.status();
+        else if (record.capability === "segment") result = await this.characterPipeline.segmentCharacter(record.body as import("../../src/character-generation/segmentation/segmentationProvider").CharacterSegmentationRequest);
+        else if (record.capability === "refine-mask") result = await this.characterPipeline.refinePartMasks(record.body as import("../../src/character-generation/providers/characterPipelineProvider").CharacterMaskRefinementRequest);
+        else if (record.capability === "reconstruct") result = await this.characterPipeline.reconstructPart(record.body as import("../../src/character-generation/providers/characterPipelineProvider").OcclusionReconstructionRequest);
+        else throw new Error(`Unsupported trusted character-pipeline capability ${String(record.capability)}`);
+        response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(result));
+      } catch (error: unknown) {
+        response.writeHead(503, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error instanceof Error ? error.message : "Character pipeline failed" }));
+      }
+      return;
+    }
     if (request.method === "GET" && request.url?.startsWith("/poll")) {
       this.pollingSeenAt = Date.now();
       const next = this.pollQueue.shift();
@@ -286,10 +309,10 @@ export class StudioBridgeServer {
     response.writeHead(404).end();
   }
 
-  private readJsonBody(request: IncomingMessage): Promise<unknown> {
+  private readJsonBody(request: IncomingMessage, maximumBytes = 1_000_000): Promise<unknown> {
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = []; let size = 0;
-      request.on("data", (chunk: Buffer) => { size += chunk.length; if (size > 1_000_000) { reject(new Error("Bridge message exceeds 1 MB")); request.destroy(); return; } chunks.push(chunk); });
+      request.on("data", (chunk: Buffer) => { size += chunk.length; if (size > maximumBytes) { reject(new Error(`Bridge message exceeds ${Math.round(maximumBytes / 1_000_000)} MB`)); request.destroy(); return; } chunks.push(chunk); });
       request.on("end", () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown); } catch { reject(new Error("Bridge message is not valid JSON")); } });
       request.on("error", reject);
     });

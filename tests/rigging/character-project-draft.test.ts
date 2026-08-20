@@ -48,7 +48,7 @@ describe("generated character drafts", () => {
       generationHistory: [],
       partCutterState: {
         stateVersion: 1 as const, sourceImageId: "large-source", sourceCanvasSize: { width: 120, height: 100 }, mode: "manual" as const,
-        parts: [{ partId: "torso", label: "Torso", semanticType: "torso" as const, mask: { width: 120, height: 100, alpha: mask }, boundingBox: { x: 0, y: 0, width: 120, height: 100 }, sourceBoundingBox: { x: 0, y: 0, width: 120, height: 100 }, sourceCanvasSize: { width: 120, height: 100 }, pivot: { x: 60, y: 20 }, suggestedParent: "root", suggestedSlot: "torso-slot", zOrder: 0, layer: "body" as const, confidence: 1, articulated: true, equipment: false, occlusionState: "complete" as const, provenance: "manual" as const, accepted: true, notes: [] }],
+        parts: [{ partId: "torso", label: "Torso", semanticType: "torso" as const, mask: { width: 120, height: 100, alpha: mask }, boundingBox: { x: 0, y: 0, width: 120, height: 100 }, sourceBoundingBox: { x: 0, y: 0, width: 120, height: 100 }, sourceCanvasSize: { width: 120, height: 100 }, pivot: { x: 60, y: 20 }, suggestedParent: "root", suggestedSlot: "torso-slot", zOrder: 0, layer: "body" as const, confidence: 1, confidenceSource: "heuristic" as const, articulated: true, equipment: false, occlusionState: "complete" as const, provenance: "manual" as const, accepted: true, notes: [] }],
         proposals: [], ignoredRegions: [], finalized: false, updatedAt: "2026-01-01T00:00:00.000Z",
       },
     };
