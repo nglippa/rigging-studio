@@ -46,6 +46,16 @@ describe("semantic Part Cutter", () => {
     expect(proposal.parts[0].pivot).not.toEqual({ x: 99, y: 59 }); expect(proposal.providerMetadata).toMatchObject({ partitionStrategy: "landmark-guided-hierarchical", guideVersion: 1 });
   });
 
+  it("preserves a structured provider SAFE recommendation when audit notes are informational", () => {
+    const initial = createPartCutterState("guided-safe", 100, 120, "auto", "2026-08-24T00:00:00.000Z");
+    const guide = buildAnatomicalPartitionGuide(initial, "humanoid", "2026-08-24T00:00:00.000Z"); const headZone = guide.zones.find((zone) => zone.semanticType === "head")!;
+    const width = Math.round(headZone.bounds.width); const height = Math.round(headZone.bounds.height);
+    const part = { id: "provider-head", name: "Head", semanticType: "head" as const, confidence: .71, confidenceSource: "heuristic" as const, bounds: headZone.bounds, mask: { width, height, alpha: new Array<number>(width * height).fill(255) }, sourceImageRegion: headZone.bounds, suggestedBoneId: "torso", suggestedSlotId: "head-slot", suggestedZIndex: 0, pivotHint: { x: 50, y: 20 }, warnings: ["Audit: stage=stable", "Gate: SAFE staged score=0.710"], accepted: true, provenance: "generated" as const };
+    const proposal = guidedProposalFromSegmentation({ segmentationId: "segment-guided-safe", imageWidth: 100, imageHeight: 120, warnings: [], providerMetadata: { provider: "comfyui", imageConditioned: true }, parts: [part] }, guide, "refine zones", undefined, "2026-08-24T00:00:00.000Z");
+    expect(proposal.parts[0]).toMatchObject({ proposedPartId: "head", selected: true, confidence: .71 });
+    expect(proposal.parts[0].notes).toEqual(expect.arrayContaining(["Audit: stage=stable", "Gate: SAFE staged score=0.710"]));
+  });
+
   it("persists a stable hierarchical guide and sends only its zones to the provider", () => {
     const state = stateWithParts(); const guide = buildAnatomicalPartitionGuide(state, "humanoid", "2026-08-22T00:00:00.000Z");
     expect(guide.landmarks.find((landmark) => landmark.landmarkId === "leftElbow")?.parentLandmarkId).toBe("leftShoulder");

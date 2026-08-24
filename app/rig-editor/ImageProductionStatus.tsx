@@ -1,51 +1,47 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- managed localhost proposal assets are intentionally served outside the app origin */
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { OptionalServiceRetryBackoff } from "@/src/local-services/retryBackoff";
+import { useCallback, useEffect, useState } from "react";
+import { useProviderHealth } from "@/app/studio-ui/useProviderHealth";
 
 const BRIDGE_URL = process.env.NEXT_PUBLIC_RIGGING_STUDIO_BRIDGE_URL ?? "http://127.0.0.1:47831";
-type ProviderState = { readonly provider?: { readonly reachable: boolean; readonly message: string; readonly queue: { readonly running: number; readonly pending: number } }; readonly providers?: readonly { readonly provider: string; readonly label: string; readonly connected: boolean; readonly message: string }[]; readonly error?: string };
 type ProposalSummary = { readonly proposalId: string; readonly provider: string; readonly status: string; readonly operationType: string; readonly approvalPolicy: "manual" | "agent_recommendation"; readonly progress: { readonly message: string }; readonly candidateCount: number; readonly requiresHumanApproval: boolean };
 type Candidate = { readonly candidateId: string; readonly imageUrl: string; readonly width: number; readonly height: number; readonly seed: number | null; readonly status: string; readonly suitabilityScore?: number; readonly providerMetadata?: Readonly<Record<string, unknown>> };
 
 export function ImageProductionStatus({ projectId }: { readonly projectId: string | null }) {
-  const [provider, setProvider] = useState<ProviderState>({});
+  const { health, retry } = useProviderHealth();
   const [proposals, setProposals] = useState<readonly ProposalSummary[]>([]);
   const [selected, setSelected] = useState<ProposalSummary | null>(null);
   const [candidates, setCandidates] = useState<readonly Candidate[]>([]);
   const [message, setMessage] = useState("");
-  const retryRef = useRef(new OptionalServiceRetryBackoff());
 
-  const refresh = useCallback(async (): Promise<boolean> => {
+  const refresh = useCallback(async (): Promise<void> => {
     try {
-      const statusResponse = await fetch(`${BRIDGE_URL}/image-production/status`, { cache: "no-store" });
-      setProvider(statusResponse.ok ? await statusResponse.json() as ProviderState : { error: "MCP bridge offline" });
-      if (!statusResponse.ok) return false;
-      if (!projectId) { setProposals([]); return true; }
+      if (!projectId) { setProposals([]); setSelected(null); return; }
       const proposalResponse = await fetch(`${BRIDGE_URL}/image-production/proposals?projectId=${encodeURIComponent(projectId)}`, { cache: "no-store" });
       if (proposalResponse.ok) {
         const payload = await proposalResponse.json() as { readonly proposals: readonly ProposalSummary[] };
         setProposals(payload.proposals); setSelected((current) => payload.proposals.find((proposal) => proposal.proposalId === current?.proposalId) ?? payload.proposals[0] ?? null);
       }
-      return proposalResponse.ok;
-    } catch { setProvider({ error: "MCP bridge offline" }); return false; }
+    } catch { setProposals([]); setSelected(null); }
   }, [projectId]);
 
   useEffect(() => {
     let cancelled = false; let timer = 0;
     const probe = async (): Promise<void> => {
-      const succeeded = await refresh();
-      if (!cancelled) timer = window.setTimeout(() => void probe(), retryRef.current.nextDelay(succeeded));
+      await refresh();
+      if (!cancelled) timer = window.setTimeout(() => void probe(), 5_000);
     };
     timer = window.setTimeout(() => void probe(), 0);
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [refresh]);
   useEffect(() => {
     if (!selected) return;
-    void fetch(`${BRIDGE_URL}/image-production/proposals/${encodeURIComponent(selected.proposalId)}/candidates`, { cache: "no-store" })
+    const controller = new AbortController();
+    void fetch(`${BRIDGE_URL}/image-production/proposals/${encodeURIComponent(selected.proposalId)}/candidates`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => response.ok ? response.json() as Promise<{ readonly candidates: readonly Candidate[] }> : Promise.reject(new Error("Candidates unavailable")))
       .then((payload) => setCandidates(payload.candidates)).catch(() => setCandidates([]));
+    return () => controller.abort();
   }, [selected]);
 
   const decide = async (candidateId: string, action: "approve" | "reject"): Promise<void> => {
@@ -62,13 +58,14 @@ export function ImageProductionStatus({ projectId }: { readonly projectId: strin
     } catch (error: unknown) { setMessage(error instanceof Error ? error.message : `${action} failed`); }
   };
 
-  const connectedProviders = provider.providers?.filter((item) => item.connected) ?? [];
-  const reachable = connectedProviders.length > 0 || provider.provider?.reachable === true;
+  const connectedProviders = health.generationProviders.filter((item) => item.connected);
+  const reachable = connectedProviders.length > 0 || health.state === "READY";
   return <details className={`image-production-status ${reachable ? "is-connected" : ""}`} data-dismissible-menu>
-    <summary><i />Image providers · {provider.error ? "Bridge offline" : reachable ? `${connectedProviders.length || 1} ready` : "setup required"}</summary>
+    <summary><i />Image providers · {health.state === "OFFLINE" ? "Bridge offline" : reachable ? `${connectedProviders.length || 1} ready` : "setup required"}</summary>
     <div className="image-production-popover">
-      <header><strong>Local image production</strong><span>{provider.error ?? (connectedProviders.map((item) => item.label).join(" · ") || provider.provider?.message || "Checking local providers")}</span></header>
-      {provider.providers?.map((item) => <div className="proposal-state" key={item.provider}><b>{item.label}</b><span>{item.connected ? "Local · Ready" : item.message}</span></div>)}
+      <header><strong>Local image production</strong><span>{connectedProviders.map((item) => item.label).join(" · ") || health.lastError || "Checking local providers"}</span><button type="button" onClick={() => void retry()}>Retry</button></header>
+      <div className="proposal-state" data-state={health.state}><b>ComfyUI · {health.state}</b><span>{health.endpoint ?? "Configured localhost endpoint"} · segmentation {health.capabilities.find((item) => item.id === "CHARACTER_SEGMENTATION")?.available ? "ready" : "unavailable"}</span></div>
+      {health.generationProviders.map((item) => <div className="proposal-state" key={item.provider}><b>{item.label}</b><span>{item.connected ? "Local · Ready" : item.message}</span></div>)}
       {!projectId && <p>No active generated-character project.</p>}
       {projectId && proposals.length === 0 && <p>No image proposals for this project.</p>}
       {proposals.length > 0 && <label><span>Proposal</span><select value={selected?.proposalId ?? ""} onChange={(event) => setSelected(proposals.find((proposal) => proposal.proposalId === event.target.value) ?? null)}>{proposals.map((proposal) => <option key={proposal.proposalId} value={proposal.proposalId}>{proposal.provider.replaceAll("_", " ")} · {proposal.operationType.toLowerCase().replaceAll("_", " ")} · {proposal.status}</option>)}</select></label>}

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -32,7 +33,19 @@ const goldenPath = path.join(ROOT, ".rigging-studio/projects/void-ranger--charac
 const voidRangerSha256After = sha(await readFile(goldenPath));
 const voidRangerByteIdentical = voidRangerSha256After === freeze.voidRangerSha256;
 
-const reopenPostRestart = [];
+const reopenPostRestart: Array<{
+  character: string;
+  projectId: string;
+  firstPersistedDigest: string;
+  postRestartDigest: string;
+  digestMatch: boolean;
+  loaded: boolean;
+  rigPresent: boolean;
+  clipCount: number;
+  playbackPassed: boolean;
+  fullGatePassed: boolean;
+  note: string;
+}> = [];
 for (const character of primary.characters) {
   const first = await store.load(character.projectId);
   const second = await new LocalProjectStore({ cwd: ROOT }).load(character.projectId);
@@ -187,7 +200,7 @@ for (const character of characters) {
 }
 await writeFile(path.join(OUT, "motion-paths", "README.md"), `# Motion-path evidence\n\nNo Walk, Run, or Attack clips were produced for any frozen source. Therefore there are no foot or weapon paths to capture. This is negative evidence, not a skipped successful review.\n`);
 
-const tableRows = characters.map((character: any, index: number) => `| ${character.character} | ${character.archetype} | BAD | FAIL | BAD | BAD | BAD | BAD | FAIL* | FAIL† | 0 | 0 | 0s corrections | FAILED | ${character.failureReason} |`).join("\n");
+const tableRows = characters.map((character: any) => `| ${character.character} | ${character.archetype} | BAD | FAIL | BAD | BAD | BAD | BAD | FAIL* | FAIL† | 0 | 0 | 0s corrections | FAILED | ${character.failureReason} |`).join("\n");
 const sourceRows = freeze.sources.map((source: any) => `| ${source.index} | ${source.file} | \`${source.sha256}\` | ${source.width}×${source.height} | yes | ${source.archetype} | ${source.topology} | ${source.equipment}; ${source.details} |`).join("\n");
 const failedRuleRows = Object.entries(rules).filter(([, rule]) => !rule.pass).map(([letter, rule]) => `- ${letter}: ${rule.requirement}; actual: ${rule.actual}.`).join("\n");
 const timed = characters.map((character: any) => character.timingMs.total).filter((value: unknown): value is number => typeof value === "number");

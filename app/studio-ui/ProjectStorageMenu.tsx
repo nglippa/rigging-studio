@@ -84,7 +84,7 @@ export function ProjectStorageMenu() {
   }, [router, service]);
 
   const performOpen = useCallback(async (project: LocalProjectSummary): Promise<void> => {
-    const transaction = service.beginDurableProjectOpen(project.projectId, project.relativePath);
+    const transaction = service.beginDurableProjectOpen(project.projectId, project.relativePath, project.stage);
     try {
       setSaveState("opening"); setMessage(`Opening · ${project.relativePath}`);
       const loaded = await client.load(project.projectId); setSaveState("validating");
@@ -109,14 +109,14 @@ export function ProjectStorageMenu() {
   };
   const saveAs = async (): Promise<void> => {
     let transaction: ProjectSwitchTransaction | null = null;
-    try { const saved = await client.saveAs(structuredClone(service.getDurableSnapshot()), saveAsName.trim()); transaction = service.beginDurableProjectOpen(saved.projectId, saved.relativePath); const loaded = await client.load(saved.projectId); if (!installLoaded(transaction, loaded.snapshot)) return; window.localStorage.setItem(ACTIVE_DISK_PROJECT_KEY, saved.projectId); setActive(loaded.summary); setSaveState("saved"); setSaveAsOpen(false); setMessage(`Saved as · ${saved.relativePath}`); await refresh(); }
+    try { const saved = await client.saveAs(structuredClone(service.getDurableSnapshot()), saveAsName.trim()); transaction = service.beginDurableProjectOpen(saved.projectId, saved.relativePath, saved.stage); const loaded = await client.load(saved.projectId); if (!installLoaded(transaction, loaded.snapshot)) return; window.localStorage.setItem(ACTIVE_DISK_PROJECT_KEY, saved.projectId); setActive(loaded.summary); setSaveState("saved"); setSaveAsOpen(false); setMessage(`Saved as · ${saved.relativePath}`); await refresh(); }
     catch (error: unknown) { if (transaction) service.abortDurableProjectOpen(transaction); setSaveState("failed"); setMessage(error instanceof Error ? error.message : "Save As failed"); }
   };
   const importProject = async (file: File): Promise<void> => {
     let transaction: ProjectSwitchTransaction | null = null;
     try {
       setSaveState("saving"); const dataUrl = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(reader.error ?? new Error("Import could not be read")); reader.readAsDataURL(file); });
-      const saved = await client.importZip(dataUrl.slice(dataUrl.indexOf(",") + 1), file.name.replace(/\.project\.zip$/i, "")); transaction = service.beginDurableProjectOpen(saved.projectId, saved.relativePath); const loaded = await client.load(saved.projectId); if (!installLoaded(transaction, loaded.snapshot)) return;
+      const saved = await client.importZip(dataUrl.slice(dataUrl.indexOf(",") + 1), file.name.replace(/\.project\.zip$/i, "")); transaction = service.beginDurableProjectOpen(saved.projectId, saved.relativePath, saved.stage); const loaded = await client.load(saved.projectId); if (!installLoaded(transaction, loaded.snapshot)) return;
       window.localStorage.setItem(ACTIVE_DISK_PROJECT_KEY, saved.projectId); setActive(loaded.summary); setSaveState("saved"); setMessage(`Imported · ${saved.relativePath}`); await refresh();
     } catch (error: unknown) { if (transaction) service.abortDurableProjectOpen(transaction); setSaveState("failed"); setMessage(error instanceof Error ? error.message : "Import failed"); }
   };

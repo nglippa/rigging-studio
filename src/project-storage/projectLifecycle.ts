@@ -19,6 +19,8 @@ export type ProjectOperationContext = {
   readonly operation: string;
   readonly projectId: string | null;
   readonly projectSessionToken: string;
+  readonly hydrationToken: string;
+  readonly requestedStage: string | null;
   readonly revision: number;
   readonly storagePath: string | null;
 };
@@ -27,9 +29,26 @@ export type ProjectSwitchTransaction = {
   readonly sourceProjectId: string | null;
   readonly targetProjectId: string;
   readonly projectSessionToken: string;
+  readonly hydrationToken: string;
+  readonly requestedStage: string | null;
+  readonly revision: number;
   readonly hydrationRevision: number;
   readonly storagePath: string | null;
 };
+
+export type ProjectHydrationSnapshot = Readonly<{
+  activeProjectId: string | null;
+  hydratedProjectId: string | null;
+  targetProjectId: string | null;
+  projectSessionToken: string;
+  hydrationToken: string;
+  requestedStage: string | null;
+  revision: number;
+  savedRevision: number;
+  hydrationRevision: number;
+  storagePath: string | null;
+  switching: boolean;
+}>;
 
 export type ProjectLifecycleTraceEvent = {
   readonly timestamp: string;
@@ -38,6 +57,8 @@ export type ProjectLifecycleTraceEvent = {
   readonly sourceProjectId: string | null;
   readonly targetProjectId: string | null;
   readonly projectSessionToken: string;
+  readonly hydrationToken: string;
+  readonly requestedStage: string | null;
   readonly storagePath: string | null;
   readonly saveRevision: number;
   readonly hydrationRevision: number;
@@ -75,31 +96,30 @@ export class ProjectLifecycleCoordinator {
   private readonly digest: (snapshot: LocalProjectSnapshot) => string;
   private sequence = 0;
   private token = "project-session-0";
+  private hydrationToken = "hydration-0";
   private activeProjectId: string | null = null;
+  private requestedStage: string | null = null;
   private storagePath: string | null = null;
   private revision = 0;
   private savedRevision = 0;
   private hydrationRevision = 0;
   private pendingSwitch: ProjectSwitchTransaction | null = null;
   private readonly trace: ProjectLifecycleTraceEvent[] = [];
+  private readonly listeners = new Set<() => void>();
 
   constructor(options: Options = {}) {
     this.now = options.now ?? (() => new Date().toISOString());
     this.digest = options.digest ?? defaultDigest;
   }
 
-  get snapshot(): Readonly<{
-    activeProjectId: string | null;
-    projectSessionToken: string;
-    revision: number;
-    savedRevision: number;
-    hydrationRevision: number;
-    storagePath: string | null;
-    switching: boolean;
-  }> {
+  get snapshot(): ProjectHydrationSnapshot {
     return {
       activeProjectId: this.activeProjectId,
+      hydratedProjectId: this.activeProjectId,
+      targetProjectId: this.pendingSwitch?.targetProjectId ?? null,
       projectSessionToken: this.token,
+      hydrationToken: this.pendingSwitch?.hydrationToken ?? this.hydrationToken,
+      requestedStage: this.pendingSwitch?.requestedStage ?? this.requestedStage,
       revision: this.revision,
       savedRevision: this.savedRevision,
       hydrationRevision: this.hydrationRevision,
@@ -108,27 +128,39 @@ export class ProjectLifecycleCoordinator {
     };
   }
 
-  activateInitial(projectId: string, storagePath: string | null = null): void {
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  activateInitial(projectId: string, storagePath: string | null = null, requestedStage: string | null = null): void {
     if (this.activeProjectId === projectId && !this.pendingSwitch) return;
     this.sequence += 1;
     this.token = `project-session-${this.sequence}`;
+    this.hydrationToken = `hydration-${this.sequence}`;
     this.activeProjectId = projectId;
+    this.requestedStage = requestedStage;
     this.storagePath = storagePath;
     this.revision = 0;
     this.savedRevision = 0;
     this.pendingSwitch = null;
+    this.notify();
   }
 
-  beginSwitch(targetProjectId: string, storagePath: string | null = null, componentSource = "project-storage-menu"): ProjectSwitchTransaction {
+  beginSwitch(targetProjectId: string, storagePath: string | null = null, requestedStage: string | null = null, componentSource = "project-storage-menu"): ProjectSwitchTransaction {
     const sourceProjectId = this.activeProjectId;
     this.sequence += 1;
     this.token = `project-session-${this.sequence}`;
     this.hydrationRevision += 1;
-    const transaction = { sourceProjectId, targetProjectId, projectSessionToken: this.token, hydrationRevision: this.hydrationRevision, storagePath } satisfies ProjectSwitchTransaction;
+    const transaction = {
+      sourceProjectId, targetProjectId, projectSessionToken: this.token, hydrationToken: `hydration-${this.sequence}`,
+      requestedStage, revision: this.revision, hydrationRevision: this.hydrationRevision, storagePath,
+    } satisfies ProjectSwitchTransaction;
     this.pendingSwitch = transaction;
     this.emit("PROJECT_OPEN_REQUESTED", componentSource, "requested", sourceProjectId, targetProjectId, storagePath);
     this.emit("PROJECT_SWITCH_STARTED", componentSource, "mutations-blocked", sourceProjectId, targetProjectId, storagePath);
     this.emit("PROJECT_HYDRATE_STARTED", componentSource, "isolated-load", sourceProjectId, targetProjectId, storagePath);
+    this.notify();
     return transaction;
   }
 
@@ -139,11 +171,14 @@ export class ProjectLifecycleCoordinator {
     }
     this.emit("PROJECT_STATE_CLEARED", componentSource, "transient-state-reset", transaction.sourceProjectId, transaction.targetProjectId, transaction.storagePath);
     this.activeProjectId = transaction.targetProjectId;
+    this.hydrationToken = transaction.hydrationToken;
+    this.requestedStage = transaction.requestedStage;
     this.storagePath = transaction.storagePath;
     this.revision = 0;
     this.savedRevision = 0;
     this.pendingSwitch = null;
     this.emit("PROJECT_HYDRATE_COMMITTED", componentSource, "committed", transaction.sourceProjectId, transaction.targetProjectId, transaction.storagePath);
+    this.notify();
     return true;
   }
 
@@ -153,10 +188,14 @@ export class ProjectLifecycleCoordinator {
     this.sequence += 1;
     this.token = `project-session-${this.sequence}`;
     this.emit("PROJECT_SWITCH_ABORTED", componentSource, "active-project-preserved", transaction.sourceProjectId, transaction.targetProjectId, transaction.storagePath);
+    this.notify();
   }
 
   capture(operation: string): ProjectOperationContext {
-    return { operation, projectId: this.activeProjectId, projectSessionToken: this.token, revision: this.revision, storagePath: this.storagePath };
+    return {
+      operation, projectId: this.activeProjectId, projectSessionToken: this.token, hydrationToken: this.hydrationToken,
+      requestedStage: this.requestedStage, revision: this.revision, storagePath: this.storagePath,
+    };
   }
 
   assertMutationsAllowed(projectId: string | null = this.activeProjectId): void {
@@ -167,6 +206,7 @@ export class ProjectLifecycleCoordinator {
   recordMutation(projectId: string | null = this.activeProjectId): number {
     this.assertMutationsAllowed(projectId);
     this.revision += 1;
+    this.notify();
     return this.revision;
   }
 
@@ -190,7 +230,24 @@ export class ProjectLifecycleCoordinator {
   }
 
   isCurrent(context: ProjectOperationContext): boolean {
-    return !this.pendingSwitch && context.projectId === this.activeProjectId && context.projectSessionToken === this.token;
+    return !this.pendingSwitch
+      && context.projectId === this.activeProjectId
+      && context.projectSessionToken === this.token
+      && context.hydrationToken === this.hydrationToken
+      && context.revision === this.revision;
+  }
+
+  isCurrentHydration(projectId: string | null, projectSessionToken: string, hydrationToken: string): boolean {
+    return !this.pendingSwitch
+      && projectId === this.activeProjectId
+      && projectSessionToken === this.token
+      && hydrationToken === this.hydrationToken;
+  }
+
+  setRequestedStage(stage: string | null): void {
+    if (this.requestedStage === stage) return;
+    this.requestedStage = stage;
+    this.notify();
   }
 
   assertCurrent(context: ProjectOperationContext, componentSource = "async-operation"): void {
@@ -214,7 +271,9 @@ export class ProjectLifecycleCoordinator {
   private emit(operation: ProjectLifecycleOperation, componentSource: string, result: string, sourceProjectId: string | null, targetProjectId: string | null, storagePath: string | null): void {
     const event: ProjectLifecycleTraceEvent = {
       timestamp: this.now(), operation, activeProjectId: this.activeProjectId, sourceProjectId, targetProjectId,
-      projectSessionToken: this.token, storagePath, saveRevision: this.revision, hydrationRevision: this.hydrationRevision,
+      projectSessionToken: this.token, hydrationToken: this.pendingSwitch?.hydrationToken ?? this.hydrationToken,
+      requestedStage: this.pendingSwitch?.requestedStage ?? this.requestedStage,
+      storagePath, saveRevision: this.revision, hydrationRevision: this.hydrationRevision,
       componentSource, result,
     };
     this.trace.push(event);
@@ -223,4 +282,6 @@ export class ProjectLifecycleCoordinator {
       (window as Window & { __RIG_STUDIO_PROJECT_TRACE__?: readonly ProjectLifecycleTraceEvent[] }).__RIG_STUDIO_PROJECT_TRACE__ = this.getTrace();
     }
   }
+
+  private notify(): void { this.listeners.forEach((listener) => listener()); }
 }

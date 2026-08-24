@@ -38,6 +38,22 @@ describe("project lifecycle isolation", () => {
     expect(lifecycle.commitSwitch(loadingC)).toBe(true); expect(lifecycle.snapshot.activeProjectId).toBe("C");
   });
 
+  it("exposes a neutral loading identity with all required hydration fields before atomic commit", () => {
+    const lifecycle = new ProjectLifecycleCoordinator(); lifecycle.activateInitial("A", "A/project.json", "animate");
+    const opening = lifecycle.beginSwitch("B", "B/project.json", "prepare");
+    expect(lifecycle.snapshot).toMatchObject({ activeProjectId: "A", hydratedProjectId: "A", targetProjectId: "B", switching: true, requestedStage: "prepare", projectSessionToken: opening.projectSessionToken, hydrationToken: opening.hydrationToken });
+    expect(opening.revision).toBe(0);
+    expect(lifecycle.commitSwitch(opening)).toBe(true);
+    expect(lifecycle.snapshot).toMatchObject({ activeProjectId: "B", hydratedProjectId: "B", targetProjectId: null, switching: false, requestedStage: "prepare", hydrationToken: opening.hydrationToken });
+  });
+
+  it("rejects an async completion when the active project revision changed", () => {
+    const lifecycle = new ProjectLifecycleCoordinator(); lifecycle.activateInitial("A");
+    const operation = lifecycle.capture("segmentation"); lifecycle.recordMutation("A");
+    expect(lifecycle.isCurrent(operation)).toBe(false);
+    expect(() => lifecycle.assertCurrent(operation)).toThrow("Stale segmentation result");
+  });
+
   it("preserves A and B sentinels across A→B→A and B→A→B without sharing mutable snapshots", () => {
     const lifecycle = new ProjectLifecycleCoordinator(); const documents = new Map([["A", snapshot("A", "PROJECT_A_SENTINEL")], ["B", snapshot("B", "PROJECT_B_SENTINEL")]]);
     lifecycle.activateInitial("A"); const aSave = lifecycle.beginSave(documents.get("A")!, "save");

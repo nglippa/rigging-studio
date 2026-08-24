@@ -241,7 +241,8 @@ export class RiggingCommandService {
     }
     this.project = structuredClone(project);
     if (this.activationSource === "none") this.activationSource = source === "startup" ? "startup" : "explicit";
-    if (!this.projectLifecycle.snapshot.activeProjectId) this.projectLifecycle.activateInitial(project.id);
+    if (!this.projectLifecycle.snapshot.activeProjectId) this.projectLifecycle.activateInitial(project.id, null, project.stage);
+    else this.projectLifecycle.setRequestedStage(project.stage);
     if (project.rigDefinition) this.standaloneRig = structuredClone(project.rigDefinition);
     this.session.update({ activeProjectId: project.id, activeStage: project.stage, selectedRigId: project.rigDefinition?.id ?? null, dirtyState: true, warnings: project.warnings });
     this.notifyDurableListeners();
@@ -249,11 +250,14 @@ export class RiggingCommandService {
   }
 
   subscribeDurableSnapshot(listener: () => void): () => void { this.durableListeners.add(listener); return () => this.durableListeners.delete(listener); }
+  subscribeProjectLifecycle(listener: () => void): () => void { return this.projectLifecycle.subscribe(listener); }
   getProjectLifecycleSnapshot() { return this.projectLifecycle.snapshot; }
   getProjectLifecycleTrace() { return this.projectLifecycle.getTrace(); }
   captureProjectOperation(operation: string): ProjectOperationContext { return this.projectLifecycle.capture(operation); }
+  isProjectOperationCurrent(context: ProjectOperationContext): boolean { return this.projectLifecycle.isCurrent(context); }
+  isCurrentHydration(projectId: string | null, projectSessionToken: string, hydrationToken: string): boolean { return this.projectLifecycle.isCurrentHydration(projectId, projectSessionToken, hydrationToken); }
   assertProjectOperationCurrent(context: ProjectOperationContext, componentSource?: string): void { this.projectLifecycle.assertCurrent(context, componentSource); }
-  beginDurableProjectOpen(projectId: string, storagePath: string | null = null): ProjectSwitchTransaction { return this.projectLifecycle.beginSwitch(projectId, storagePath); }
+  beginDurableProjectOpen(projectId: string, storagePath: string | null = null, requestedStage: string | null = null): ProjectSwitchTransaction { return this.projectLifecycle.beginSwitch(projectId, storagePath, requestedStage); }
   abortDurableProjectOpen(transaction: ProjectSwitchTransaction): void { this.projectLifecycle.abortSwitch(transaction); }
   createDurableSaveRequest(operation: "save" | "autosave" = "save"): DurableSaveRequest {
     const snapshot = this.getDurableSnapshot();
@@ -267,7 +271,7 @@ export class RiggingCommandService {
   markDurableProjectSaved(projectId: string): void {
     if (!projectId.trim()) throw new Error("A managed project ID is required");
     this.durableProjectId = projectId;
-    if (!this.projectLifecycle.snapshot.activeProjectId) this.projectLifecycle.activateInitial(projectId);
+    if (!this.projectLifecycle.snapshot.activeProjectId) this.projectLifecycle.activateInitial(projectId, null, this.project?.stage ?? null);
     this.session.update({ dirtyState: false });
   }
   getDurableSnapshot(): LocalProjectSnapshot {
@@ -280,7 +284,7 @@ export class RiggingCommandService {
   }
   installDurableSnapshot(snapshot: LocalProjectSnapshot, actor = "Human"): void {
     const targetProjectId = snapshot.localProjectId ?? snapshot.project?.id ?? `editor:${snapshot.rig?.id ?? "unknown"}`;
-    const transaction = this.beginDurableProjectOpen(targetProjectId);
+    const transaction = this.beginDurableProjectOpen(targetProjectId, null, snapshot.project?.stage ?? (snapshot.rig ? "edit" : null));
     if (!this.commitDurableProjectOpen(transaction, snapshot, actor)) throw new Error(`Stale project open for ${targetProjectId} was discarded`);
   }
   commitDurableProjectOpen(transaction: ProjectSwitchTransaction, snapshot: LocalProjectSnapshot, actor = "Human"): boolean {

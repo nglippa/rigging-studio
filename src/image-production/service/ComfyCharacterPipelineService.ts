@@ -324,7 +324,7 @@ function partFromStagedMask(candidate: StagedMaskCandidate, index: number): Prop
     id: type, name: type, semanticType: type, confidence: Number(candidate.quality.score.toFixed(3)), confidenceSource: "heuristic", bounds, mask, sourceImageRegion: bounds,
     suggestedBoneId: partTypeToBoneId(type), suggestedSlotId: partTypeToSlotId(type), suggestedZIndex: semanticZ(type, index),
     pivotHint: { x: bounds.x + bounds.width / 2, y: bounds.y + Math.min(bounds.height * .2, 18) },
-    warnings: [audit, gate, ...semantic, ...(candidate.overlapNotes ?? [])], accepted: false, provenance: "generated",
+    warnings: [audit, gate, ...semantic, ...(candidate.overlapNotes ?? [])], accepted: candidate.quality.safe, provenance: "generated",
   };
 }
 

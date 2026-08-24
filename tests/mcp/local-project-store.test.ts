@@ -46,6 +46,12 @@ async function createStore(): Promise<{ readonly root: string; readonly store: L
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
 
 describe("LocalProjectStore", () => {
+  it("preflights storage with an isolated write/read probe and leaves no probe artifact", async () => {
+    const { root, store } = await createStore();
+    expect(await store.preflight()).toMatchObject({ ready: true, writeReady: true, readReady: true, error: null });
+    expect((await readdir(path.join(root, ".rigging-studio/projects"))).filter((file) => file.includes("preflight"))).toEqual([]);
+  });
+
   it("creates, lists, and reopens a complete project after a store restart", async () => {
     const { root, store: first } = await createStore(); const snapshot = await fixture(); const saved = await first.save(snapshot);
     expect(saved.saved).toBe(true); expect(saved.relativePath).toContain(".rigging-studio/projects");

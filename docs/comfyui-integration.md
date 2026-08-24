@@ -1,5 +1,13 @@
 # ComfyUI image-production integration
 
+## Product readiness and fallback policy
+
+Rigging Studio treats ComfyUI as optional for opening, editing, saving, exporting, and manually partitioning a project. It is required for a **zero-touch automatic character cut** because that path depends on a verified, image-conditioned `CHARACTER_SEGMENTATION` workflow and its configured model family. Manual partition is the supported fallback when that capability is unavailable; it keeps the product usable but is not classified as zero-touch production readiness.
+
+The Studio reports one centralized provider state: `DISABLED`, `CHECKING`, `READY`, `DEGRADED`, `OFFLINE`, or `MISCONFIGURED`. `READY` means the provider is reachable and the required workflow/model capability has passed schema validation. A reachable service with missing nodes, model selectors, or an invalid response is `MISCONFIGURED`; transport failure is `OFFLINE`; loss during a job becomes `DEGRADED` or `OFFLINE` with the last successful check and failure reason retained. A user-triggered Retry bypasses the normal 5/15/30/60/120-second health backoff.
+
+The final confirmatory gate has a stricter dependency policy than ordinary Studio use. Before character #1 it verifies durable storage, the local bridge, the required ComfyUI segmentation capability, the exact ten-source manifest and SHA-256 values, the algorithm freeze record, and the frozen Void Ranger artifact. Any failure writes `preflight.json`, returns `GATE BLOCKED`, and records no fabricated 0/10 production result.
+
 ## Image-production roles
 
 ```text

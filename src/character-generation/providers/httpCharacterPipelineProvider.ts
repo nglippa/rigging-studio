@@ -17,15 +17,20 @@ export class HttpCharacterPipelineProvider implements CharacterPipelineProvider 
   readonly id = "http-character-pipeline";
   readonly name = "Configured provider";
   capabilities: CharacterPipelineCapabilities = initialCapabilities(this.id);
+  private readonly pendingControllers = new Set<AbortController>();
   constructor(private readonly endpoint: string, private readonly fetcher: typeof fetch = fetch) {}
   private async request(capability: Capability, body: unknown): Promise<unknown> {
-    const response = await this.fetcher(this.endpoint, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ capability, body }) });
-    if (!response.ok) {
-      const failure = await response.json().catch(() => null) as { readonly error?: unknown } | null;
-      throw new Error(typeof failure?.error === "string" ? failure.error : `Character provider failed (${response.status})`);
-    }
-    return response.json() as Promise<unknown>;
+    const controller = new AbortController(); this.pendingControllers.add(controller);
+    try {
+      const response = await this.fetcher(this.endpoint, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ capability, body }), signal: controller.signal });
+      if (!response.ok) {
+        const failure = await response.json().catch(() => null) as { readonly error?: unknown } | null;
+        throw new Error(typeof failure?.error === "string" ? failure.error : `Character provider failed (${response.status})`);
+      }
+      return response.json() as Promise<unknown>;
+    } finally { this.pendingControllers.delete(controller); }
   }
+  cancelPending(): void { this.pendingControllers.forEach((controller) => controller.abort()); this.pendingControllers.clear(); }
   async refreshCapabilities(): Promise<CharacterPipelineCapabilities> {
     try {
       const response = await this.request("status", {});

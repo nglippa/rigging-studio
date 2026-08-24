@@ -97,6 +97,8 @@ describe("real character pipeline contract over trusted Comfy workflows", () => 
       expect(red.warnings.some((warning) => warning.startsWith("Unresolved leftHand:"))).toBe(true);
       expect(red.parts.every((part) => part.confidence !== null && part.confidenceSource === "heuristic")).toBe(true);
       expect(red.parts.every((part) => part.warnings.some((warning) => warning.includes("detectorConfidence=unavailable")))).toBe(true);
+      expect(red.parts.filter((part) => part.accepted)).toHaveLength(Number(red.providerMetadata.safeCount));
+      expect(red.parts.filter((part) => part.accepted).every((part) => part.warnings.length > 0)).toBe(true);
       expect(red.parts.every((part) => part.mask?.width === Math.round(part.bounds.width) && part.mask?.height === Math.round(part.bounds.height))).toBe(true);
       expect(red.parts[0]?.mask?.alpha).not.toEqual(blue.parts[0]?.mask?.alpha);
       expect(red.parts[0]?.sourceImageRegion).toEqual(red.parts[0]?.bounds);

@@ -32,6 +32,8 @@ import { presentAgentStatus } from "@/app/studio-ui/agentStatus";
 import { ProjectStorageMenu } from "@/app/studio-ui/ProjectStorageMenu";
 import { LOCAL_PROJECT_STORAGE_VERSION } from "@/src/project-storage/types";
 import { blockingRigProjectProblems, validateRigProject } from "@/src/rigging/validation/project";
+import { useProjectHydrationIdentity } from "@/app/studio-ui/ProjectHydrationBoundary";
+import { useProviderHealth } from "@/app/studio-ui/useProviderHealth";
 
 const TEST_PROMPT = "Small fantasy knight in polished silver armor with a blue tabard, brown hair, simple iron sword, and round blue shield. Charming stylized 2D game character, clean side view, readable silhouette, modular body parts, neutral stance.";
 const STAGES: readonly { readonly id: CharacterProjectStage; readonly label: string }[] = [
@@ -59,6 +61,8 @@ const pollGenerationJob = async (jobId: string): Promise<{ readonly status: stri
 
 export function CreateCharacterWorkspace() {
   const commandService = useMemo(() => getRiggingCommandService(), []);
+  const hydrationIdentity = useProjectHydrationIdentity();
+  const { health: providerHealth } = useProviderHealth();
   const agentSession = useAgentBridge(commandService);
   const characterStorage = useMemo(() => getGeneratedCharacterStorage(), []);
   const [project, setProject] = useState<GeneratedCharacterProject>(() => createGeneratedCharacterProject("Fantasy Knight", TEST_PROMPT));
@@ -73,7 +77,7 @@ export function CreateCharacterWorkspace() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showPromptDebug, setShowPromptDebug] = useState(false);
   const [generator, setGenerator] = useState<GeneratorId>("draw_things");
-  const [generatorStatuses, setGeneratorStatuses] = useState<readonly GeneratorStatus[]>([]);
+  const generatorStatuses: readonly GeneratorStatus[] = providerHealth.generationProviders;
   const [generationReview, setGenerationReview] = useState<GenerationProposalReview | null>(null);
   const [brushMode, setBrushMode] = useState<"add" | "remove">("add");
   const [brushDown, setBrushDown] = useState(false);
@@ -86,19 +90,7 @@ export function CreateCharacterWorkspace() {
     return endpoint ? new HttpCharacterPipelineProvider(endpoint) : new MockCharacterPipelineProvider();
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    const refresh = async (): Promise<void> => {
-      try {
-        const response = await fetch(`${BRIDGE_URL}/image-production/status`, { cache: "no-store" });
-        if (!response.ok) return;
-        const payload = await response.json() as { readonly providers?: readonly GeneratorStatus[] };
-        if (!cancelled) setGeneratorStatuses(payload.providers ?? []);
-      } catch { /* the existing fixture/import flow remains available while the local bridge is offline */ }
-    };
-    void refresh(); const timer = window.setInterval(() => void refresh(), 5_000);
-    return () => { cancelled = true; window.clearInterval(timer); };
-  }, []);
+  useEffect(() => () => provider.cancelPending?.(), [provider]);
 
   useEffect(() => {
     let cancelled = false;
@@ -124,6 +116,17 @@ export function CreateCharacterWorkspace() {
 
   const stageIndex = STAGES.findIndex((stage) => stage.id === project.stage);
   const selectedPart = project.segmentationData?.parts.find((part) => part.id === selectedPartId) ?? null;
+
+  useEffect(() => {
+    const digest = {
+      activeProjectId: hydrationIdentity.activeProjectId, stage: project.stage,
+      selectedRegion: selectedPartId, selectedPart: selectedPartId, selectedBone: selectedBoneId,
+      selectedAnimation: null, selectedKeyframe: null,
+      renderedSourceProjectId: project.sourceImage ? project.id : null,
+      renderedRigProjectId: project.rigDefinition ? project.id : null,
+    };
+    (window as Window & { __RIG_STUDIO_UI_IDENTITY__?: typeof digest }).__RIG_STUDIO_UI_IDENTITY__ = digest;
+  }, [hydrationIdentity.activeProjectId, project.id, project.rigDefinition, project.sourceImage, project.stage, selectedBoneId, selectedPartId]);
 
   const run = useCallback(async (label: string, action: () => Promise<void>): Promise<void> => {
     setBusy(label); setError(null);
@@ -289,7 +292,7 @@ export function CreateCharacterWorkspace() {
 
   const agentStatus = presentAgentStatus(agentSession);
   const segmentationAvailable = provider.capabilities.segmentation.available && provider.capabilities.segmentation.imageConditioned;
-  return <main className="character-workspace">
+  return <main className="character-workspace" data-project-id={hydrationIdentity.activeProjectId ?? "browser-draft"} data-canvas-project-id={hydrationIdentity.activeProjectId ?? "browser-draft"} data-inspector-project-id={hydrationIdentity.activeProjectId ?? "browser-draft"}>
     <input ref={importRef} hidden type="file" accept="application/json,.json,.zip,application/zip" onChange={(event) => void importProject(event)} />
     <header className="character-topbar"><Link href="/" className="character-mark">RS</Link><div><strong>Create Character</strong><span>{project.name}</span></div><nav>{STAGES.map((stage, index) => <button key={stage.id} type="button" className={project.stage === stage.id ? "active" : index < stageIndex ? "complete" : ""} disabled={index > stageIndex + 1 || (stage.id === "rig" && !project.segmentationData) || (stage.id === "test" && !project.rigDefinition)} onClick={() => setProject((current) => updateProject(current, { stage: stage.id }))}><b>{index + 1}</b>{stage.label}</button>)}</nav><span className={`character-agent-state ${agentStatus.ready ? "connected" : agentStatus.state}`}>{agentStatus.label}</span><div className="character-file-tools"><ProjectStorageMenu /><button type="button" onClick={startOver}>New</button><button type="button" onClick={() => importRef.current?.click()}>Import</button><Link href="/part-cutter">Part cutter</Link><button type="button" onClick={exportJson}>Project JSON</button><button type="button" onClick={() => void exportProject()} disabled={Boolean(busy)}>Project ZIP</button><Link href="/">Rig editor</Link></div></header>
     {persistenceWarning && <div className="character-storage-warning" role="status"><strong>Draft storage needs attention</strong><span>{persistenceWarning}</span><button type="button" onClick={() => { void characterStorage.save(projectRef.current).then((result) => setPersistenceWarning(result.success ? null : `Retry failed in ${result.layer}: ${result.message}`)); }}>Retry save</button></div>}

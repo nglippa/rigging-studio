@@ -24,6 +24,7 @@ export type EditorViewportHandle = {
 };
 
 type Props = {
+  readonly projectId?: string | null;
   readonly rig: RigDefinition;
   readonly animation: AnimationDefinition | null;
   readonly previewMode: boolean;
@@ -567,5 +568,5 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
     props.onZoom(scale);
   };
 
-  return <div ref={mountRef} className={`editor-viewport ${props.canvasTool === "pan" ? "is-pan-tool" : "is-select-tool"}`} data-interaction-mode={props.interactionMode ?? "body"} tabIndex={0} aria-label="Rig editor viewport" onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp} onPointerLeave={() => setHoveredSelection(null)} onWheel={wheel} onContextMenu={(event) => event.preventDefault()}>{hoveredSelection && props.canvasTool !== "pan" && <span className="viewport-semantic-hint">{hoveredSelection.type === "bone" ? "Joint" : "Part"} · {hoveredSelection.id.replaceAll("-", " ")}</span>}</div>;
+  return <div ref={mountRef} className={`editor-viewport ${props.canvasTool === "pan" ? "is-pan-tool" : "is-select-tool"}`} data-interaction-mode={props.interactionMode ?? "body"} data-canvas-project-id={props.projectId ?? "browser-draft"} tabIndex={0} aria-label="Rig editor viewport" onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp} onPointerLeave={() => setHoveredSelection(null)} onWheel={wheel} onContextMenu={(event) => event.preventDefault()}>{hoveredSelection && props.canvasTool !== "pan" && <span className="viewport-semantic-hint">{hoveredSelection.type === "bone" ? "Joint" : "Part"} · {hoveredSelection.id.replaceAll("-", " ")}</span>}</div>;
 });

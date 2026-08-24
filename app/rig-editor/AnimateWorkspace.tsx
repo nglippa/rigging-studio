@@ -47,6 +47,7 @@ const animationValue = (animation: AnimationDefinition, rig: RigDefinition, bone
 };
 
 type Props = {
+  readonly projectId: string | null;
   readonly rig: RigDefinition;
   readonly activeSkinId: string;
   readonly showGrid: boolean;
@@ -59,7 +60,7 @@ type Props = {
   readonly onError: (message: string | null) => void;
 };
 
-export function AnimateWorkspace({ rig, activeSkinId, showGrid, showBones, showBounds, viewportRef, onCursor, onZoom, onMessage, onError }: Props) {
+export function AnimateWorkspace({ projectId, rig, activeSkinId, showGrid, showBones, showBounds, viewportRef, onCursor, onZoom, onMessage, onError }: Props) {
   const commandService = useMemo(() => getRiggingCommandService(), []);
   const [library, setLibrary] = useState<AnimationLibrary>(() => createAnimationLibrary(rig.id, [{ schemaVersion: 1, id: "loading", name: "Loading", duration: 1, loop: true, tracks: [] }]));
   const [activeId, setActiveId] = useState("loading");
@@ -144,6 +145,24 @@ export function AnimateWorkspace({ rig, activeSkinId, showGrid, showBones, showB
 
   const animation = animationById(library, activeId) ?? library.animations[0];
   const viewportAnimation = aiPreview ?? animation;
+
+  useEffect(() => {
+    const selectedKey = selectedKeys.at(-1);
+    const digest = {
+      activeProjectId: projectId, stage: "animate", selectedRegion: null, selectedPart: null,
+      selectedBone: selectedBones.at(-1) ?? null, selectedAnimation: animation.id,
+      selectedKeyframe: selectedKey ? `${selectedKey.boneId}:${selectedKey.property}:${selectedKey.time}` : null,
+      renderedSourceProjectId: projectId, renderedRigProjectId: projectId,
+    };
+    (window as Window & { __RIG_STUDIO_UI_IDENTITY__?: typeof digest }).__RIG_STUDIO_UI_IDENTITY__ = digest;
+  }, [animation.id, projectId, selectedBones, selectedKeys]);
+
+  useEffect(() => () => {
+    playingRef.current = false;
+    viewportRef.current?.stopAnimation();
+    commandService.syncBoneSelectionFromUi(null);
+    commandService.syncAnimationSelectionFromUi(null);
+  }, [commandService, viewportRef]);
 
   useEffect(() => {
     commandService.syncBoneSelectionFromUi(selectedBones.at(-1) ?? null);
@@ -326,7 +345,7 @@ export function AnimateWorkspace({ rig, activeSkinId, showGrid, showBones, showB
   };
   const toggleTimelineHeight = (): void => setTimelineHeight((current) => { const bounds = timelineBounds(); return bounds.compact ? current <= 150 ? Math.min(bounds.max, 300) : 132 : current <= 220 ? Math.min(bounds.max, 360) : 220; });
 
-  return <><div className="animate-workspace">
+  return <><div className="animate-workspace" data-project-id={projectId ?? "browser-draft"} data-canvas-project-id={projectId ?? "browser-draft"} data-timeline-project-id={projectId ?? "browser-draft"} data-inspector-project-id={projectId ?? "browser-draft"}>
     <input ref={importRef} hidden type="file" accept="application/json,.json" onChange={(event) => void importAnimations(event)} />
     <div className="animation-toolbar"><div className="animation-command-row">
         <label className="animation-picker">Animation<select value={animation.id} onChange={(event) => chooseAnimation(event.target.value)}>{library.animations.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>

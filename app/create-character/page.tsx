@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { CreateCharacterWorkspace } from "./CreateCharacterWorkspace";
+import { ProjectHydrationBoundary } from "../studio-ui/ProjectHydrationBoundary";
 import "./create-character.css";
 
 export const metadata: Metadata = {
@@ -7,4 +8,4 @@ export const metadata: Metadata = {
   description: "Generate, prepare, rig, validate, and open a modular 2D character.",
 };
 
-export default function CreateCharacterPage() { return <CreateCharacterWorkspace />; }
+export default function CreateCharacterPage() { return <ProjectHydrationBoundary><CreateCharacterWorkspace /></ProjectHydrationBoundary>; }

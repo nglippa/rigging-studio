@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+.project-hydration-root { display: contents; }
+.project-hydration-shell { min-height: 100vh; display: grid; place-items: center; background: #0c0f0f; color: #e8ece8; }
+.project-hydration-shell > div { display: grid; gap: .55rem; min-width: min(24rem, calc(100vw - 3rem)); padding: 1.5rem; border: 1px solid #303737; background: #121616; }
+.project-hydration-shell span, .project-hydration-shell small { color: #8d9994; font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; }
+.project-hydration-shell strong { font-size: 1.1rem; font-weight: 600; }
+
 :root {
   --ink: #f1efff;
   --muted: #aaa5ca;

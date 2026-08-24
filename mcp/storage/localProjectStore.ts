@@ -98,6 +98,26 @@ export class LocalProjectStore {
 
   get pendingQueueCount(): number { return this.queues.size; }
 
+  async preflight(): Promise<{ readonly ready: boolean; readonly root: string; readonly writeReady: boolean; readonly readReady: boolean; readonly error: string | null }> {
+    const probePath = path.join(this.root, `.rig-studio-preflight-${randomUUID()}.tmp`);
+    let handle: Awaited<ReturnType<typeof open>> | null = null;
+    let writeReady = false; let readReady = false;
+    try {
+      await mkdir(this.root, { recursive: true });
+      handle = await open(probePath, "wx");
+      const payload = `rig-studio-storage-preflight:${randomUUID()}`;
+      await handle.writeFile(payload, "utf8"); writeReady = true;
+      await handle.close(); handle = null;
+      readReady = await readFile(probePath, "utf8") === payload;
+      return { ready: writeReady && readReady, root: this.root, writeReady, readReady, error: readReady ? null : "Storage read-back did not match the write probe" };
+    } catch (error: unknown) {
+      return { ready: false, root: this.root, writeReady, readReady, error: error instanceof Error ? error.message : "Storage preflight failed" };
+    } finally {
+      await handle?.close().catch(() => undefined);
+      await rm(probePath, { force: true }).catch(() => undefined);
+    }
+  }
+
   async status(): Promise<{ readonly available: boolean; readonly root: string; readonly relativeRoot: string; readonly projectCount: number; readonly writable: boolean }> {
     try { await mkdir(this.root, { recursive: true }); await access(this.root, constants.R_OK | constants.W_OK); }
     catch { return { available: false, root: this.root, relativeRoot: this.relative(this.root), projectCount: 0, writable: false }; }

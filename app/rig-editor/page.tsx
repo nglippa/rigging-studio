@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { RigEditor } from "./RigEditor";
+import { ProjectHydrationBoundary } from "../studio-ui/ProjectHydrationBoundary";
 import "./rig-editor.css";
 
 export const metadata: Metadata = {
@@ -8,5 +9,5 @@ export const metadata: Metadata = {
 };
 
 export default function RigEditorPage() {
-  return <RigEditor />;
+  return <ProjectHydrationBoundary><RigEditor /></ProjectHydrationBoundary>;
 }

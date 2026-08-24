@@ -124,6 +124,7 @@ export interface CharacterPipelineProvider extends CharacterImageGenerationProvi
   readonly name: string;
   readonly capabilities: CharacterPipelineCapabilities;
   refreshCapabilities?(): Promise<CharacterPipelineCapabilities>;
+  cancelPending?(): void;
   segmentCharacter(request: CharacterSegmentationRequest): Promise<CharacterSegmentationResponse>;
   refinePartMasks?(request: CharacterMaskRefinementRequest): Promise<CharacterSegmentationResponse>;
 }

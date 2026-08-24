@@ -311,7 +311,7 @@ export class StudioBridgeServer {
       return;
     }
     if (request.method === "GET" && request.url?.startsWith("/image-production/status")) {
-      try { response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(await this.imageProduction.status())); }
+      try { const force = new URL(request.url, "http://localhost").searchParams.get("refresh") === "1"; response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(await this.imageProduction.status(force))); }
       catch (error: unknown) { response.writeHead(503, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error instanceof Error ? error.message : "Image provider status failed" })); }
       return;
     }

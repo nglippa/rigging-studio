@@ -55,6 +55,8 @@ import { TopCommandRail, type StudioConnection } from "@/app/studio-ui/TopComman
 import { CanvasControls } from "./CanvasControls";
 import { SemanticNavigator, type SemanticSection } from "./SemanticNavigator";
 import { publishIntegrityEvidence } from "@/src/diagnostics/integrityEvidence";
+import { useProjectHydrationIdentity } from "@/app/studio-ui/ProjectHydrationBoundary";
+import { useProviderHealth } from "@/app/studio-ui/useProviderHealth";
 
 const rigName = (rig: RigDefinition): string => typeof rig.metadata.name === "string" ? rig.metadata.name : rig.id;
 const editableTarget = (target: EventTarget | null): boolean => target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
@@ -72,6 +74,8 @@ const readHistoryUi = (history: RigCommandHistory): HistoryUi => ({ canUndo: his
 export function RigEditor() {
   const router = useRouter();
   const commandService = useMemo(() => getRiggingCommandService(), []);
+  const hydrationIdentity = useProjectHydrationIdentity();
+  const { health: providerHealth } = useProviderHealth();
   const characterStorage = useMemo(() => getGeneratedCharacterStorage(), []);
   const agentSession = useAgentBridge(commandService);
   const [rig, setRig] = useState<RigDefinition | null>(null);
@@ -114,7 +118,7 @@ export function RigEditor() {
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [deleteReplacementId, setDeleteReplacementId] = useState("");
   const [historyUi, setHistoryUi] = useState<HistoryUi>({ canUndo: false, canRedo: false, undoLabel: null, redoLabel: null });
-  const [projectSessionToken, setProjectSessionToken] = useState(() => commandService.getProjectLifecycleSnapshot().projectSessionToken);
+  const [, setProjectSessionToken] = useState(() => commandService.getProjectLifecycleSnapshot().projectSessionToken);
   const [generatedProjectState, setGeneratedProjectState] = useState<GeneratedCharacterProject | null>(null);
   const historyRef = useRef<RigCommandHistory | null>(null);
   const viewportRef = useRef<EditorViewportHandle>(null);
@@ -168,6 +172,7 @@ export function RigEditor() {
   useEffect(() => {
     let cancelled = false;
     const uploadedUrls = uploadedUrlsRef.current;
+    const operation = commandService.captureProjectOperation("rig-editor-hydration");
     void (async () => {
       try {
         const [rigResponse, animationResponse, ...sampleResponses] = await Promise.all([fetch("/rig-test/minimal-rig.json"), fetch("/rig-test/idle-animation.json"), ...SAMPLE_ANIMATION_PATHS.map((path) => fetch(path))]);
@@ -176,6 +181,8 @@ export function RigEditor() {
         if (!parsedRig.success) throw new Error(parsedRig.message);
         let initialRig = parsedRig.data;
         let restored = false;
+        let restoredFromDurable = false;
+        let durableAnimations = null as ReturnType<typeof createAnimationLibrary> | null;
         const localDraft = window.localStorage.getItem(RIG_EDITOR_DRAFT_KEY);
         const rawHandoff = window.localStorage.getItem(RIG_EDITOR_HANDOFF_KEY);
         let handoff: RigEditorHandoff | null = null;
@@ -183,18 +190,24 @@ export function RigEditor() {
           try { handoff = JSON.parse(rawHandoff) as RigEditorHandoff; } catch { handoff = null; }
           window.localStorage.removeItem(RIG_EDITOR_HANDOFF_KEY);
         }
-        const storedProject = await characterStorage.load();
-        const generatedProject = storedProject?.success && storedProject.data.rigDefinition && (!handoff || storedProject.data.id === handoff.projectId)
-          ? storedProject.data
-          : null;
+        let generatedProject: GeneratedCharacterProject | null = null;
+        try {
+          const durable = commandService.getDurableSnapshot();
+          const durableIdentity = durable.localProjectId ?? durable.project?.id ?? null;
+          if (durable.rig && hydrationIdentity.activeProjectId && (durableIdentity === hydrationIdentity.activeProjectId || durable.project?.id === hydrationIdentity.activeProjectId)) {
+            initialRig = durable.rig; generatedProject = durable.project; durableAnimations = durable.animations; restored = true; restoredFromDurable = true;
+          }
+        } catch { /* no committed disk project; browser draft lookup remains available */ }
+        const storedProject = restoredFromDurable ? null : await characterStorage.load();
+        if (!generatedProject && storedProject?.success && storedProject.data.rigDefinition && (!handoff || storedProject.data.id === handoff.projectId)) generatedProject = storedProject.data;
         if (generatedProject) {
           initialRig = generatedProject.rigDefinition!;
           generatedProjectRef.current = generatedProject;
           setGeneratedProjectState(generatedProject);
-          commandService.activateProjectFromUi(generatedProject);
+          if (!restoredFromDurable) commandService.activateProjectFromUi(generatedProject);
           restored = true;
         }
-        if (localDraft && !generatedProject) {
+        if (localDraft && !generatedProject && !restoredFromDurable) {
           const draft = parseDraft(localDraft);
           if (draft.success) { initialRig = draft.data.rig; restored = true; }
         }
@@ -203,11 +216,11 @@ export function RigEditor() {
           const parsed = safeParseAnimationJson(source, initialRig);
           return parsed.success ? [parsed.data] : [];
         });
-        let initialAnimations = createAnimationLibrary(initialRig.id, validAnimations);
-        const animationDraft = loadAnimationDraft(window.localStorage, initialRig);
+        let initialAnimations = durableAnimations ?? createAnimationLibrary(initialRig.id, validAnimations);
+        const animationDraft = restoredFromDurable ? null : loadAnimationDraft(window.localStorage, initialRig);
         if (animationDraft?.success) initialAnimations = animationDraft.data;
-        if (cancelled) return;
-        commandService.syncAnimationsFromUi(initialAnimations, initialAnimations.animations[0]?.id ?? null);
+        if (cancelled || !commandService.isCurrentHydration(operation.projectId, operation.projectSessionToken, operation.hydrationToken)) return;
+        if (!restoredFromDurable) commandService.syncAnimationsFromUi(initialAnimations, initialAnimations.animations[0]?.id ?? null);
         historyRef.current = new RigCommandHistory(initialRig);
         setDefaultRig(parsedRig.data);
         setRig(historyRef.current.present);
@@ -218,7 +231,7 @@ export function RigEditor() {
         if (handoff?.centerView) setCenterOnLoad(true);
         setHistoryUi(readHistoryUi(historyRef.current));
         setMessage(handoff?.validationMessage ?? (restored
-          ? initialRig.attachments.some((attachment) => attachment.imagePath.startsWith("blob:"))
+          ? restoredFromDurable ? "Disk project hydrated" : initialRig.attachments.some((attachment) => attachment.imagePath.startsWith("blob:"))
             ? "Draft restored. Local uploads must be added again"
             : "Local draft restored"
           : "Rig document ready"));
@@ -231,7 +244,19 @@ export function RigEditor() {
       uploadedUrls.forEach((url) => URL.revokeObjectURL(url));
       uploadedUrls.clear();
     };
-  }, [characterStorage, commandService]);
+  }, [characterStorage, commandService, hydrationIdentity.activeProjectId]);
+
+  useEffect(() => {
+    const digest = {
+      activeProjectId: hydrationIdentity.activeProjectId, stage: editorMode,
+      selectedRegion: null, selectedPart: null,
+      selectedBone: selections.find((selection) => selection.type === "bone")?.id ?? agentSession.selectedBoneId,
+      selectedAnimation: agentSession.selectedAnimationId, selectedKeyframe: null,
+      renderedSourceProjectId: generatedProjectState?.id ?? hydrationIdentity.activeProjectId,
+      renderedRigProjectId: rig ? hydrationIdentity.activeProjectId : null,
+    };
+    (window as Window & { __RIG_STUDIO_UI_IDENTITY__?: typeof digest }).__RIG_STUDIO_UI_IDENTITY__ = digest;
+  }, [agentSession.selectedAnimationId, agentSession.selectedBoneId, editorMode, generatedProjectState?.id, hydrationIdentity.activeProjectId, rig, selections]);
 
   useEffect(() => {
     if (!rig || !centerOnLoad) return;
@@ -665,6 +690,7 @@ export function RigEditor() {
   const connections: readonly StudioConnection[] = [
     { id: "rig", label: "Rig", state: validationIssues.length ? "degraded" : "ready", title: validationIssues.length ? `${validationIssues.length} issues` : "Document ready" },
     { id: "agent", label: "Agent", state: agentStatus.ready ? "ready" : agentStatus.state === "bridge" || agentStatus.state === "no-tools" ? "degraded" : "offline", title: agentStatus.label },
+    { id: "comfyui", label: "ComfyUI", state: providerHealth.state === "READY" ? "ready" : providerHealth.state === "OFFLINE" ? "offline" : providerHealth.state === "DISABLED" ? "disabled" : "degraded", title: `${providerHealth.state} · ${providerHealth.endpoint ?? "configured localhost endpoint"}${providerHealth.lastError ? ` · ${providerHealth.lastError}` : ""}` },
   ];
   const beginPanelResize = (side: "left" | "right", event: ReactPointerEvent<HTMLButtonElement>): void => {
     event.preventDefault();
@@ -674,13 +700,13 @@ export function RigEditor() {
     window.addEventListener("pointermove", move); window.addEventListener("pointerup", stop, { once: true });
   };
   const workspaceStyle = { "--navigator-width": `${leftPanelWidth}px`, "--inspector-width": `${rightPanelWidth}px` } as CSSProperties;
-  return <main className={`rig-editor-shell mode-${editorMode} ${focusMode ? "is-focus-mode" : ""}`} style={workspaceStyle}>
+  return <main className={`rig-editor-shell mode-${editorMode} ${focusMode ? "is-focus-mode" : ""}`} style={workspaceStyle} data-project-id={hydrationIdentity.activeProjectId ?? "browser-draft"} data-project-session-token={hydrationIdentity.projectSessionToken} data-hydration-token={hydrationIdentity.hydrationToken}>
     <input ref={loadInputRef} hidden type="file" accept="application/json,.json" onChange={(event) => void loadJson(event)} />
     <input ref={uploadInputRef} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void uploadAttachment(event)} />
     <input ref={prepareInputRef} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void importSpriteForCutting(event)} />
     <TopCommandRail active={editorMode} projectName={rigName(rig)} dirty={dirty} editingName={renamingRig} onEditingName={setRenamingRig} onCommitName={commitRigName} onSelect={modeSelect} onCommand={() => setCommandPaletteOpen(true)} onUndo={undo} onRedo={redo} canUndo={editorMode === "setup" && !previewMode && historyUi.canUndo} canRedo={editorMode === "setup" && !previewMode && historyUi.canRedo} undoTitle={historyUi.undoLabel ?? "Nothing to undo"} redoTitle={historyUi.redoLabel ?? "Nothing to redo"} onExport={() => editorMode === "animate" ? animationCommand("save") : downloadJson()} validity={{ count: validationIssues.length, onOpen: () => { setUtilityTab("problems"); setUtilityOpen(true); } }} connections={connections} onConnections={() => { setUtilityTab("activity"); setUtilityOpen(true); }} focus={{ active: focusMode, onToggle: toggleFocusMode }} overflow={<><Link href="/create-character">Create character</Link><button type="button" onClick={() => prepareInputRef.current?.click()} disabled={previewMode || editorMode === "animate"}>Import sprite</button><button type="button" onClick={() => loadInputRef.current?.click()} disabled={previewMode || editorMode === "animate"}>Load rig</button><button type="button" onClick={discardDraft} disabled={previewMode || editorMode === "animate"}>Discard local draft</button><button type="button" onClick={resetWorkspace}>Reset workspace</button><button type="button" onClick={() => { setUtilityTab("activity"); setUtilityOpen(true); }}>Diagnostics</button></>}><ImageProductionStatus projectId={agentSession.activeProjectId?.startsWith("character-") ? agentSession.activeProjectId : null} /></TopCommandRail>
 
-      {editorMode === "animate" ? <AnimateWorkspace key={projectSessionToken} rig={rig} activeSkinId={effectiveSkinId} showGrid={showGrid} showBones={showBones} showBounds={showBounds} viewportRef={viewportRef} onCursor={setCursor} onZoom={setZoom} onMessage={setMessage} onError={setError} /> : <div key={projectSessionToken} className={`editor-body ${leftCollapsed ? "left-collapsed" : ""} ${rightCollapsed ? "right-collapsed" : ""} ${!primarySelection ? "context-idle" : ""}`}>
+      {editorMode === "animate" ? <AnimateWorkspace key={hydrationIdentity.projectSessionToken} projectId={hydrationIdentity.activeProjectId} rig={rig} activeSkinId={effectiveSkinId} showGrid={showGrid} showBones={showBones} showBounds={showBounds} viewportRef={viewportRef} onCursor={setCursor} onZoom={setZoom} onMessage={setMessage} onError={setError} /> : <div key={hydrationIdentity.projectSessionToken} className={`editor-body ${leftCollapsed ? "left-collapsed" : ""} ${rightCollapsed ? "right-collapsed" : ""} ${!primarySelection ? "context-idle" : ""}`} data-canvas-project-id={hydrationIdentity.activeProjectId ?? "browser-draft"} data-inspector-project-id={hydrationIdentity.activeProjectId ?? "browser-draft"}>
       <aside className="editor-left-panel">
         <header className="panel-identity"><span>Setup</span><button type="button" onClick={() => setLeftCollapsed(true)} aria-label="Collapse setup navigator">‹</button></header>
         <div className="outliner-search"><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`Search ${semanticSection}`} aria-label="Search setup objects" /><button type="button" onClick={() => setSearch("")} disabled={!search}>×</button></div>

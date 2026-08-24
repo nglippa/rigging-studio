@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit",
     "test:unit": "vitest run --config vitest.config.ts",
     "test:mcp": "vitest run --config vitest.config.ts tests/mcp",
+    "test:ui-hydration": "tsx scripts/ui-hydration-torture.mts",
     "test": "npm run test:unit && npm run build && node --test tests/rendered-html.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "ux:inspect": "tsx scripts/ux-inspection/inspect.mts",
