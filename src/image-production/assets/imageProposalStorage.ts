@@ -155,15 +155,15 @@ export class ImageProposalStorage {
   private assertId(value: string, label: string): void { if (!SAFE_ID.test(value)) throw new Error(`Invalid ${label}`); }
 }
 
-function inspectImage(bytes: Uint8Array, expectedMimeType: "image/png" | "image/jpeg"): { readonly width: number; readonly height: number } {
+export function inspectImage(bytes: Uint8Array, expectedMimeType: "image/png" | "image/jpeg"): { readonly width: number; readonly height: number } {
   if (bytes.length > 24 * 1024 * 1024) throw new Error("Image exceeds the 24 MB managed proposal limit");
   if (expectedMimeType === "image/png") {
-    if (bytes.length < 24 || bytes[0] !== 0x89 || bytes[1] !== 0x50 || bytes[2] !== 0x4e || bytes[3] !== 0x47) throw new Error("ComfyUI output is not a valid PNG");
+    if (bytes.length < 24 || bytes[0] !== 0x89 || bytes[1] !== 0x50 || bytes[2] !== 0x4e || bytes[3] !== 0x47) throw new Error("Provider output is not a valid PNG");
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength); const width = view.getUint32(16); const height = view.getUint32(20);
-    if (!width || !height) throw new Error("ComfyUI PNG dimensions are invalid");
+    if (!width || !height) throw new Error("Provider PNG dimensions are invalid");
     return { width, height };
   }
-  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) throw new Error("ComfyUI output is not a valid JPEG");
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) throw new Error("Provider output is not a valid JPEG");
   let offset = 2; const sof = new Set([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf]);
   while (offset + 8 < bytes.length) {
     if (bytes[offset] !== 0xff) { offset += 1; continue; }
@@ -171,5 +171,5 @@ function inspectImage(bytes: Uint8Array, expectedMimeType: "image/png" | "image/
     if (sof.has(marker)) return { height: (bytes[offset + 5] << 8) | bytes[offset + 6], width: (bytes[offset + 7] << 8) | bytes[offset + 8] };
     if (length < 2) break; offset += length + 2;
   }
-  throw new Error("ComfyUI JPEG dimensions could not be read");
+  throw new Error("Provider JPEG dimensions could not be read");
 }

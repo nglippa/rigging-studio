@@ -16,7 +16,9 @@
     "test:unit": "vitest run --config vitest.config.ts",
     "test:mcp": "vitest run --config vitest.config.ts tests/mcp",
     "test": "npm run test:unit && npm run build && node --test tests/rendered-html.test.mjs",
-    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "ux:inspect": "tsx scripts/ux-inspection/inspect.mts",
+    "ux:compare": "tsx scripts/ux-inspection/compare.mts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
@@ -42,6 +44,7 @@
     "concurrently": "^10.0.5",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
+    "playwright": "^1.62.1",
     "react-server-dom-webpack": "19.2.6",
     "tailwindcss": "4.2.1",
     "tsx": "^4.23.12",

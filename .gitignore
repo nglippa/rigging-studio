@@ -41,4 +41,7 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
-/.rigging-studio/
+/.rigging-studio/*
+!/.rigging-studio/projects/
+/.rigging-studio/projects/*
+!/.rigging-studio/projects/.gitkeep

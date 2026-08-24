@@ -13,6 +13,8 @@ export function validateAnimationDefinition(animation: AnimationDefinition, rig?
     else issues.push({ code: "duplicate_animation_track", path: ["tracks", trackIndex], message: `Track duplicates tracks[${first}]` });
     track.keyframes.forEach((frame, frameIndex) => {
       if (frame.time > animation.duration) issues.push({ code: "keyframe_after_duration", path: ["tracks", trackIndex, "keyframes", frameIndex, "time"], message: `Time ${frame.time} exceeds duration ${animation.duration}` });
+      if (!Number.isFinite(frame.time) || !Number.isFinite(frame.value)) issues.push({ code: "non_finite_keyframe", path: ["tracks", trackIndex, "keyframes", frameIndex], message: "Keyframe time and value must be finite" });
+      if (frameIndex > 0 && frame.time === track.keyframes[frameIndex - 1].time) issues.push({ code: "duplicate_keyframe_identity", path: ["tracks", trackIndex, "keyframes", frameIndex], message: `A keyframe already exists at time ${frame.time}` });
       if (frameIndex > 0 && frame.time <= track.keyframes[frameIndex - 1].time) issues.push({ code: "unsorted_keyframes", path: ["tracks", trackIndex, "keyframes", frameIndex, "time"], message: "Keyframe times must be strictly increasing" });
     });
   });

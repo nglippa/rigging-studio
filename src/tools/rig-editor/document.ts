@@ -6,6 +6,7 @@ import type {
   SlotDefinition,
 } from "../../rigging/schema/types";
 import { validateRigDefinition } from "../../rigging/validation/rig";
+import type { JsonValue } from "../../rigging/schema/types";
 
 export type BonePatch = Partial<Omit<BoneDefinition, "id">>;
 export type SlotPatch = Partial<Omit<SlotDefinition, "id">>;
@@ -38,6 +39,14 @@ function assertValid(rig: RigDefinition): RigDefinition {
   return rig;
 }
 
+const asRecord = (value: JsonValue | undefined): Readonly<Record<string, JsonValue>> => value && typeof value === "object" && !Array.isArray(value) ? value as Readonly<Record<string, JsonValue>> : {};
+const recordManualOverride = (rig: RigDefinition, collection: "bones" | "slots" | "attachments", id: string, fields: readonly string[]): RigDefinition => {
+  const overrides = asRecord(rig.metadata.manualOverrides);
+  const entries = asRecord(overrides[collection]);
+  const existing = Array.isArray(entries[id]) ? entries[id].filter((value): value is string => typeof value === "string") : [];
+  return { ...rig, metadata: { ...rig.metadata, manualOverrides: { ...overrides, [collection]: { ...entries, [id]: [...new Set([...existing, ...fields])].sort() } } } };
+};
+
 export function updateRigIdentity(rig: RigDefinition, id: string, name: string): RigDefinition {
   if (!id.trim()) throw new Error("Rig ID cannot be empty");
   return { ...rig, id: id.trim(), metadata: { ...rig.metadata, name: name.trim() || id.trim() } };
@@ -63,7 +72,7 @@ export function updateBone(rig: RigDefinition, boneId: string, patch: BonePatch)
       throw new Error(`Bone "${boneId}" cannot be parented to "${String(patch.parentId)}"`);
     }
   }
-  return assertValid({ ...rig, bones: rig.bones.map((candidate) => candidate.id === boneId ? { ...candidate, ...patch } : candidate) });
+  return assertValid(recordManualOverride({ ...rig, bones: rig.bones.map((candidate) => candidate.id === boneId ? { ...candidate, ...patch } : candidate) }, "bones", boneId, Object.keys(patch)));
 }
 
 export function addBone(rig: RigDefinition, parentId = rig.rootBoneId): { readonly rig: RigDefinition; readonly id: string } {
@@ -118,7 +127,7 @@ export function deleteBone(rig: RigDefinition, boneId: string, repair?: BoneDele
 
 export function updateSlot(rig: RigDefinition, slotId: string, patch: SlotPatch): RigDefinition {
   if (!rig.slots.some((slot) => slot.id === slotId)) throw new Error(`Slot "${slotId}" does not exist`);
-  return assertValid({ ...rig, slots: rig.slots.map((slot) => slot.id === slotId ? { ...slot, ...patch } : slot) });
+  return assertValid(recordManualOverride({ ...rig, slots: rig.slots.map((slot) => slot.id === slotId ? { ...slot, ...patch } : slot) }, "slots", slotId, Object.keys(patch)));
 }
 
 export function addSlot(rig: RigDefinition, boneId = rig.rootBoneId): { readonly rig: RigDefinition; readonly id: string } {
@@ -168,7 +177,7 @@ export function addAttachment(rig: RigDefinition, attachment: AttachmentDefiniti
 
 export function updateAttachment(rig: RigDefinition, attachmentId: string, patch: AttachmentPatch): RigDefinition {
   if (!rig.attachments.some((attachment) => attachment.id === attachmentId)) throw new Error(`Attachment "${attachmentId}" does not exist`);
-  return assertValid({ ...rig, attachments: rig.attachments.map((attachment) => attachment.id === attachmentId ? { ...attachment, ...patch } : attachment) });
+  return assertValid(recordManualOverride({ ...rig, attachments: rig.attachments.map((attachment) => attachment.id === attachmentId ? { ...attachment, ...patch } : attachment) }, "attachments", attachmentId, Object.keys(patch)));
 }
 
 export function deleteAttachment(rig: RigDefinition, attachmentId: string): RigDefinition {

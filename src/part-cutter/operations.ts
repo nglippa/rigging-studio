@@ -2,6 +2,7 @@ import { partTypeToBoneId, partTypeToSlotId, type PartType } from "../character-
 import type { CharacterSegmentationResponse, Point, ProposedCharacterPart, Rect, SegmentationMask } from "../character-generation/segmentation/segmentationSchema";
 import { SEMANTIC_TAXONOMY, type PartLayerGroup, type PartSemanticType } from "./semanticTaxonomy";
 import { partCutProposalSchema, type PartCutProposal, type PartCutRecord, type PartCutterState, type ProposedPartCut } from "./schema";
+import { decodeOwnership, ensureOwnershipPartition, rebuildOwnershipAfterStructuralChange } from "./ownership";
 
 const now = (): string => new Date().toISOString();
 const slug = (value: string): string => value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48) || "part";
@@ -35,13 +36,14 @@ const partSemanticToLegacy = (type: PartSemanticType): PartType => ({
 } as Partial<Record<PartSemanticType, PartType>>)[type] ?? type as PartType;
 
 export function partCutToSegmentation(state: PartCutterState): CharacterSegmentationResponse {
-  const parts: ProposedCharacterPart[] = state.parts.filter((part) => part.accepted).map((part) => {
+  const canonical = ensureOwnershipPartition(state);
+  const parts: ProposedCharacterPart[] = canonical.parts.filter((part) => part.accepted).map((part) => {
     const semanticType = partSemanticToLegacy(part.semanticType);
     return { id: part.partId, name: part.label, semanticType, confidence: part.confidence, confidenceSource: part.confidenceSource, bounds: part.boundingBox, mask: part.mask,
       sourceImageRegion: part.sourceBoundingBox, suggestedBoneId: part.suggestedParent || partTypeToBoneId(semanticType), suggestedSlotId: part.suggestedSlot || partTypeToSlotId(semanticType),
       suggestedZIndex: part.zOrder, pivotHint: part.pivot, warnings: part.notes, accepted: true, provenance: part.provenance === "ai" ? "accepted" : part.provenance === "reconstructed" ? "reconstructed" : "manual", };
   });
-  return { segmentationId: `cut-${state.sourceImageId}`, imageWidth: state.sourceCanvasSize.width, imageHeight: state.sourceCanvasSize.height, parts, warnings: [], providerMetadata: { provider: "part-cutter", semantic: true } };
+  return { segmentationId: `cut-${canonical.sourceImageId}`, imageWidth: canonical.sourceCanvasSize.width, imageHeight: canonical.sourceCanvasSize.height, parts, warnings: [], providerMetadata: { provider: "part-cutter", semantic: true, exclusiveOwnership: true } };
 }
 
 export function proposalFromSegmentation(response: CharacterSegmentationResponse, instruction: string, parentProposalId?: string, createdAt = now()): PartCutProposal {
@@ -65,14 +67,14 @@ export function acceptProposal(state: PartCutterState, proposalId: string, selec
   const existing = new Map(state.parts.map((part) => [part.partId, part]));
   proposal.parts.filter((part) => chosen.has(part.proposedPartId)).forEach(({ proposedPartId, selected, ...part }) => { void selected; let partId = proposedPartId; const collision = existing.get(partId); if (collision && collision.provenance !== "ai") { const base = `${proposedPartId}-ai`; partId = base; let suffix = 2; while (existing.has(partId)) { partId = `${base}-${suffix}`; suffix += 1; } } existing.set(partId, { ...part, partId, accepted: true }); });
   const remaining = proposal.parts.filter((part) => !chosen.has(part.proposedPartId));
-  return {
+  return ensureOwnershipPartition({
     ...state,
     parts: [...existing.values()],
     proposals: state.proposals.map((item) => item.proposalId === proposalId ? { ...item, parts: remaining, status: remaining.length ? "pending" : "accepted" } : item),
     activeProposalId: remaining.length ? proposalId : undefined,
     finalized: false,
     updatedAt: now(),
-  };
+  }, "ai");
 }
 
 export function proposalToSegmentation(proposal: PartCutProposal): CharacterSegmentationResponse {
@@ -146,7 +148,7 @@ export function mergeParts(state: PartCutterState, ids: readonly string[], label
   const bounds = { x, y, width: right - x, height: bottom - y }; const base = selected[0]; const alpha = new Array<number>(Math.round(bounds.width) * Math.round(bounds.height)).fill(0);
   selected.forEach((part) => { const ox = Math.round(part.boundingBox.x - x); const oy = Math.round(part.boundingBox.y - y); for (let py = 0; py < part.mask.height; py += 1) for (let px = 0; px < part.mask.width; px += 1) alpha[(oy + py) * Math.round(bounds.width) + ox + px] = Math.max(alpha[(oy + py) * Math.round(bounds.width) + ox + px] ?? 0, part.mask.alpha[py * part.mask.width + px] ?? 0); });
   const merged = { ...base, partId: safePartId(label ?? base.label, state.parts.filter((part) => !ids.includes(part.partId)).map((part) => part.partId)), label: label ?? base.label, mask: { width: Math.round(bounds.width), height: Math.round(bounds.height), alpha }, boundingBox: bounds, sourceBoundingBox: bounds, pivot: estimateSemanticPivot(base.semanticType, bounds), provenance: "manual" as const, notes: [...new Set(selected.flatMap((part) => part.notes))] };
-  return { ...state, parts: [...state.parts.filter((part) => !ids.includes(part.partId)), merged], finalized: false, updatedAt: now() };
+  return rebuildOwnershipAfterStructuralChange({ ...state, parts: [...state.parts.filter((part) => !ids.includes(part.partId)), merged], finalized: false, updatedAt: now() }, "merge", ids);
 }
 
 export function splitPart(state: PartCutterState, partId: string, axis: "horizontal" | "vertical" = "vertical"): PartCutterState {
@@ -156,7 +158,7 @@ export function splitPart(state: PartCutterState, partId: string, axis: "horizon
     for (let py = 0; py < height; py += 1) for (let px = 0; px < width; px += 1) alpha.push(part.mask.alpha[(sy + py) * part.mask.width + sx + px] ?? 0);
     const bounds = { x: part.boundingBox.x + sx, y: part.boundingBox.y + sy, width, height }; return { ...part, partId: `${part.partId}-${second ? "b" : "a"}`, label: `${part.label} ${second ? "B" : "A"}`, mask: { width, height, alpha }, boundingBox: bounds, sourceBoundingBox: bounds, pivot: estimateSemanticPivot(part.semanticType, bounds), provenance: "manual" };
   };
-  return { ...state, parts: state.parts.flatMap((item) => item.partId === partId ? [make(false), make(true)] : [item]), finalized: false, updatedAt: now() };
+  return rebuildOwnershipAfterStructuralChange({ ...state, parts: state.parts.flatMap((item) => item.partId === partId ? [make(false), make(true)] : [item]), finalized: false, updatedAt: now() }, "split", [partId, `${partId}-a`, `${partId}-b`]);
 }
 
 export function paintMask(part: PartCutRecord, x: number, y: number, radius: number, mode: "add" | "remove"): PartCutRecord {
@@ -200,10 +202,10 @@ export function applyMaskSelection(part: PartCutRecord, bounds: Rect, selection:
 
 export type CoverageSummary = { readonly assignedPixels: number; readonly unassignedPixels: number; readonly overlappingPixels: number; readonly foregroundPixels: number; readonly percentAssigned: number; readonly unassignedRegions: readonly Rect[] };
 export function analyzeCoverage(state: PartCutterState, foreground?: readonly number[]): CoverageSummary {
-  const { width, height } = state.sourceCanvasSize; const counts = new Uint8Array(width * height); let foregroundPixels = 0; let assignedPixels = 0; let overlappingPixels = 0; let unassignedPixels = 0;
-  state.parts.filter((part) => part.accepted).forEach((part) => { const left = Math.round(part.boundingBox.x); const top = Math.round(part.boundingBox.y); for (let y = 0; y < part.mask.height; y += 1) for (let x = 0; x < part.mask.width; x += 1) if ((part.mask.alpha[y * part.mask.width + x] ?? 0) > 0) { const index = (top + y) * width + left + x; if (index >= 0 && index < counts.length && counts[index] < 255) counts[index] += 1; } });
-  const missing = new Uint8Array(counts.length);
-  for (let index = 0; index < counts.length; index += 1) { const isForeground = foreground ? (foreground[index] ?? 0) > 0 : counts[index] > 0; if (!isForeground) continue; foregroundPixels += 1; if (counts[index] === 0) { unassignedPixels += 1; missing[index] = 1; } else { assignedPixels += 1; if (counts[index] > 1) overlappingPixels += 1; } }
+  const canonical = ensureOwnershipPartition(state); const { width, height } = canonical.sourceCanvasSize; const counts = new Uint8Array(width * height); let foregroundPixels = 0; let assignedPixels = 0; let overlappingPixels = 0; let unassignedPixels = 0;
+  canonical.parts.filter((part) => part.accepted).forEach((part) => { const left = Math.round(part.boundingBox.x); const top = Math.round(part.boundingBox.y); for (let y = 0; y < part.mask.height; y += 1) for (let x = 0; x < part.mask.width; x += 1) if ((part.mask.alpha[y * part.mask.width + x] ?? 0) > 0) { const index = (top + y) * width + left + x; if (index >= 0 && index < counts.length && counts[index] < 255) counts[index] += 1; } });
+  const missing = new Uint8Array(counts.length); const ownershipLabels = canonical.ownership ? decodeOwnership(canonical.ownership) : null;
+  for (let index = 0; index < counts.length; index += 1) { const isForeground = foreground ? (foreground[index] ?? 0) > 0 : ownershipLabels ? ownershipLabels[index] >= 0 : counts[index] > 0; if (!isForeground) continue; foregroundPixels += 1; if (counts[index] === 0) { unassignedPixels += 1; missing[index] = 1; } else { assignedPixels += 1; if (counts[index] > 1) overlappingPixels += 1; } }
   const unassignedRegions: Rect[] = []; const visited = new Uint8Array(missing.length);
   for (let seed = 0; seed < missing.length && unassignedRegions.length < 50; seed += 1) { if (!missing[seed] || visited[seed]) continue; const queue = [seed]; let cursor = 0; let left = seed % width; let right = left; let top = Math.floor(seed / width); let bottom = top; let pixels = 0; while (cursor < queue.length) { const index = queue[cursor++]; if (visited[index] || !missing[index]) continue; visited[index] = 1; pixels += 1; const x = index % width; const y = Math.floor(index / width); left = Math.min(left, x); right = Math.max(right, x); top = Math.min(top, y); bottom = Math.max(bottom, y); if (x > 0) queue.push(index - 1); if (x + 1 < width) queue.push(index + 1); if (y > 0) queue.push(index - width); if (y + 1 < height) queue.push(index + width); } if (pixels >= 4) unassignedRegions.push({ x: left, y: top, width: right - left + 1, height: bottom - top + 1 }); }
   return { assignedPixels, unassignedPixels, overlappingPixels, foregroundPixels, percentAssigned: foregroundPixels ? assignedPixels / foregroundPixels : 1, unassignedRegions };

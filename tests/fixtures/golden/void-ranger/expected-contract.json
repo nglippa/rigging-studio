@@ -1,0 +1,74 @@
+{
+  "fixtureVersion": 1,
+  "source": {
+    "path": "public/assets/generated/void-ranger-sprite.png",
+    "width": 1024,
+    "height": 1536,
+    "sha256": "ba658d3b2190e3ed918eda91a27e14d581ebefad3cf5891f0f6f13b6e3509b18",
+    "requiresTransparentAlpha": true
+  },
+  "project": {
+    "name": "Void Ranger",
+    "stage": "edit",
+    "valid": true,
+    "partCount": 16,
+    "cuttingMode": "manual"
+  },
+  "requiredSemanticTypes": [
+    "head",
+    "torso",
+    "leftUpperArm",
+    "leftForearm",
+    "leftHand",
+    "rightUpperArm",
+    "rightForearm",
+    "rightHand",
+    "leftThigh",
+    "leftLowerLeg",
+    "leftFoot",
+    "rightThigh",
+    "rightLowerLeg",
+    "rightFoot",
+    "cape",
+    "mainHandEquipment"
+  ],
+  "requiredBones": [
+    "root",
+    "pelvis",
+    "torso",
+    "head",
+    "left-upper-arm",
+    "left-lower-arm",
+    "left-hand",
+    "right-upper-arm",
+    "right-lower-arm",
+    "right-hand",
+    "left-upper-leg",
+    "left-lower-leg",
+    "left-foot",
+    "right-upper-leg",
+    "right-lower-leg",
+    "right-foot"
+  ],
+  "equipment": {
+    "cape": {
+      "attachmentId": "cape",
+      "boneId": "torso"
+    },
+    "energyBlade": {
+      "attachmentId": "main-hand-energy-blade",
+      "boneId": "right-hand"
+    }
+  },
+  "animations": [
+    "Game Idle",
+    "Game Walk",
+    "Game Run",
+    "Game Attack"
+  ],
+  "rotationChecksDegrees": [
+    -20,
+    0,
+    20
+  ]
+}

@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import Link from "next/link";
 import { safeParseAnimationDefinition, safeParseAnimationJson, safeParseRigJson } from "@/src/rigging/schema/parsing";
 import type { AnimationDefinition, AttachmentDefinition, RigDefinition } from "@/src/rigging/schema/types";
-import { validateRigDefinition } from "@/src/rigging/validation/rig";
+import { blockingRigProjectProblems, validateRigProject } from "@/src/rigging/validation/project";
 import type { ValidationIssue } from "@/src/rigging/validation/issues";
+import { LOCAL_PROJECT_STORAGE_VERSION } from "@/src/project-storage/types";
 import {
   addAttachment,
   addBone,
@@ -30,7 +31,6 @@ import {
 import { parseDraft, RIG_EDITOR_DRAFT_KEY, serializeDraft } from "@/src/tools/rig-editor/draft";
 import { RigCommandHistory } from "@/src/tools/rig-editor/history";
 import type { BoneAuthoringPatch, EditorItemType, EditorSelection } from "@/src/tools/rig-editor/types";
-import { EditorHierarchy } from "./EditorHierarchy";
 import { EditorInspector } from "./EditorInspector";
 import { EditorViewport, type EditorViewportHandle } from "./EditorViewport";
 import { AnimateWorkspace } from "./AnimateWorkspace";
@@ -46,11 +46,15 @@ import { useRouter } from "next/navigation";
 import { ImageProductionStatus } from "./ImageProductionStatus";
 import { PART_CUTTER_IMPORT_KEY, type PartCutterImportPayload } from "@/src/part-cutter/importBridge";
 import { StudioCommandPalette, type StudioCommand } from "@/app/studio-ui/StudioCommandPalette";
-import { StudioModeNav, type StudioMode } from "@/app/studio-ui/StudioModeNav";
+import type { StudioMode } from "@/app/studio-ui/StudioModeNav";
 import { StudioUtilityDrawer, type StudioProblem } from "@/app/studio-ui/StudioUtilityDrawer";
 import { humanizeTechnicalId } from "@/app/studio-ui/humanize";
 import { StudioDialog } from "@/app/studio-ui/StudioDialog";
 import { presentAgentStatus } from "@/app/studio-ui/agentStatus";
+import { TopCommandRail, type StudioConnection } from "@/app/studio-ui/TopCommandRail";
+import { CanvasControls } from "./CanvasControls";
+import { SemanticNavigator, type SemanticSection } from "./SemanticNavigator";
+import { publishIntegrityEvidence } from "@/src/diagnostics/integrityEvidence";
 
 const rigName = (rig: RigDefinition): string => typeof rig.metadata.name === "string" ? rig.metadata.name : rig.id;
 const editableTarget = (target: EventTarget | null): boolean => target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
@@ -62,6 +66,7 @@ type PendingDelete = {
   readonly slotIds: readonly string[];
   readonly replacementChoices: readonly string[];
 };
+type SetupStep = "body" | "pivots" | "equipment" | "validate";
 const readHistoryUi = (history: RigCommandHistory): HistoryUi => ({ canUndo: history.canUndo, canRedo: history.canRedo, undoLabel: history.getUndoLabel(), redoLabel: history.getRedoLabel() });
 
 export function RigEditor() {
@@ -90,10 +95,17 @@ export function RigEditor() {
   const [focusMode, setFocusMode] = useState(false);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
+  const [semanticSection, setSemanticSection] = useState<SemanticSection>("body");
+  const [setupStep, setSetupStep] = useState<SetupStep>("body");
+  const [canvasTool, setCanvasTool] = useState<"select" | "pan">("select");
+  const [renamingRig, setRenamingRig] = useState(false);
+  const [leftPanelWidth, setLeftPanelWidth] = useState(264);
+  const [rightPanelWidth, setRightPanelWidth] = useState(320);
+  const [demoInvalid, setDemoInvalid] = useState(false);
   const [preferencesReady, setPreferencesReady] = useState(false);
   const [activeSkinId, setActiveSkinId] = useState("");
   const [zoom, setZoom] = useState(1);
-  const [cursor, setCursor] = useState({ x: 0, y: 0 });
+  const [, setCursor] = useState({ x: 0, y: 0 });
   const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState("Loading rig document");
   const [centerOnLoad, setCenterOnLoad] = useState(false);
@@ -102,6 +114,8 @@ export function RigEditor() {
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [deleteReplacementId, setDeleteReplacementId] = useState("");
   const [historyUi, setHistoryUi] = useState<HistoryUi>({ canUndo: false, canRedo: false, undoLabel: null, redoLabel: null });
+  const [projectSessionToken, setProjectSessionToken] = useState(() => commandService.getProjectLifecycleSnapshot().projectSessionToken);
+  const [generatedProjectState, setGeneratedProjectState] = useState<GeneratedCharacterProject | null>(null);
   const historyRef = useRef<RigCommandHistory | null>(null);
   const viewportRef = useRef<EditorViewportHandle>(null);
   const loadInputRef = useRef<HTMLInputElement>(null);
@@ -112,11 +126,34 @@ export function RigEditor() {
   const generatedProjectRef = useRef<GeneratedCharacterProject | null>(null);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => { const mode = new URLSearchParams(window.location.search).get("mode"); if (mode === "animate") setEditorMode("animate"); try { const stored = JSON.parse(window.localStorage.getItem("rigging-studio-workspace-v1") ?? "{}") as { leftCollapsed?: boolean; rightCollapsed?: boolean; showGrid?: boolean; showBones?: boolean; showBounds?: boolean }; setLeftCollapsed(Boolean(stored.leftCollapsed)); setRightCollapsed(Boolean(stored.rightCollapsed)); if (stored.showGrid !== undefined) setShowGrid(stored.showGrid); if (stored.showBones !== undefined) setShowBones(stored.showBones); if (stored.showBounds !== undefined) setShowBounds(stored.showBounds); } catch { /* invalid workspace preferences fall back to the disciplined default layout */ } setPreferencesReady(true); }, 0);
+    const timer = window.setTimeout(() => { const params = new URLSearchParams(window.location.search); const mode = params.get("mode"); if (mode === "animate") setEditorMode("animate"); setDemoInvalid(params.get("demo") === "invalid"); const step = params.get("step"); if (["body", "pivots", "equipment", "validate"].includes(step ?? "")) setSetupStep(step as SetupStep); try { const stored = JSON.parse(window.localStorage.getItem("rigging-studio-workspace-v1") ?? "{}") as { leftCollapsed?: boolean; rightCollapsed?: boolean; showGrid?: boolean; showBones?: boolean; showBounds?: boolean; focusMode?: boolean; semanticSection?: SemanticSection; leftPanelWidth?: number; rightPanelWidth?: number }; setLeftCollapsed(Boolean(stored.leftCollapsed)); setRightCollapsed(Boolean(stored.rightCollapsed)); setFocusMode(Boolean(stored.focusMode)); if (["character", "body", "equipment", "layers", "advanced"].includes(stored.semanticSection ?? "")) setSemanticSection(stored.semanticSection!); if (Number.isFinite(stored.leftPanelWidth)) setLeftPanelWidth(Math.max(208, Math.min(360, stored.leftPanelWidth!))); if (Number.isFinite(stored.rightPanelWidth)) setRightPanelWidth(Math.max(268, Math.min(420, stored.rightPanelWidth!))); if (stored.showGrid !== undefined) setShowGrid(stored.showGrid); if (stored.showBones !== undefined) setShowBones(stored.showBones); if (stored.showBounds !== undefined) setShowBounds(stored.showBounds); } catch { /* invalid workspace preferences fall back to the disciplined default layout */ } setPreferencesReady(true); }, 0);
     return () => window.clearTimeout(timer);
   }, []);
 
-  useEffect(() => { if (preferencesReady) window.localStorage.setItem("rigging-studio-workspace-v1", JSON.stringify({ leftCollapsed, rightCollapsed, showGrid, showBones, showBounds })); }, [leftCollapsed, preferencesReady, rightCollapsed, showBones, showBounds, showGrid]);
+  useEffect(() => {
+    const onDurableOpen = (event: Event): void => {
+      const detail = (event as CustomEvent<{ readonly mode?: string; readonly projectSessionToken?: string }>).detail;
+      const mode = detail?.mode;
+      try {
+        const snapshot = commandService.getDurableSnapshot();
+        generatedProjectRef.current = snapshot.project;
+        setGeneratedProjectState(snapshot.project);
+        setDefaultRig(snapshot.rig);
+        setAnimation(null);
+        setActiveSkinId(snapshot.selectedSkinId ?? snapshot.rig?.defaultSkinId ?? "");
+      } catch { generatedProjectRef.current = null; setGeneratedProjectState(null); }
+      setSelections([]); setHiddenBoneIds(new Set()); setLockedIds(new Set()); setSearch(""); setPendingDelete(null); setDeleteReplacementId("");
+      setRenamingRig(false); setCommandPaletteOpen(false); setUtilityOpen(false); setPreviewMode(false); setCanvasTool("select");
+      setProjectSessionToken(detail?.projectSessionToken ?? commandService.getProjectLifecycleSnapshot().projectSessionToken);
+      if (mode === "setup" || mode === "animate") setEditorMode(mode);
+    };
+    window.addEventListener("rig-studio:durable-project-opened", onDurableOpen);
+    return () => window.removeEventListener("rig-studio:durable-project-opened", onDurableOpen);
+  }, [commandService]);
+
+  useEffect(() => { if (preferencesReady) window.localStorage.setItem("rigging-studio-workspace-v1", JSON.stringify({ leftCollapsed, rightCollapsed, showGrid, showBones, showBounds, focusMode, semanticSection, leftPanelWidth, rightPanelWidth })); }, [focusMode, leftCollapsed, leftPanelWidth, preferencesReady, rightCollapsed, rightPanelWidth, semanticSection, showBones, showBounds, showGrid]);
+
+  useEffect(() => { if (!focusMode || !rig) return; const timer = window.setTimeout(() => viewportRef.current?.resetView(), 210); return () => window.clearTimeout(timer); }, [focusMode, rig]);
 
   useEffect(() => {
     if (!preferencesReady) return;
@@ -153,6 +190,7 @@ export function RigEditor() {
         if (generatedProject) {
           initialRig = generatedProject.rigDefinition!;
           generatedProjectRef.current = generatedProject;
+          setGeneratedProjectState(generatedProject);
           commandService.activateProjectFromUi(generatedProject);
           restored = true;
         }
@@ -208,12 +246,13 @@ export function RigEditor() {
       if (generated) {
         const next = { ...generated, stage: "edit" as const, rigDefinition: rig, skins: rig.skins, updatedAt: new Date().toISOString() };
         generatedProjectRef.current = next;
+        setGeneratedProjectState(next);
         void characterStorage.save(next).then((result) => {
           if (result.success) setMessage(`Generated rig autosaved · ${(result.approximateBytes / 1_048_576).toFixed(1)} MB in IndexedDB`);
           else setError(`Rig remains in memory. ${result.layer} failed: ${result.message}`);
         });
       } else {
-        try { window.localStorage.setItem(RIG_EDITOR_DRAFT_KEY, serializeDraft(rig)); setMessage("Local draft autosaved"); }
+        try { window.localStorage.setItem(RIG_EDITOR_DRAFT_KEY, serializeDraft(rig)); setMessage("Browser cache updated · not yet confirmed on disk"); }
         catch (reason: unknown) { setError(`Rig remains in memory. Local draft failed: ${reason instanceof Error ? reason.message : "storage unavailable"}`); }
       }
     }, 350);
@@ -228,7 +267,52 @@ export function RigEditor() {
 
   const primarySelection = selections.at(-1) ?? null;
   const selectedLocked = primarySelection ? lockedIds.has(`${primarySelection.type}:${primarySelection.id}`) : false;
-  const validationIssues = rig ? validateRigDefinition(rig) : [];
+  const validationIssues = useMemo(() => {
+    if (!rig) return [];
+    const inspectedRig = demoInvalid && rig.slots[0] ? { ...rig, slots: rig.slots.map((slot, index) => index === 0 ? { ...slot, boneId: "missing-demo-bone" } : slot) } : rig;
+    return validateRigProject({ storageVersion: LOCAL_PROJECT_STORAGE_VERSION, project: generatedProjectState, rig: inspectedRig, animations: animation ? createAnimationLibrary(inspectedRig.id, [animation]) : null, selectedSkinId: activeSkinId }, {
+      boneIds: selections.filter((selection) => selection.type === "bone").map((selection) => selection.id),
+      slotIds: selections.filter((selection) => selection.type === "slot").map((selection) => selection.id),
+      attachmentIds: selections.filter((selection) => selection.type === "attachment").map((selection) => selection.id),
+      skinIds: selections.filter((selection) => selection.type === "skin").map((selection) => selection.id),
+    });
+  }, [activeSkinId, animation, demoInvalid, generatedProjectState, rig, selections]);
+  const blockingValidationIssues = useMemo(() => blockingRigProjectProblems(validationIssues), [validationIssues]);
+  useEffect(() => {
+    if (editorMode !== "animate" || !blockingValidationIssues.length) return;
+    const timer = window.setTimeout(() => {
+      setEditorMode("setup"); setSetupStep("validate"); setUtilityTab("problems"); setUtilityOpen(true);
+      setError("Animate was not opened because the durable project failed integrity validation");
+      router.replace("/?mode=setup", { scroll: false });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [blockingValidationIssues.length, editorMode, router]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (!rig) { setSelections([]); return; }
+      const ids = {
+        bone: new Set(rig.bones.map((bone) => bone.id)),
+        slot: new Set(rig.slots.map((slot) => slot.id)),
+        attachment: new Set(rig.attachments.map((attachment) => attachment.id)),
+        skin: new Set(rig.skins.map((skin) => skin.id)),
+      };
+      setSelections((current) => current.filter((selection) => ids[selection.type].has(selection.id)));
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [rig]);
+  useEffect(() => {
+    if (!rig) return;
+    publishIntegrityEvidence({
+      stage: editorMode,
+      state: {
+        rigId: rig.id, bones: rig.bones.map((bone) => bone.id), slots: rig.slots.map((slot) => `${slot.id}:${slot.boneId}:${slot.attachmentId ?? ""}`),
+        attachments: rig.attachments.map((attachment) => attachment.id), skins: rig.skins.map((skin) => skin.id), selected: selections.map((selection) => `${selection.type}:${selection.id}`),
+        animation: animation ? { id: animation.id, tracks: animation.tracks.map((track) => `${track.boneId}:${track.property}:${track.keyframes.length}`) } : null,
+      },
+      problems: validationIssues,
+    });
+  }, [animation, editorMode, rig, selections, validationIssues]);
 
   const syncHistory = useCallback((next: RigDefinition, changed = true): void => {
     rigStateRef.current = next;
@@ -258,12 +342,16 @@ export function RigEditor() {
       return exists ? current.filter((item) => item.type !== selection.type || item.id !== selection.id) : [...current, selection];
     });
     if (selection.type === "skin") setActiveSkinId(selection.id);
+    setRightCollapsed(false);
   }, []);
 
   useEffect(() => {
     if (!rig || !historyRef.current) return;
     return commandService.attachRigEditor({
       getRig: () => historyRef.current?.present ?? rigStateRef.current ?? rig,
+      replace: (next) => {
+        const history = new RigCommandHistory(next); historyRef.current = history; rigStateRef.current = next; setRig(next); setActiveSkinId(next.defaultSkinId); setHistoryUi(readHistoryUi(history)); setDirty(false); setError(null); setMessage("Opened disk project"); return next;
+      },
       execute: (label, transform) => {
         const history = historyRef.current; if (!history) throw new Error("Rig history is unavailable");
         const next = history.execute(label, transform); syncHistory(next); setMessage(label); return next;
@@ -511,12 +599,12 @@ export function RigEditor() {
       if (editableTarget(event.target) || commandPaletteOpen) return;
       if (event.key === "1") { event.preventDefault(); router.push("/part-cutter"); return; }
       if (event.key === "2") { event.preventDefault(); router.replace("/?mode=setup", { scroll: false }); setEditorMode("setup"); setPreviewMode(false); setFocusMode(false); return; }
-      if (event.key === "3") { event.preventDefault(); router.replace("/?mode=animate", { scroll: false }); setEditorMode("animate"); setPreviewMode(false); setFocusMode(false); return; }
+      if (event.key === "3") { event.preventDefault(); if (blockingValidationIssues.length) { setSetupStep("validate"); setUtilityTab("problems"); setUtilityOpen(true); setError("Setup must pass integrity validation before Animate can open"); } else { router.replace("/?mode=animate", { scroll: false }); setEditorMode("animate"); setPreviewMode(false); setFocusMode(false); } return; }
       if (event.key.toLowerCase() === "f") { event.preventDefault(); viewportRef.current?.resetView(); return; }
       if (event.key === "Escape" && focusMode) { event.preventDefault(); setFocusMode(false); }
     };
     window.addEventListener("keydown", keyDown); return () => window.removeEventListener("keydown", keyDown);
-  }, [commandPaletteOpen, focusMode, router]);
+  }, [blockingValidationIssues.length, commandPaletteOpen, focusMode, router]);
 
   if (!rig) return <main className="rig-editor-shell is-loading"><div className="editor-loading">{error ?? "Loading rig editor"}</div></main>;
 
@@ -539,10 +627,16 @@ export function RigEditor() {
     return undefined;
   };
   const problems: StudioProblem[] = validationIssues.map((issue, index) => ({ id: `${issue.code}-${index}`, severity: issue.severity ?? "error", title: humanizeTechnicalId(issue.code), detail: issue.suggestedAction ? `${issue.message} ${issue.suggestedAction}` : issue.message, context: issue.objectId ? humanizeTechnicalId(issue.objectId) : issue.path.join(" › ") || "Rig", onSelect: selectIssueSource(issue) }));
-  const modeSelect = (mode: StudioMode): void => { if (mode === "prepare") router.push("/part-cutter"); else { router.replace(`/?mode=${mode}`, { scroll: false }); setEditorMode(mode); setPreviewMode(false); setFocusMode(false); } };
-  const toggleFocusMode = (): void => { const entering = !focusMode; setFocusMode(entering); if (entering) window.requestAnimationFrame(() => viewportRef.current?.resetView()); };
+  const modeSelect = (mode: StudioMode): void => { if (mode === "prepare") router.push("/part-cutter"); else if (mode === "animate" && blockingValidationIssues.length) { setSetupStep("validate"); setUtilityTab("problems"); setUtilityOpen(true); setError("Setup must pass integrity validation before Animate can open"); } else { router.replace(`/?mode=${mode}`, { scroll: false }); setEditorMode(mode); setPreviewMode(false); setFocusMode(false); } };
+  const toggleFocusMode = (): void => { const entering = !focusMode; setFocusMode(entering); if (entering) { window.requestAnimationFrame(() => viewportRef.current?.resetView()); window.setTimeout(() => viewportRef.current?.resetView(), 190); } };
+  const activateSetupStep = (step: SetupStep): void => {
+    setSetupStep(step);
+    if (step === "body" || step === "pivots") { setSemanticSection("body"); setShowBones(true); }
+    if (step === "equipment") { setSemanticSection("equipment"); setShowBounds(false); setSelections([]); }
+    if (step === "validate") { setUtilityTab("problems"); setUtilityOpen(true); }
+  };
   const resetWorkspace = (): void => { setLeftCollapsed(false); setRightCollapsed(false); setShowGrid(true); setShowBones(true); setShowBounds(false); setFocusMode(false); viewportRef.current?.resetView(); setMessage("Workspace layout reset"); };
-  const animationCommand = (action: "play" | "pause" | "restart" | "ai" | "review"): void => { window.dispatchEvent(new CustomEvent("rig-studio:animation-command", { detail: action })); };
+  const animationCommand = (action: "play" | "pause" | "restart" | "ai" | "review" | "save"): void => { window.dispatchEvent(new CustomEvent("rig-studio:animation-command", { detail: action })); };
   const commands: StudioCommand[] = [
     { id: "prepare", label: "Prepare character parts", description: "Open source cutting, masks, semantics, and reconstruction", group: "Mode", shortcut: "1", keywords: "ai cut manual cut masks", run: () => modeSelect("prepare") },
     { id: "setup", label: "Setup rig", description: "Edit bones, pivots, slots, equipment, and skins", group: "Mode", shortcut: "2", run: () => modeSelect("setup") },
@@ -568,51 +662,54 @@ export function RigEditor() {
     { id: "comfy-status", label: "Comfy status", description: "Inspect the image-production provider status in the top bar", group: "Review", keywords: "image provider comfyui workflow", run: () => setMessage("Comfy provider status is shown in the top bar") },
     { id: "reset-workspace", label: "Reset workspace", description: "Restore panels, overlays, and viewport defaults", group: "Workspace", run: resetWorkspace },
   ];
-  const nextAction = validationIssues.length ? "Next: review Problems" : editorMode === "setup" ? "Next: test joints or animate" : "Next: preview motion or run visual review";
-
-  return <main className={`rig-editor-shell mode-${editorMode} ${focusMode ? "is-focus-mode" : ""}`}>
+  const connections: readonly StudioConnection[] = [
+    { id: "rig", label: "Rig", state: validationIssues.length ? "degraded" : "ready", title: validationIssues.length ? `${validationIssues.length} issues` : "Document ready" },
+    { id: "agent", label: "Agent", state: agentStatus.ready ? "ready" : agentStatus.state === "bridge" || agentStatus.state === "no-tools" ? "degraded" : "offline", title: agentStatus.label },
+  ];
+  const beginPanelResize = (side: "left" | "right", event: ReactPointerEvent<HTMLButtonElement>): void => {
+    event.preventDefault();
+    const startX = event.clientX; const startWidth = side === "left" ? leftPanelWidth : rightPanelWidth;
+    const move = (pointerEvent: PointerEvent): void => { const delta = (pointerEvent.clientX - startX) * (side === "left" ? 1 : -1); const next = Math.max(side === "left" ? 208 : 268, Math.min(side === "left" ? 360 : 420, startWidth + delta)); if (side === "left") setLeftPanelWidth(next); else setRightPanelWidth(next); };
+    const stop = (): void => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", stop); };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", stop, { once: true });
+  };
+  const workspaceStyle = { "--navigator-width": `${leftPanelWidth}px`, "--inspector-width": `${rightPanelWidth}px` } as CSSProperties;
+  return <main className={`rig-editor-shell mode-${editorMode} ${focusMode ? "is-focus-mode" : ""}`} style={workspaceStyle}>
     <input ref={loadInputRef} hidden type="file" accept="application/json,.json" onChange={(event) => void loadJson(event)} />
     <input ref={uploadInputRef} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void uploadAttachment(event)} />
     <input ref={prepareInputRef} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void importSpriteForCutting(event)} />
-    <header className="editor-topbar">
-      <Link href="/" className="editor-mark" aria-label="Rig editor">RS</Link>
-      <label className="rig-name"><span className={dirty ? "is-dirty" : ""}>Project</span><input key={rigName(rig)} defaultValue={rigName(rig)} disabled={previewMode} onBlur={(event) => commitRigName(event.target.value)} /></label>
-      <StudioModeNav active={editorMode} onSelect={modeSelect} />
-      <button type="button" className="command-trigger" onClick={() => setCommandPaletteOpen(true)}><span>Search commands</span><kbd>⌘K</kbd></button>
-      <details className="studio-file-menu"><summary>File</summary><div><Link href="/create-character">Create character</Link><button type="button" onClick={() => prepareInputRef.current?.click()} disabled={previewMode || editorMode === "animate"}>Import sprite</button><button type="button" onClick={() => loadInputRef.current?.click()} disabled={previewMode || editorMode === "animate"}>Load rig</button><button type="button" onClick={downloadJson} disabled={editorMode === "animate"}>Export rig</button><button type="button" onClick={resetWorkspace}>Reset workspace</button></div></details>
-      <div className="topbar-group global-edit-tools"><button type="button" onClick={undo} disabled={editorMode === "animate" || previewMode || !historyUi.canUndo} title={historyUi.undoLabel ?? "Nothing to undo"}>Undo</button><button type="button" onClick={redo} disabled={editorMode === "animate" || previewMode || !historyUi.canRedo} title={historyUi.redoLabel ?? "Nothing to redo"}>Redo</button><button type="button" className="save-action" onClick={downloadJson} disabled={editorMode === "animate"}>Save</button></div>
-      <div className="topbar-group view-tools"><button type="button" onClick={() => viewportRef.current?.resetView()} title="Fit character (F)">Fit</button><Toggle label="Bones" active={showBones} onClick={() => setShowBones((value) => !value)} /><button type="button" className={focusMode ? "is-active" : ""} onClick={toggleFocusMode}>{focusMode ? "Exit focus" : "Focus"}</button></div>
-      <button type="button" className={`problem-trigger ${validationIssues.length ? "has-errors" : "is-valid"}`} onClick={() => { setUtilityTab("problems"); setUtilityOpen(true); }}><i />{validationIssues.length ? `${validationIssues.length} issues` : "Rig valid"}</button>
-      <button type="button" className={`connection-status is-${agentStatus.state}`} title={agentStatus.label} onClick={() => { setUtilityTab("activity"); setUtilityOpen(true); }}><i />{agentStatus.label}</button>
-      <ImageProductionStatus projectId={agentSession.activeProjectId?.startsWith("character-") ? agentSession.activeProjectId : null} />
-    </header>
+    <TopCommandRail active={editorMode} projectName={rigName(rig)} dirty={dirty} editingName={renamingRig} onEditingName={setRenamingRig} onCommitName={commitRigName} onSelect={modeSelect} onCommand={() => setCommandPaletteOpen(true)} onUndo={undo} onRedo={redo} canUndo={editorMode === "setup" && !previewMode && historyUi.canUndo} canRedo={editorMode === "setup" && !previewMode && historyUi.canRedo} undoTitle={historyUi.undoLabel ?? "Nothing to undo"} redoTitle={historyUi.redoLabel ?? "Nothing to redo"} onExport={() => editorMode === "animate" ? animationCommand("save") : downloadJson()} validity={{ count: validationIssues.length, onOpen: () => { setUtilityTab("problems"); setUtilityOpen(true); } }} connections={connections} onConnections={() => { setUtilityTab("activity"); setUtilityOpen(true); }} focus={{ active: focusMode, onToggle: toggleFocusMode }} overflow={<><Link href="/create-character">Create character</Link><button type="button" onClick={() => prepareInputRef.current?.click()} disabled={previewMode || editorMode === "animate"}>Import sprite</button><button type="button" onClick={() => loadInputRef.current?.click()} disabled={previewMode || editorMode === "animate"}>Load rig</button><button type="button" onClick={discardDraft} disabled={previewMode || editorMode === "animate"}>Discard local draft</button><button type="button" onClick={resetWorkspace}>Reset workspace</button><button type="button" onClick={() => { setUtilityTab("activity"); setUtilityOpen(true); }}>Diagnostics</button></>}><ImageProductionStatus projectId={agentSession.activeProjectId?.startsWith("character-") ? agentSession.activeProjectId : null} /></TopCommandRail>
 
-    {editorMode === "animate" ? <AnimateWorkspace rig={rig} activeSkinId={effectiveSkinId} showGrid={showGrid} showBones={showBones} showBounds={showBounds} viewportRef={viewportRef} onCursor={setCursor} onZoom={setZoom} onMessage={setMessage} onError={setError} /> : <div className={`editor-body ${leftCollapsed ? "left-collapsed" : ""} ${rightCollapsed ? "right-collapsed" : ""}`}>
+      {editorMode === "animate" ? <AnimateWorkspace key={projectSessionToken} rig={rig} activeSkinId={effectiveSkinId} showGrid={showGrid} showBones={showBones} showBounds={showBounds} viewportRef={viewportRef} onCursor={setCursor} onZoom={setZoom} onMessage={setMessage} onError={setError} /> : <div key={projectSessionToken} className={`editor-body ${leftCollapsed ? "left-collapsed" : ""} ${rightCollapsed ? "right-collapsed" : ""} ${!primarySelection ? "context-idle" : ""}`}>
       <aside className="editor-left-panel">
-        <header className="panel-identity"><span>Setup navigator</span><button type="button" onClick={() => setLeftCollapsed(true)} aria-label="Collapse navigator">‹</button></header>
-        <div className="outliner-search"><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search bones, slots, equipment" aria-label="Search setup objects" /><button type="button" onClick={() => setSearch("")} disabled={!search}>×</button></div>
-        <EditorHierarchy rig={rig} search={search} selections={selections} hiddenBoneIds={hiddenBoneIds} lockedIds={lockedIds} onSelect={select} onToggleBoneVisibility={(id) => toggleSetValue(setHiddenBoneIds, id)} onToggleSlotVisibility={(id) => run("Toggle slot visibility", (current) => { const slot = current.slots.find((item) => item.id === id); return slot ? updateSlot(current, id, { visible: !slot.visible }) : current; })} onToggleLock={(key) => toggleSetValue(setLockedIds, key)} onAdd={addItem} onDuplicate={duplicateItem} onDelete={deleteItem} onMoveSlot={(id, direction) => run("Reorder slot", (current) => moveSlot(current, id, direction))} disabled={previewMode} />
-        <button type="button" className="discard-draft" onClick={discardDraft} disabled={previewMode}>Discard local draft</button>
+        <header className="panel-identity"><span>Setup</span><button type="button" onClick={() => setLeftCollapsed(true)} aria-label="Collapse setup navigator">‹</button></header>
+        <div className="outliner-search"><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`Search ${semanticSection}`} aria-label="Search setup objects" /><button type="button" onClick={() => setSearch("")} disabled={!search}>×</button></div>
+        <SemanticNavigator section={semanticSection} onSection={(section) => { setSemanticSection(section); if (section === "equipment") setSetupStep("equipment"); else if (section === "body" && setupStep === "equipment") setSetupStep("body"); }} rig={rig} search={search} selections={selections} hiddenBoneIds={hiddenBoneIds} lockedIds={lockedIds} onSelect={select} onToggleBoneVisibility={(id) => toggleSetValue(setHiddenBoneIds, id)} onToggleSlotVisibility={(id) => run("Toggle slot visibility", (current) => { const slot = current.slots.find((item) => item.id === id); return slot ? updateSlot(current, id, { visible: !slot.visible }) : current; })} onToggleLock={(key) => toggleSetValue(setLockedIds, key)} onAdd={addItem} onDuplicate={duplicateItem} onDelete={deleteItem} onMoveSlot={(id, direction) => run("Reorder slot", (current) => moveSlot(current, id, direction))} disabled={previewMode} />
+        <button type="button" className="panel-resize-handle resize-left" onPointerDown={(event) => beginPanelResize("left", event)} aria-label="Resize setup navigator" />
       </aside>
 
       <section className="editor-center">
         {leftCollapsed && <button type="button" className="restore-panel restore-left" onClick={() => setLeftCollapsed(false)}>Navigator ›</button>}
         {rightCollapsed && <button type="button" className="restore-panel restore-right" onClick={() => setRightCollapsed(false)}>‹ Inspector</button>}
-        <div className="viewport-context-row"><div className="selection-breadcrumb"><span>{rigName(rig)}</span><i>›</i><b>{primarySelection ? humanizeTechnicalId(primarySelection.type) : "Character"}</b>{primarySelection && <><i>›</i><strong>{selectionLabel}</strong></>}</div><div className="viewport-toolbar" aria-label="Setup viewport tools"><button type="button" className="is-active">Select</button><button type="button" onClick={() => viewportRef.current?.resetView()}>Fit</button><Toggle label="Grid" active={showGrid} onClick={() => setShowGrid((value) => !value)} /><Toggle label="Grid snap" active={snapToGrid} onClick={() => setSnapToGrid((value) => !value)} /><Toggle label="Pixel" active={wholePixelSnap} onClick={() => setWholePixelSnap((value) => !value)} /><Toggle label="15°" active={rotationSnap} onClick={() => setRotationSnap((value) => !value)} /><Toggle label="Bounds" active={showBounds} onClick={() => setShowBounds((value) => !value)} /></div></div>
-        <EditorViewport ref={viewportRef} rig={rig} animation={previewAnimation} previewMode={previewMode} activeSkinId={effectiveSkinId} selections={selections} hiddenBoneIds={hiddenBoneIds} lockedBoneIds={new Set([...lockedIds].filter((key) => key.startsWith("bone:")).map((key) => key.slice(5)))} showGrid={showGrid} showBones={showBones} showBounds={showBounds} snapToGrid={snapToGrid} wholePixelSnap={wholePixelSnap} rotationSnap={rotationSnap} onSelect={select} onCursor={(point) => setCursor(point)} onZoom={setZoom} onBoneDragStart={beginBoneDrag} onBoneDragPreview={() => undefined} onBoneDragCommit={commitBoneDrag} onWarning={setError} />
+        <div className="viewport-context-row"><div className="selection-breadcrumb"><span>{humanizeTechnicalId(semanticSection)}</span><i>›</i><strong>{primarySelection ? selectionLabel : "Select an object"}</strong></div><CanvasControls tool={canvasTool} onTool={setCanvasTool} showBones={showBones} showGrid={showGrid} showBounds={showBounds} snapToGrid={snapToGrid} wholePixelSnap={wholePixelSnap} rotationSnap={rotationSnap} onShowBones={() => setShowBones((value) => !value)} onShowGrid={() => setShowGrid((value) => !value)} onShowBounds={() => setShowBounds((value) => !value)} onSnapToGrid={() => setSnapToGrid((value) => !value)} onWholePixelSnap={() => setWholePixelSnap((value) => !value)} onRotationSnap={() => setRotationSnap((value) => !value)} onFit={() => viewportRef.current?.resetView()} /></div>
+        <EditorViewport ref={viewportRef} rig={rig} animation={previewAnimation} previewMode={previewMode} activeSkinId={effectiveSkinId} selections={selections} hiddenBoneIds={hiddenBoneIds} lockedBoneIds={new Set([...lockedIds].filter((key) => key.startsWith("bone:")).map((key) => key.slice(5)))} showGrid={showGrid} showBones={showBones} showBounds={showBounds} snapToGrid={snapToGrid} wholePixelSnap={wholePixelSnap} rotationSnap={rotationSnap} canvasTool={canvasTool} interactionMode={setupStep} onSelect={select} onCursor={(point) => setCursor(point)} onZoom={setZoom} onBoneDragStart={beginBoneDrag} onBoneDragPreview={() => undefined} onBoneDragCommit={commitBoneDrag} onWarning={setError} />
         {previewMode && <div className="preview-notice">Preview mode. Setup-pose editing is locked.</div>}
+        <div className={`setup-workflow-rail ${blockingValidationIssues.length ? "has-issues" : "is-valid"}`} aria-label="Setup workflow">
+          <div className="setup-progress">{(["body", "pivots", "equipment", "validate"] as const).map((step, index) => { const state = setupStep === step ? "current" : step === "validate" && problems.length ? "blocked" : step === "validate" || index < (["body", "pivots", "equipment", "validate"] as const).indexOf(setupStep) ? "complete" : "available"; return <button key={step} type="button" data-state={state} aria-current={setupStep === step ? "step" : undefined} onClick={() => activateSetupStep(step)}><i>{state === "complete" ? "✓" : index + 1}</i><span>{step}</span></button>; })}</div>
+          <div className="setup-next-state"><span><i />{blockingValidationIssues.length ? "Setup needs attention" : "Setup valid"}</span><small>{blockingValidationIssues.length ? `${blockingValidationIssues.length} blocking ${blockingValidationIssues.length === 1 ? "issue" : "issues"}` : validationIssues.length ? `${validationIssues.length} non-blocking ${validationIssues.length === 1 ? "warning" : "warnings"}` : "Ready for animation"}</small></div>
+          <button type="button" className="stage-next-action" onClick={() => blockingValidationIssues.length ? activateSetupStep("validate") : modeSelect("animate")}>{blockingValidationIssues.length ? "Review issues" : "Enter Animate"}<span>→</span></button>
+        </div>
       </section>
 
-      <aside className="editor-right-panel">
-        <header className="panel-identity"><span>Inspector</span><button type="button" onClick={() => setRightCollapsed(true)} aria-label="Collapse inspector">›</button></header>
-        <EditorInspector rig={rig} selection={primarySelection} previewMode={previewMode} locked={selectedLocked} onFrame={() => viewportRef.current?.resetView()} onIsolate={() => { if (primarySelection?.type === "bone") setHiddenBoneIds(new Set(rig.bones.filter((bone) => bone.id !== primarySelection.id).map((bone) => bone.id))); }} onBonePatch={(id, patch, label) => run(label, (current) => updateBone(current, id, patch))} onSlotPatch={(id, patch, label) => run(label, (current) => updateSlot(current, id, patch))} onAttachmentPatch={(id, patch, label) => run(label, (current) => updateAttachment(current, id, patch))} onRenameSkin={(id, name) => run("Rename skin", (current) => renameSkin(current, id, name))} onAssignSkin={(skinId, slotId, attachmentId) => run("Assign skin attachment", (current) => assignSkinAttachment(current, skinId, slotId, attachmentId))} />
+      <aside className={`editor-right-panel ${!primarySelection ? "is-context-idle" : ""}`}>
+        <button type="button" className="panel-resize-handle resize-right" onPointerDown={(event) => beginPanelResize("right", event)} aria-label="Resize inspector" />
+        <header className="panel-identity"><span>{primarySelection ? "Inspector" : "Context"}</span><button type="button" onClick={() => setRightCollapsed(true)} aria-label="Collapse inspector">›</button></header>
+        {primarySelection ? <EditorInspector rig={rig} selection={primarySelection} previewMode={previewMode} locked={selectedLocked} onFrame={() => viewportRef.current?.resetView()} onIsolate={() => { if (primarySelection?.type === "bone") setHiddenBoneIds(new Set(rig.bones.filter((bone) => bone.id !== primarySelection.id).map((bone) => bone.id))); }} onBonePatch={(id, patch, label) => run(label, (current) => updateBone(current, id, patch))} onSlotPatch={(id, patch, label) => run(label, (current) => updateSlot(current, id, patch))} onAttachmentPatch={(id, patch, label) => run(label, (current) => updateAttachment(current, id, patch))} onRenameSkin={(id, name) => run("Rename skin", (current) => renameSkin(current, id, name))} onAssignSkin={(skinId, slotId, attachmentId) => run("Assign skin attachment", (current) => assignSkinAttachment(current, skinId, slotId, attachmentId))} /> : <div className="context-rail-empty"><span>⌁</span><p>Select a body part</p><button type="button" onClick={() => { setSemanticSection("body"); setLeftCollapsed(false); }}>Browse body</button></div>}
       </aside>
     </div>}
     {focusMode && editorMode === "animate" && <div className="focus-playback-controls" aria-label="Focus playback controls"><button type="button" onClick={() => animationCommand("play")}>▶ Play</button><button type="button" onClick={() => animationCommand("pause")}>Ⅱ Pause</button><button type="button" onClick={() => animationCommand("restart")}>↺ Restart</button><button type="button" onClick={() => setFocusMode(false)}>Exit Focus</button></div>}
 
-    <footer className="editor-statusbar">
-      <span className="mode-status">{editorMode}</span><span>Zoom {(zoom * 100).toFixed(0)}%</span><span>X {cursor.x.toFixed(1)} Y {cursor.y.toFixed(1)}</span><span>{selectionLabel}</span><button type="button" className={problems.length ? "status-error" : "status-valid"} onClick={() => { setUtilityTab("problems"); setUtilityOpen((value) => !value); }}>{problems.length ? `${problems.length} problems` : "No problems"}</button><button type="button" onClick={() => { setUtilityTab("activity"); setUtilityOpen((value) => !value); }}>Activity {agentActivity.length}</button><span>{dirty ? "Unsaved changes" : "Saved"}</span><span className="next-action">{nextAction}</span><span className="status-message">{agentSession.lastOperation ? `${agentSession.lastOperation} · ` : ""}{error ?? message}</span>
-    </footer>
+    {(error || message) && <output className={`studio-toast ${error ? "is-error" : ""}`}><span>{error ? "!" : "●"}</span>{agentSession.lastOperation ? `${agentSession.lastOperation} · ` : ""}{error ?? message}<small>{(zoom * 100).toFixed(0)}%</small></output>}
     <StudioUtilityDrawer open={utilityOpen} tab={utilityTab} problems={problems} activity={agentActivity} onTab={setUtilityTab} onClose={() => setUtilityOpen(false)} />
     <StudioCommandPalette commands={commands} mode={editorMode} selection={selectionLabel} open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
     <StudioDialog open={confirmDiscard} title="Discard local rig draft?" description="The bundled test rig will replace the current local setup document. This action intentionally clears the local draft." confirmLabel="Discard draft" danger onCancel={() => setConfirmDiscard(false)} onConfirm={confirmDiscardDraft} />
@@ -620,8 +717,4 @@ export function RigEditor() {
       {pendingDelete?.type === "bone" && (pendingDelete.childIds.length > 0 || pendingDelete.slotIds.length > 0) && <><ul>{pendingDelete.childIds.map((id) => <li key={`bone-${id}`}>Child: {humanizeTechnicalId(id)}</li>)}{pendingDelete.slotIds.map((id) => <li key={`slot-${id}`}>Slot: {humanizeTechnicalId(id)}</li>)}</ul><label>Move dependents to<select value={deleteReplacementId} onChange={(event) => setDeleteReplacementId(event.target.value)}>{pendingDelete.replacementChoices.map((id) => <option key={id} value={id}>{humanizeTechnicalId(id)}</option>)}</select></label></>}
     </StudioDialog>
   </main>;
-}
-
-function Toggle({ label, active, onClick }: { readonly label: string; readonly active: boolean; readonly onClick: () => void }) {
-  return <button type="button" className={active ? "is-active" : ""} aria-pressed={active} onClick={onClick}>{label}</button>;
 }

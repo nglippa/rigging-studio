@@ -16,11 +16,12 @@ import { MockAnimationGenerationProvider } from "../../rigging/ai/mockAnimationG
 import { validateAnimationProposal } from "../../rigging/ai/animationProposalValidator";
 import { DiagnosticFrameRenderer } from "../../rigging/ai-vision/diagnosticFrameRenderer";
 import { createDiagnosticCapturePlan } from "../../rigging/ai-vision/diagnosticCapturePlan";
-import { safeParseAnimationDefinition } from "../../rigging/schema/parsing";
-import type { AnimatedProperty, Easing, RigDefinition } from "../../rigging/schema/types";
+import { safeParseAnimationDefinition, safeParseRigDefinition } from "../../rigging/schema/parsing";
+import type { AnimatedProperty, Easing, JsonValue, RigDefinition } from "../../rigging/schema/types";
 import { validateRigDefinition } from "../../rigging/validation/rig";
+import { blockingRigProjectProblems, validateRigProject } from "../../rigging/validation/project";
 import { assignSkinAttachment, updateBone, updateSlot } from "../../tools/rig-editor/document";
-import { addAnimation, animationById, createAnimationLibrary, deleteAnimation, replaceAnimation, uniqueAnimationId } from "../../tools/rig-editor/animation/library";
+import { addAnimation, animationById, createAnimationLibrary, deleteAnimation, parseAnimationLibraryJson, replaceAnimation, uniqueAnimationId } from "../../tools/rig-editor/animation/library";
 import { removeKeyframes, upsertKeyframe } from "../../tools/rig-editor/animation/operations";
 import type { AnimationLibrary } from "../../tools/rig-editor/animation/types";
 import { StudioEventBus, type StudioEvent, type StudioEventType } from "../events/StudioEventBus";
@@ -31,15 +32,20 @@ import { parseToolInput, type StudioToolName } from "../validation/toolSchemas";
 import { managedGenerationIngressSchema, type ManagedGenerationIngress } from "../validation/managedGenerationIngress";
 import type { AnimationEditorAdapter, CharacterProjectAdapter, RigEditorAdapter } from "./adapters";
 import type { CommandResult } from "./results";
+import { LOCAL_PROJECT_STORAGE_VERSION, type LocalProjectSnapshot } from "../../project-storage/types";
+import { canonicalProjectStateDigest } from "../../project-storage/digest";
+import { ProjectLifecycleCoordinator, type DurableSaveRequest, type ProjectOperationContext, type ProjectSwitchTransaction } from "../../project-storage/projectLifecycle";
 import { extractPartToDataUrl } from "../../character-generation/segmentation/partImageProcessor";
-import type { CharacterSegmentationResponse, SegmentationMask } from "../../character-generation/segmentation/segmentationSchema";
+import type { CharacterSegmentationResponse, Point, Rect, SegmentationMask } from "../../character-generation/segmentation/segmentationSchema";
 import {
-  SEMANTIC_TAXONOMY, acceptProposal as acceptPartCutProposal, analyzeCoverage, createPartCutterState, evaluateRotationTest, mergeParts as mergePartCuts,
-  partCutToSegmentation, proposalFromSegmentation, proposalToSegmentation, rejectProposal as rejectPartCutProposal, renderProposalSvg,
-  splitPart as splitPartCut, validateReconstructionAsset, type PartCutterState, type PartSemanticType,
+  SEMANTIC_TAXONOMY, acceptProposal as acceptPartCutProposal, anatomicalGuidePrompt, analyzeCoverage, assignOwnershipSelection, buildAnatomicalPartitionGuide, constrainProviderMaskToZone, createPartCutterState, deriveRiggingExtraction, ensureOwnershipPartition, evaluateRotationTest, guidedProposalFromSegmentation, mergeParts as mergePartCuts,
+  partCutToSegmentation, proposalToSegmentation, rejectProposal as rejectPartCutProposal, renderProposalSvg,
+  recordOwnershipRelabel, reshapeRegionEdge, splitPart as splitPartCut, validateReconstructionAsset, type PartCutterState, type PartSemanticType, type RegionEdge,
 } from "../../part-cutter";
+import { OllamaProvider, type IntelligenceProvider } from "../../intelligence";
 
 type JsonObject = Readonly<Record<string, unknown>>;
+const isJsonObject = (value: JsonValue | undefined): value is Readonly<Record<string, JsonValue>> => Boolean(value && typeof value === "object" && !Array.isArray(value));
 type LatestPreview = {
   readonly renderId: string;
   readonly animationId: string;
@@ -54,10 +60,10 @@ type LatestPreview = {
 };
 type PendingAnimationCommand = { readonly label: string; readonly library: AnimationLibrary };
 type ProjectActivationSource = "none" | "startup" | "draft" | "explicit";
-export type RiggingCommandServiceOptions = { readonly characterProvider?: CharacterPipelineProvider };
+export type RiggingCommandServiceOptions = { readonly characterProvider?: CharacterPipelineProvider; readonly intelligenceProvider?: IntelligenceProvider };
 
 const DEFAULT_CONTROLS: CharacterPromptControls = {
-  style: "stylized-game", bodyProportions: "compact readable game proportions", viewDirection: "right",
+  style: "chibi-pixel-art", bodyProportions: "oversized head, compact torso, short separated limbs", viewDirection: "right",
   mainHandEquipment: "weapon", offHandEquipment: "shield", hair: "readable modular hair", headwear: "optional modular headwear",
   characterScale: "medium", artResolution: "512", background: "transparent",
 };
@@ -69,6 +75,12 @@ const asString = (input: unknown): string => input as string;
 const asOptionalString = (input: unknown): string | undefined => input as string | undefined;
 const asNumber = (input: unknown): number => input as number;
 const asBoolean = (input: unknown): boolean => input as boolean;
+const polygonMask = (points: readonly Point[], canvas: { readonly width: number; readonly height: number }): { readonly bounds: Rect; readonly mask: SegmentationMask } => {
+  const left = Math.max(0, Math.floor(Math.min(...points.map((point) => point.x)))); const top = Math.max(0, Math.floor(Math.min(...points.map((point) => point.y)))); const right = Math.min(canvas.width, Math.ceil(Math.max(...points.map((point) => point.x)))); const bottom = Math.min(canvas.height, Math.ceil(Math.max(...points.map((point) => point.y))));
+  const width = Math.max(1, right - left); const height = Math.max(1, bottom - top);
+  const inside = (x: number, y: number): boolean => { let result = false; for (let index = 0, prior = points.length - 1; index < points.length; prior = index++) { const a = points[index]; const b = points[prior]; if (((a.y > y) !== (b.y > y)) && x < (b.x - a.x) * (y - a.y) / Math.max(.000001, b.y - a.y) + a.x) result = !result; } return result; };
+  return { bounds: { x: left, y: top, width, height }, mask: { width, height, alpha: Array.from({ length: width * height }, (_, index) => inside(left + index % width + .5, top + Math.floor(index / width) + .5) ? 255 : 0) } };
+};
 const blobBase64 = async (blob: Blob): Promise<string> => {
   const bytes = new Uint8Array(await blob.arrayBuffer());
   let binary = "";
@@ -136,13 +148,18 @@ export class RiggingCommandService {
   private pendingAnimationCommands: PendingAnimationCommand[] = [];
   private operationSequence = 0;
   private readonly characterProvider: CharacterPipelineProvider;
+  private intelligenceProvider: IntelligenceProvider;
   private readonly animationProvider = new MockAnimationGenerationProvider();
   private activationVersion = 0;
   private activationSource: ProjectActivationSource = "none";
+  private readonly durableListeners = new Set<() => void>();
+  private durableProjectId: string | null = null;
+  private readonly projectLifecycle = new ProjectLifecycleCoordinator({ digest: (snapshot) => canonicalProjectStateDigest(snapshot) });
 
   constructor(options: RiggingCommandServiceOptions = {}) {
     const endpoint = typeof process !== "undefined" ? process.env.NEXT_PUBLIC_CHARACTER_PIPELINE_ENDPOINT : undefined;
     this.characterProvider = options.characterProvider ?? (endpoint ? new HttpCharacterPipelineProvider(endpoint) : new MockCharacterPipelineProvider());
+    this.intelligenceProvider = options.intelligenceProvider ?? new OllamaProvider();
     this.queries = new StudioQueryService(() => ({
       session: this.session.snapshot,
       project: this.project,
@@ -154,6 +171,8 @@ export class RiggingCommandService {
     }));
     this.events.subscribe((event) => this.session.record(event));
   }
+
+  setIntelligenceProvider(provider: IntelligenceProvider): void { this.intelligenceProvider = provider; }
 
   attachRigEditor(adapter: RigEditorAdapter): () => void {
     this.rigAdapter = adapter;
@@ -167,7 +186,7 @@ export class RiggingCommandService {
       const rigId = adapter.getLibrary().rigId;
       const pending = this.pendingAnimationCommands.map((command) => ({ ...command, library: { ...command.library, rigId } }));
       this.pendingAnimationCommands = [];
-      this.animations = pending.reduce((current, command) => adapter.execute(command.label, () => command.library), adapter.getLibrary());
+      this.animations = pending.reduce((current, command) => adapter.replace ? adapter.replace(command.library) : adapter.execute(command.label, () => command.library), adapter.getLibrary());
       const selected = this.session.snapshot.selectedAnimationId;
       if (selected && this.animations.animations.some((animation) => animation.id === selected)) adapter.setActiveAnimation(selected);
     } else {
@@ -179,9 +198,15 @@ export class RiggingCommandService {
   }
 
   syncAnimationsFromUi(library: AnimationLibrary, selectedAnimationId: string | null): void {
-    this.animations = structuredClone(library);
+    this.projectLifecycle.assertMutationsAllowed();
+    let rig: RigDefinition | null = null; try { rig = this.requireRig(); } catch { rig = null; }
+    const normalized = rig && library.rigId !== rig.id ? { ...library, rigId: rig.id } : library;
+    if (rig) normalized.animations.forEach((animation) => { const result = safeParseAnimationDefinition(animation, rig!); if (!result.success) throw new Error(result.message); });
+    this.animations = structuredClone(normalized);
     this.pendingAnimationCommands = [];
     this.session.update({ selectedAnimationId });
+    if (this.projectLifecycle.snapshot.activeProjectId) this.projectLifecycle.recordMutation(this.projectLifecycle.snapshot.activeProjectId);
+    this.notifyDurableListeners();
   }
 
   attachCharacterProject(adapter: CharacterProjectAdapter): () => void {
@@ -192,6 +217,7 @@ export class RiggingCommandService {
   }
 
   syncRigFromUi(rig: RigDefinition, actor = "Human"): void {
+    this.projectLifecycle.assertMutationsAllowed();
     this.standaloneRig = structuredClone(rig);
     this.activeSkinId ??= rig.defaultSkinId;
     const issues = validateRigDefinition(rig);
@@ -200,17 +226,100 @@ export class RiggingCommandService {
       dirtyState: true, validationState: { valid: issues.length === 0, errorCount: issues.length, checkedAt: now() },
     });
     if (actor !== "Human") this.emit("rig.changed", actor, `Changed rig ${rig.id}`, rig.id);
+    if (this.projectLifecycle.snapshot.activeProjectId && !this.projectLifecycle.snapshot.switching) this.projectLifecycle.recordMutation(this.projectLifecycle.snapshot.activeProjectId);
+    this.notifyDurableListeners();
   }
 
   syncProjectFromUi(project: GeneratedCharacterProject, source: "startup" | "mutation" = "mutation"): boolean {
+    if (this.projectLifecycle.snapshot.switching) {
+      if (this.project) this.projectAdapter?.replaceProject(this.project);
+      return false;
+    }
     if (this.project && project.id !== this.project.id && this.activationSource === "explicit") {
       this.projectAdapter?.replaceProject(this.project);
       return false;
     }
     this.project = structuredClone(project);
     if (this.activationSource === "none") this.activationSource = source === "startup" ? "startup" : "explicit";
+    if (!this.projectLifecycle.snapshot.activeProjectId) this.projectLifecycle.activateInitial(project.id);
     if (project.rigDefinition) this.standaloneRig = structuredClone(project.rigDefinition);
     this.session.update({ activeProjectId: project.id, activeStage: project.stage, selectedRigId: project.rigDefinition?.id ?? null, dirtyState: true, warnings: project.warnings });
+    this.notifyDurableListeners();
+    return true;
+  }
+
+  subscribeDurableSnapshot(listener: () => void): () => void { this.durableListeners.add(listener); return () => this.durableListeners.delete(listener); }
+  getProjectLifecycleSnapshot() { return this.projectLifecycle.snapshot; }
+  getProjectLifecycleTrace() { return this.projectLifecycle.getTrace(); }
+  captureProjectOperation(operation: string): ProjectOperationContext { return this.projectLifecycle.capture(operation); }
+  assertProjectOperationCurrent(context: ProjectOperationContext, componentSource?: string): void { this.projectLifecycle.assertCurrent(context, componentSource); }
+  beginDurableProjectOpen(projectId: string, storagePath: string | null = null): ProjectSwitchTransaction { return this.projectLifecycle.beginSwitch(projectId, storagePath); }
+  abortDurableProjectOpen(transaction: ProjectSwitchTransaction): void { this.projectLifecycle.abortSwitch(transaction); }
+  createDurableSaveRequest(operation: "save" | "autosave" = "save"): DurableSaveRequest {
+    const snapshot = this.getDurableSnapshot();
+    return this.projectLifecycle.beginSave(snapshot, operation);
+  }
+  completeDurableSave(request: DurableSaveRequest, projectId: string): boolean {
+    if (!projectId.trim()) throw new Error("A managed project ID is required");
+    if (!this.projectLifecycle.completeSave(request, projectId)) return false;
+    this.durableProjectId = projectId; this.session.update({ dirtyState: false }); return true;
+  }
+  markDurableProjectSaved(projectId: string): void {
+    if (!projectId.trim()) throw new Error("A managed project ID is required");
+    this.durableProjectId = projectId;
+    if (!this.projectLifecycle.snapshot.activeProjectId) this.projectLifecycle.activateInitial(projectId);
+    this.session.update({ dirtyState: false });
+  }
+  getDurableSnapshot(): LocalProjectSnapshot {
+    let rig: RigDefinition | null = null; try { rig = this.requireRig(); } catch { rig = null; }
+    const animations = rig ? this.animationAdapter?.getLibrary() ?? this.animations : null; if (!this.project && !rig) throw new Error("No active project or rig is ready to save");
+    const snapshot = { storageVersion: LOCAL_PROJECT_STORAGE_VERSION, localProjectId: this.durableProjectId, project: this.project ? structuredClone(this.project) : null, rig: rig ? structuredClone(rig) : null, animations: animations ? structuredClone(animations) : null, selectedSkinId: this.activeSkinId } satisfies LocalProjectSnapshot;
+    const problems = blockingRigProjectProblems(validateRigProject(snapshot));
+    if (problems.length) throw new Error(`Project integrity validation failed: ${problems.map((problem) => problem.message).join("; ")}`);
+    return snapshot;
+  }
+  installDurableSnapshot(snapshot: LocalProjectSnapshot, actor = "Human"): void {
+    const targetProjectId = snapshot.localProjectId ?? snapshot.project?.id ?? `editor:${snapshot.rig?.id ?? "unknown"}`;
+    const transaction = this.beginDurableProjectOpen(targetProjectId);
+    if (!this.commitDurableProjectOpen(transaction, snapshot, actor)) throw new Error(`Stale project open for ${targetProjectId} was discarded`);
+  }
+  commitDurableProjectOpen(transaction: ProjectSwitchTransaction, snapshot: LocalProjectSnapshot, actor = "Human"): boolean {
+    if (snapshot.storageVersion !== LOCAL_PROJECT_STORAGE_VERSION) throw new Error(`Unsupported project storage version ${String(snapshot.storageVersion)}`);
+    const rigResult = snapshot.rig ? safeParseRigDefinition(snapshot.rig) : null; if (rigResult && !rigResult.success) throw new Error(rigResult.message);
+    if (snapshot.animations && !rigResult?.success) throw new Error("Disk animations require a valid rig");
+    const animationResult = snapshot.animations && rigResult?.success ? parseAnimationLibraryJson(JSON.stringify(snapshot.animations), rigResult.data) : null; if (animationResult && !animationResult.success) throw new Error(animationResult.message);
+    const normalizedSnapshot: LocalProjectSnapshot = { ...snapshot, rig: rigResult?.success ? rigResult.data : null, animations: animationResult?.success ? animationResult.data : null };
+    const integrityProblems = blockingRigProjectProblems(validateRigProject(normalizedSnapshot));
+    if (integrityProblems.length) throw new Error(`Project integrity validation failed: ${integrityProblems.map((problem) => problem.message).join("; ")}`);
+    const durableProjectId = snapshot.localProjectId ?? snapshot.project?.id ?? null;
+    const projectResult = snapshot.project ? parseGeneratedCharacterProject(rigResult?.success ? { ...snapshot.project, rigDefinition: rigResult.data, skins: rigResult.data.skins } : snapshot.project) : null;
+    if (projectResult && !projectResult.success) throw new Error(projectResult.message);
+    if (!this.projectLifecycle.commitSwitch(transaction)) return false;
+    this.transactionId = null;
+    this.pendingRigProposal = null;
+    this.latestPreview = null;
+    if (projectResult?.success) this.setProject(projectResult.data, true, true);
+    else { this.project = null; this.activationVersion += 1; this.activationSource = "explicit"; }
+    this.durableProjectId = durableProjectId;
+    if (!rigResult?.success) {
+      // A project-only Prepare snapshot must replace the whole active document.
+      // Retaining the previous editor rig here makes a disk reopen look complete
+      // while Save immediately contaminates it with another project's rig.
+      this.standaloneRig = null;
+      this.animations = null;
+      this.pendingAnimationCommands = [];
+      this.activeSkinId = null;
+      this.session.update({ activeProjectId: snapshot.project?.id ?? null, activeStage: snapshot.project?.stage ?? null, selectedRigId: null, selectedAnimationId: null, dirtyState: false });
+      this.notifyDurableListeners();
+      return true;
+    }
+    const installedRig = this.rigAdapter ? this.rigAdapter.replace ? this.rigAdapter.replace(rigResult.data) : this.rigAdapter.execute("Open disk project", () => rigResult.data) : rigResult.data;
+    this.standaloneRig = structuredClone(installedRig);
+    const installedAnimations = animationResult?.success ? this.animationAdapter ? this.animationAdapter.replace ? this.animationAdapter.replace(animationResult.data) : this.animationAdapter.execute("Open disk animations", () => animationResult.data) : animationResult.data : null;
+    this.animations = installedAnimations ? structuredClone(installedAnimations) : null; this.pendingAnimationCommands = installedAnimations && !this.animationAdapter ? [{ label: "Open disk animations", library: structuredClone(installedAnimations) }] : [];
+    this.activeSkinId = snapshot.selectedSkinId && installedRig.skins.some((skin) => skin.id === snapshot.selectedSkinId) ? snapshot.selectedSkinId : installedRig.defaultSkinId;
+    this.session.update({ activeProjectId: snapshot.project?.id ?? `editor:${installedRig.id}`, activeStage: snapshot.project?.stage ?? "edit", selectedRigId: installedRig.id, selectedAnimationId: installedAnimations?.animations[0]?.id ?? null, dirtyState: false });
+    this.emit("project.opened", actor, `Opened disk project ${snapshot.project?.name ?? installedRig.id}`, snapshot.project?.id ?? installedRig.id); this.notifyDurableListeners();
     return true;
   }
 
@@ -305,9 +414,16 @@ export class RiggingCommandService {
       case "studio_get_status": return this.ok(this.queries.getStudioStatus(asBoolean(args.includeActivity)));
       case "studio_get_agent_capabilities": return this.ok(this.queries.getAgentCapabilities(asBoolean(args.includeToolNames)));
       case "project_create": return this.createProject(asString(args.name), asString(args.prompt), actor);
-      case "project_open": return this.openProject(args.project, actor);
+      case "project_open": return args.snapshot ? this.openSnapshot(args.snapshot, actor) : this.openProject(args.project, actor);
       case "project_save": return this.saveProject(actor);
       case "project_export": return this.exportProject(asString(args.format), actor);
+      case "project_save_as":
+      case "project_export_snapshot":
+      case "project_storage_status":
+      case "project_list":
+      case "project_import":
+      case "project_reveal":
+      case "project_archive": throw new Error("Durable project storage commands are handled by the trusted local storage service");
       case "character_set_prompt": return this.setCharacterPrompt(asString(args.prompt), actor);
       case "character_generate_image": return this.generateImage(asString(args.mode) as "generate" | "regenerate" | "variant", actor);
       case "character_import_generation": throw new Error("External generations must be normalized by the MCP managed-ingress service");
@@ -341,6 +457,23 @@ export class RiggingCommandService {
       case "part_reject_reconstruction": return this.rejectReconstructionProposal(asString(args.partId), asString(args.reason), actor);
       case "parts_get_unassigned_regions": return this.getUnassignedPartRegions();
       case "parts_finalize": return this.finalizePartCuts(actor);
+      case "part_region_get": return this.getPartRegion(asOptionalString(args.partId));
+      case "part_region_relabel": return this.relabelPartRegion(asString(args.partId), asString(args.semanticType) as PartSemanticType, actor);
+      case "part_region_assign_polygon": return this.assignPartRegionPolygon(asString(args.partId), args.points as readonly Point[], actor);
+      case "part_region_transfer_boundary": return this.transferPartRegionBoundary(asString(args.partId), asString(args.edge) as RegionEdge, asNumber(args.coordinate), actor);
+      case "part_region_split": return this.splitPartCut(asString(args.partId), asString(args.axis) as "horizontal" | "vertical", actor);
+      case "part_region_merge": return this.mergePartCuts(args.partIds as readonly string[], asOptionalString(args.label), actor);
+      case "part_region_mark_unresolved": return this.markPartRegionUnresolved(args.points as readonly Point[], actor);
+      case "part_region_refine_edge": return this.refinePartRegionEdge(asString(args.partId), asOptionalString(args.neighborPartId), asString(args.instruction), actor);
+      case "intelligence_provider_list": {
+        const status = await this.intelligenceProvider.status();
+        return this.ok({ providers: [status] });
+      }
+      case "ollama_status": return this.ok(await this.intelligenceProvider.status());
+      case "ollama_models": return this.ok({ provider: this.intelligenceProvider.id, models: await this.intelligenceProvider.listModels() });
+      case "ollama_select_model": this.intelligenceProvider.selectModel(asString(args.model)); return this.ok({ provider: this.intelligenceProvider.id, selectedModel: asString(args.model), persistedByClient: true });
+      case "assistant_propose": return this.ok({ proposal: await this.intelligenceProvider.propose({ action: asString(args.action) as import("../../intelligence").AssistantProposal["action"], prompt: asString(args.prompt), targetPartId: asOptionalString(args.targetPartId), existingRegionNames: this.project?.partCutterState?.parts.map((part) => part.label) ?? [] }), mutated: false });
+      case "region_semantic_suggest": return this.ok({ proposal: await this.intelligenceProvider.propose({ action: "suggest_semantic", prompt: asString(args.prompt), targetPartId: asOptionalString(args.partId), imageBase64: asOptionalString(args.imageBase64), existingRegionNames: this.project?.partCutterState?.parts.map((part) => part.label) ?? [] }), mutated: false });
       case "rig_create_proposal": return this.createRigProposal(actor);
       case "rig_accept_proposal": return this.acceptRigProposal(actor);
       case "rig_get_summary": return this.getRigSummary(asBoolean(args.includeHierarchy), asBoolean(args.includeFull));
@@ -384,7 +517,15 @@ export class RiggingCommandService {
       case "alpha_cleanup": throw new Error("Trusted character image-provider commands are handled by the MCP server-side service");
       case "image_provider_status":
       case "image_provider_list_capabilities":
+      case "image_provider_list":
       case "comfy_get_status":
+      case "character_generate":
+      case "character_generate_variant":
+      case "image_generation_get_job":
+      case "image_generation_get_proposal":
+      case "image_generation_render_proposal":
+      case "image_generation_approve_candidate":
+      case "image_generation_reject_candidate":
       case "image_generate_candidates":
       case "character_generate_with_comfy":
       case "image_get_proposal":
@@ -412,6 +553,7 @@ export class RiggingCommandService {
     this.operationSequence += 1;
     this.events.emit({ id: `operation-${this.operationSequence}`, type, timestamp: now(), actor, summary, ...(entityId ? { entityId } : {}), ...(details ? { details } : {}) });
   }
+  private notifyDurableListeners(): void { this.durableListeners.forEach((listener) => listener()); }
 
   private createProject(name: string, prompt: string, actor: string): CommandResult<JsonObject> {
     const project = createGeneratedCharacterProject(name, prompt);
@@ -430,13 +572,20 @@ export class RiggingCommandService {
 
   private async saveProject(actor: string): Promise<CommandResult<JsonObject>> {
     const project = this.requireProject();
+    const operation = this.captureProjectOperation("browser-cache-save");
     if (typeof window !== "undefined") {
       const saved = await getGeneratedCharacterStorage().save(project);
       if (!saved.success) return { success: false, warnings: [{ code: "draft_kept_in_memory", message: "The current project remains available in memory." }], errors: [{ code: "project_storage_failed", message: `${saved.layer}: ${saved.message}` }] };
     }
+    this.assertProjectOperationCurrent(operation, "generated-character-storage");
     this.session.update({ dirtyState: false });
-    this.emit("project.saved", actor, `Saved project ${project.name}`, project.id);
-    return this.ok({ projectId: project.id, savedAt: now(), persistence: typeof window === "undefined" ? "memory-only" : "indexeddb-assets-plus-local-pointer" });
+    this.emit("project.saved", actor, `Updated browser cache for ${project.name}`, project.id);
+    return this.ok({ projectId: project.id, savedAt: now(), persistence: typeof window === "undefined" ? "memory-only" : "indexeddb-working-cache", snapshot: this.getDurableSnapshot() });
+  }
+
+  private openSnapshot(input: unknown, actor: string): CommandResult<JsonObject> {
+    try { this.installDurableSnapshot(input as LocalProjectSnapshot, actor); return this.ok({ projectId: this.session.snapshot.activeProjectId, openedFrom: "disk" }); }
+    catch (error: unknown) { return { success: false, warnings: [], errors: [{ code: "invalid_disk_project", message: error instanceof Error ? error.message : "Disk project is invalid" }] }; }
   }
 
   private exportProject(format: string, actor: string): CommandResult<JsonObject> {
@@ -453,10 +602,12 @@ export class RiggingCommandService {
 
   private async generateImage(mode: "generate" | "regenerate" | "variant", actor: string): Promise<CommandResult<JsonObject>> {
     const project = this.requireProject();
+    const operation = this.captureProjectOperation(`character-${mode}`);
     this.emit("generation.started", actor, `Started ${mode}`, project.id);
     const built = buildCharacterGenerationPrompt({ description: project.originalUserPrompt, controls: DEFAULT_CONTROLS });
     const request = { userPrompt: project.originalUserPrompt, generationPrompt: built.prompt, negativePrompt: built.negativePrompt, controls: DEFAULT_CONTROLS, sourceGenerationId: project.sourceImage?.generationId };
     const result = mode === "generate" ? await this.characterProvider.generateCharacter(request) : mode === "regenerate" ? await this.characterProvider.regenerateCharacter(request) : await this.characterProvider.generateVariant(request);
+    this.assertProjectOperationCurrent(operation, "character-provider");
     const next = updatedProject(project, {
       stage: "generate", generationPrompt: built.prompt,
       generationMetadata: { provider: result.provider, preset: built.preset, negativePrompt: built.negativePrompt, generationMode: result.generationMode, novelArtwork: result.novelArtwork, sourceArtifact: result.sourceArtifact },
@@ -479,7 +630,8 @@ export class RiggingCommandService {
     const project = this.requireProject();
     const proposalRecord = typeof input.metadata.proposalId === "string" && typeof input.metadata.candidateId === "string" && typeof input.metadata.workflowId === "string"
       ? {
-          proposalId: input.metadata.proposalId, operation: input.operation, candidateId: input.metadata.candidateId, workflowId: input.metadata.workflowId,
+          proposalId: input.metadata.proposalId, provider: typeof input.metadata.provider === "string" ? input.metadata.provider : input.provider,
+          operation: input.operation, candidateId: input.metadata.candidateId, workflowId: input.metadata.workflowId,
           approvalPolicy: input.metadata.approvalPolicy === "agent_recommendation" ? "agent_recommendation" as const : "manual" as const,
           ...(input.targetPartId ? { targetPartId: input.targetPartId } : {}), acceptedAt: now(),
         }
@@ -487,8 +639,9 @@ export class RiggingCommandService {
     const result: CharacterImageGenerationResult = {
       generationId: input.generationId, image: input.managedImage.image, width: input.managedImage.width, height: input.managedImage.height,
       generationPrompt: input.prompt || project.originalUserPrompt,
-      generationSettings: { imported: input.generationMode === "imported_external", accepted: input.accepted, mimeType: input.managedImage.mimeType },
-      providerMetadata: { provider: input.provider, imported: input.generationMode === "imported_external" }, warnings: [],
+      generationSettings: { imported: input.generationMode === "imported_external", accepted: input.accepted, mimeType: input.managedImage.mimeType, ...(isJsonObject(input.metadata.generationParameters) ? input.metadata.generationParameters : {}) },
+      ...(typeof input.metadata.seed === "number" || input.metadata.seed === null ? { seed: input.metadata.seed } : {}),
+      providerMetadata: { provider: input.provider, imported: input.generationMode === "imported_external", ...(isJsonObject(input.metadata.providerMetadata) ? input.metadata.providerMetadata : {}) }, warnings: [],
       generationMode: input.generationMode, novelArtwork: true, provider: input.provider, sourceArtifact: input.managedImage.sourceArtifact,
     };
     if (input.operation === "OCCLUSION_RECONSTRUCTION" || input.operation === "PART_REPAIR" || input.operation === "HAND_REPAIR") {
@@ -531,7 +684,9 @@ export class RiggingCommandService {
   private async runSuitability(actor: string): Promise<CommandResult<JsonObject>> {
     const project = this.requireProject(); const source = project.sourceImage;
     if (!source) throw new Error("Generate a character image first");
+    const operation = this.captureProjectOperation("character-suitability");
     const review = await this.characterProvider.checkSuitability({ image: source.image, width: source.width, height: source.height, userPrompt: project.originalUserPrompt });
+    this.assertProjectOperationCurrent(operation, "character-provider");
     const next = updatedProject(project, { suitability: review, warnings: [...project.warnings, ...review.issues.map((issue) => issue.message)] }); this.setProject(next);
     this.emit("validation.changed", actor, `Suitability check scored ${Math.round(review.score * 100)}%`, project.id);
     return this.ok({ suitability: review, requiresReview: review.issues.some((issue) => issue.severity !== "info") }, review.issues.map((issue) => issue.message));
@@ -540,7 +695,9 @@ export class RiggingCommandService {
   private async segmentCharacter(actor: string): Promise<CommandResult<JsonObject>> {
     const project = this.requireProject(); const source = project.sourceImage;
     if (!source) throw new Error("Generate a character image first");
+    const operation = this.captureProjectOperation("character-segmentation");
     const response = await this.characterProvider.segmentCharacter({ generationId: source.generationId, image: source.image, width: source.width, height: source.height, expectedEquipment: [DEFAULT_CONTROLS.mainHandEquipment ?? "", DEFAULT_CONTROLS.offHandEquipment ?? ""].filter(Boolean) });
+    this.assertProjectOperationCurrent(operation, "character-provider");
     const validation = validateSegmentationResponse(response);
     if (!validation.success || !validation.data) return { success: false, warnings: warningObjects(validation.warnings), errors: validation.errors.map((message) => ({ code: "invalid_segmentation", message })) };
     const reviews = detectOcclusionReviews(validation.data.parts);
@@ -567,7 +724,9 @@ export class RiggingCommandService {
     const project = this.requireProject(); const source = project.sourceImage; const part = project.segmentationData?.parts.find((candidate) => candidate.id === partId);
     if (!source || !part) throw new Error("Source image or part is unavailable");
     if (!this.characterProvider.capabilities.reconstruction.available) throw new Error(`${this.characterProvider.name} does not provide production reconstruction; the part was left unchanged`);
+    const operation = this.captureProjectOperation("occlusion-reconstruction");
     const result = await this.characterProvider.reconstructPart({ generationId: source.generationId, image: source.image, part, stylePrompt: project.generationPrompt });
+    this.assertProjectOperationCurrent(operation, "character-provider");
     const reconstructedParts = project.reconstructedParts.map((review) => review.partId === partId ? { ...review, decision: "reconstruct" as const, reconstructedImage: result.image, reconstructionAccepted: false } : review);
     this.setProject(updatedProject(project, { reconstructedParts })); this.emit("project.changed", actor, `Reconstructed ${partId} for review`, partId);
     return this.ok({ reconstructionId: result.reconstructionId, partId, image: result.image, requiresReview: true }, result.warnings);
@@ -587,26 +746,78 @@ export class RiggingCommandService {
 
   private getPartCutterStatus(includeParts: boolean): CommandResult<JsonObject> {
     const state = this.requirePartCutterState(); const active = state.proposals.find((proposal) => proposal.proposalId === state.activeProposalId);
-    return this.ok({ sourceImageId: state.sourceImageId, sourceCanvasSize: state.sourceCanvasSize, mode: state.mode, partCount: state.parts.length, activeProposalId: state.activeProposalId ?? null, proposalStatus: active?.status ?? null, finalized: state.finalized, coverage: analyzeCoverage(state), ...(includeParts ? { parts: state.parts } : {}) });
+    return this.ok({ sourceImageId: state.sourceImageId, sourceCanvasSize: state.sourceCanvasSize, mode: state.mode, partCount: state.parts.length, activeProposalId: state.activeProposalId ?? null, proposalStatus: active?.status ?? null, finalized: state.finalized, coverage: analyzeCoverage(state), anatomicalGuide: state.anatomicalGuide ? { guideVersion: state.anatomicalGuide.guideVersion, profile: state.anatomicalGuide.profile, status: state.anatomicalGuide.status, landmarkCount: state.anatomicalGuide.landmarks.length, zoneCount: state.anatomicalGuide.zones.length, strategy: "landmark-guided-hierarchical" } : null, ...(includeParts ? { parts: state.parts } : {}) });
+  }
+
+  private getPartRegion(partId?: string): CommandResult<JsonObject> {
+    const state = ensureOwnershipPartition(this.requirePartCutterState(), "agent"); const ownership = state.ownership!;
+    if (!partId) return this.ok({ ownershipVersion: ownership.ownershipVersion, reviewStatus: ownership.reviewStatus, exclusive: true, regionCount: state.parts.length, unresolved: analyzeCoverage(state).unassignedPixels, regions: state.parts.map((part) => ({ partId: part.partId, semanticType: part.semanticType, label: part.label, bounds: part.boundingBox, neighbors: ownership.adjacency[part.partId] ?? [] })) });
+    const part = state.parts.find((candidate) => candidate.partId === partId); if (!part) throw new Error(`Region ${partId} does not exist`);
+    return this.ok({ region: { partId, semanticType: part.semanticType, label: part.label, bounds: part.boundingBox, mask: part.mask, neighbors: ownership.adjacency[partId] ?? [], riggingPadding: ownership.riggingPadding[partId] ?? 0 }, exclusive: true });
+  }
+
+  private relabelPartRegion(partId: string, semanticType: PartSemanticType, actor: string): CommandResult<JsonObject> {
+    const state = ensureOwnershipPartition(this.requirePartCutterState(), "agent"); const part = state.parts.find((candidate) => candidate.partId === partId); if (!part) throw new Error(`Region ${partId} does not exist`);
+    const defaults = SEMANTIC_TAXONOMY[semanticType]; const parts = state.parts.map((candidate) => candidate.partId === partId ? { ...candidate, semanticType, label: defaults.label, suggestedParent: defaults.suggestedParentBone, layer: defaults.defaultLayerGroup, articulated: defaults.articulated, equipment: defaults.equipment, provenance: "manual" as const } : candidate);
+    const next = recordOwnershipRelabel({ ...state, parts }, partId, `${part.label} relabeled as ${defaults.label}`, "agent"); this.setPartCutterState(next, actor, `Relabeled region ${partId} as ${semanticType}`); return this.ok({ partId, semanticType, label: defaults.label, pixelsChanged: 0 });
+  }
+
+  private assignPartRegionPolygon(partId: string, points: readonly Point[], actor: string): CommandResult<JsonObject> {
+    const state = ensureOwnershipPartition(this.requirePartCutterState(), "agent"); const selection = polygonMask(points, state.sourceCanvasSize); const result = assignOwnershipSelection(state, partId, selection.bounds, selection.mask, { actor: "agent" });
+    this.setPartCutterState(result.state, actor, `Assigned polygon ownership to ${partId}`); return this.ok({ partId, changedPixels: result.changedPixels, yieldedRegionIds: result.previousOwnerIds, exclusive: true, undoable: true });
+  }
+
+  private transferPartRegionBoundary(partId: string, edge: RegionEdge, coordinate: number, actor: string): CommandResult<JsonObject> {
+    const result = reshapeRegionEdge(this.requirePartCutterState(), partId, edge, coordinate, "agent"); this.setPartCutterState(result.state, actor, `Transferred ${partId} ${edge} boundary`); return this.ok({ partId, edge, coordinate, changedPixels: result.changedPixels, yieldedRegionIds: result.yieldedRegionIds, exclusive: true, undoable: true });
+  }
+
+  private markPartRegionUnresolved(points: readonly Point[], actor: string): CommandResult<JsonObject> {
+    const state = ensureOwnershipPartition(this.requirePartCutterState(), "agent"); const selection = polygonMask(points, state.sourceCanvasSize); const result = assignOwnershipSelection(state, null, selection.bounds, selection.mask, { actor: "agent" });
+    this.setPartCutterState(result.state, actor, "Marked polygon foreground unresolved"); return this.ok({ changedPixels: result.changedPixels, previousOwnerIds: result.previousOwnerIds, exclusive: true, undoable: true });
+  }
+
+  private async refinePartRegionEdge(partId: string, neighborPartId: string | undefined, instruction: string, actor: string): Promise<CommandResult<JsonObject>> {
+    const project = this.requireProject(); const source = project.sourceImage; if (!source) throw new Error("Source image is unavailable");
+    if (!this.characterProvider.capabilities.maskRefinement.available || !this.characterProvider.refinePartMasks) throw new Error(`${this.characterProvider.name} cannot refine a local ownership boundary`);
+    const state = ensureOwnershipPartition(this.requirePartCutterState(), "agent"); const part = state.parts.find((candidate) => candidate.partId === partId); if (!part) throw new Error(`Region ${partId} does not exist`);
+    if (neighborPartId && !(state.ownership?.adjacency[partId] ?? []).includes(neighborPartId)) throw new Error(`${neighborPartId} is not adjacent to ${partId}`);
+    const operation = this.captureProjectOperation("part-refinement");
+    const response = await this.characterProvider.refinePartMasks({ generationId: source.generationId, image: source.image, width: source.width, height: source.height, current: partCutToSegmentation(state), instruction: `${instruction}${neighborPartId ? ` Boundary: ${partId} ↔ ${neighborPartId}.` : ""}`, targetPartId: partId });
+    this.assertProjectOperationCurrent(operation, "character-provider");
+    const refined = response.parts.find((candidate) => candidate.id === partId); if (!refined?.mask) throw new Error(`Refinement provider did not return a mask for ${partId}`);
+    const zone = state.anatomicalGuide?.zones.find((candidate) => candidate.zoneId === partId || candidate.semanticType === part.semanticType);
+    if (!zone) throw new Error(`Refinement requires a predetermined anatomical zone for ${partId}`);
+    const constrained = constrainProviderMaskToZone(refined, zone, state.sourceCanvasSize.width, state.sourceCanvasSize.height);
+    if (!constrained) throw new Error(`Refinement provider returned no pixels inside the predetermined zone for ${partId}`);
+    const clearBounds = zone.mask ? zone.bounds : part.boundingBox; const clearMask = zone.mask ?? part.mask;
+    const cleared = assignOwnershipSelection(state, null, clearBounds, clearMask, { actor: "agent", action: "refine" }).state;
+    const applied = assignOwnershipSelection(cleared, partId, constrained.bounds, constrained.mask, { actor: "agent", includeBackground: true, action: "refine" });
+    const provenance = `Refinement provenance: provider=${String(response.providerMetadata.provider ?? this.characterProvider.id)}; workflow=${String(response.providerMetadata.workflow ?? "unavailable")}; scope=edge; target=${partId}; proposed=${constrained.proposedPixelCount}; accepted=${constrained.acceptedPixelCount}; clipped=${constrained.clippedPixelCount}`;
+    const next = { ...applied.state, parts: applied.state.parts.map((candidate) => candidate.partId === partId ? { ...candidate, notes: [...candidate.notes, provenance] } : candidate) };
+    this.setPartCutterState(next, actor, `Refined local boundary for ${partId}`);
+    return this.ok({ partId, neighborPartId: neighborPartId ?? null, changedPixels: applied.changedPixels, yieldedRegionIds: applied.previousOwnerIds, proposedPixels: constrained.proposedPixelCount, acceptedPixels: constrained.acceptedPixelCount, clippedPixels: constrained.clippedPixelCount, clippedPercentage: constrained.clippedPercentage, exclusive: true, requiresReview: true });
   }
 
   private async createPartCutProposal(instruction: string, actor: string): Promise<CommandResult<JsonObject>> {
     const project = this.requireProject(); const source = project.sourceImage; if (!source) throw new Error("Import or generate a source image first");
-    const response = await this.characterProvider.segmentCharacter({ generationId: source.generationId, image: source.image, width: source.width, height: source.height, expectedEquipment: [] });
+    const state = this.requirePartCutterState(); const guide = buildAnatomicalPartitionGuide(state, "humanoid");
+    const operation = this.captureProjectOperation("part-segmentation");
+    const response = await this.characterProvider.segmentCharacter({ generationId: source.generationId, image: source.image, width: source.width, height: source.height, expectedEquipment: guide.zones.filter((zone) => zone.optional && zone.semanticType.includes("Equipment")).map((zone) => zone.semanticType), semanticPrompt: anatomicalGuidePrompt(guide, instruction) });
+    this.assertProjectOperationCurrent(operation, "character-provider");
     const validation = validateSegmentationResponse(response); if (!validation.success || !validation.data) throw new Error(validation.errors.join("; "));
-    const state = this.requirePartCutterState(); const proposal = proposalFromSegmentation(validation.data, instruction, state.activeProposalId);
-    const next = { ...state, mode: "auto" as const, proposals: [...state.proposals.map((item) => item.proposalId === state.activeProposalId ? { ...item, status: "superseded" as const } : item), proposal], activeProposalId: proposal.proposalId, updatedAt: now() };
+    const proposal = guidedProposalFromSegmentation(validation.data, guide, instruction, state.activeProposalId);
+    const next = { ...state, anatomicalGuide: { ...guide, status: "ai-refined" as const, updatedAt: now() }, mode: "auto" as const, proposals: [...state.proposals.map((item) => item.proposalId === state.activeProposalId ? { ...item, status: "superseded" as const } : item), proposal], activeProposalId: proposal.proposalId, updatedAt: now() };
     this.setPartCutterState(next, actor, `Created part-cut proposal ${proposal.proposalId}`);
-    return this.ok({ proposalId: proposal.proposalId, partCount: proposal.parts.length, parts: proposal.parts.map(({ mask, ...part }) => ({ ...part, mask: { width: mask.width, height: mask.height } })), requiresReview: true, provider: proposal.providerMetadata ?? {}, productionReady: this.characterProvider.capabilities.segmentation.available && this.characterProvider.capabilities.segmentation.imageConditioned }, proposal.warnings);
+    return this.ok({ proposalId: proposal.proposalId, partCount: proposal.parts.length, parts: proposal.parts.map(({ mask, ...part }) => ({ ...part, mask: { width: mask.width, height: mask.height } })), guide: { strategy: "landmark-guided-hierarchical", landmarkCount: guide.landmarks.length, zoneCount: guide.zones.length }, requiresReview: true, provider: proposal.providerMetadata ?? {}, productionReady: this.characterProvider.capabilities.segmentation.available && this.characterProvider.capabilities.segmentation.imageConditioned }, proposal.warnings);
   }
 
   private installPartCutProposal(segmentation: CharacterSegmentationResponse, instruction: string, parentProposalId: string | undefined, actor: string): CommandResult<JsonObject> {
     const validation = validateSegmentationResponse(segmentation);
     if (!validation.success || !validation.data) throw new Error(`Segmentation proposal is invalid: ${validation.errors.join("; ")}`);
-    const state = this.requirePartCutterState();
-    const proposal = proposalFromSegmentation(validation.data, instruction, parentProposalId ?? state.activeProposalId);
+    const state = this.requirePartCutterState(); const guide = buildAnatomicalPartitionGuide(state, state.anatomicalGuide?.profile ?? "humanoid");
+    const proposal = guidedProposalFromSegmentation(validation.data, guide, instruction, parentProposalId ?? state.activeProposalId);
     const next = {
-      ...state, mode: "auto" as const,
+      ...state, anatomicalGuide: { ...guide, status: "ai-refined" as const, updatedAt: now() }, mode: "auto" as const,
       proposals: [...state.proposals.map((item) => item.proposalId === (parentProposalId ?? state.activeProposalId) ? { ...item, status: "superseded" as const } : item), proposal],
       activeProposalId: proposal.proposalId, updatedAt: now(),
     };
@@ -620,8 +831,11 @@ export class RiggingCommandService {
     const project = this.requireProject(); const source = project.sourceImage;
     if (!source) throw new Error("Import or generate a source image first");
     if (!this.characterProvider.capabilities.maskRefinement.available || !this.characterProvider.refinePartMasks) throw new Error(`${this.characterProvider.name} cannot perform image-conditioned mask refinement; the current proposal was left unchanged`);
-    const response = await this.characterProvider.refinePartMasks({ generationId: source.generationId, image: source.image, width: source.width, height: source.height, current: proposalToSegmentation(current), instruction });
-    const proposal = proposalFromSegmentation(response, instruction, current.proposalId); const next = { ...state, proposals: [...state.proposals.map((item) => item.proposalId === current.proposalId ? { ...item, status: "superseded" as const } : item), proposal], activeProposalId: proposal.proposalId, updatedAt: now() };
+    const guide = state.anatomicalGuide ?? buildAnatomicalPartitionGuide(state, "humanoid");
+    const operation = this.captureProjectOperation("part-prompt-refinement");
+    const response = await this.characterProvider.refinePartMasks({ generationId: source.generationId, image: source.image, width: source.width, height: source.height, current: proposalToSegmentation(current), instruction: anatomicalGuidePrompt(guide, instruction) });
+    this.assertProjectOperationCurrent(operation, "character-provider");
+    const proposal = guidedProposalFromSegmentation(response, guide, instruction, current.proposalId); const next = { ...state, anatomicalGuide: { ...guide, status: "ai-refined" as const, updatedAt: now() }, proposals: [...state.proposals.map((item) => item.proposalId === current.proposalId ? { ...item, status: "superseded" as const } : item), proposal], activeProposalId: proposal.proposalId, updatedAt: now() };
     this.setPartCutterState(next, actor, `Revised part-cut proposal ${current.proposalId}`); return this.ok({ proposalId: proposal.proposalId, parentProposalId: current.proposalId, partCount: proposal.parts.length, unaffectedPartsPreserved: true, requiresReview: true });
   }
 
@@ -636,7 +850,9 @@ export class RiggingCommandService {
   }
 
   private acceptPartCutProposal(proposalId: string, partIds: readonly string[] | undefined, actor: string): CommandResult<JsonObject> {
-    const next = acceptPartCutProposal(this.requirePartCutterState(), proposalId, partIds); this.setPartCutterState(next, actor, `Accepted part-cut proposal ${proposalId}`); return this.ok({ proposalId, acceptedPartIds: partIds ?? next.parts.map((part) => part.partId), partCount: next.parts.length, undoable: true });
+    const before = this.requirePartCutterState(); const priorIds = new Set(before.parts.map((part) => part.partId));
+    const next = acceptPartCutProposal(before, proposalId, partIds); const acceptedPartIds = next.parts.filter((part) => !priorIds.has(part.partId)).map((part) => part.partId);
+    this.setPartCutterState(next, actor, `Accepted part-cut proposal ${proposalId}`); return this.ok({ proposalId, acceptedPartIds, remainingProposalPartCount: next.proposals.find((proposal) => proposal.proposalId === proposalId)?.parts.length ?? 0, partCount: next.parts.length, undoable: true });
   }
 
   private rejectPartCutProposal(proposalId: string, actor: string): CommandResult<JsonObject> { const next = rejectPartCutProposal(this.requirePartCutterState(), proposalId); this.setPartCutterState(next, actor, `Rejected part-cut proposal ${proposalId}`); return this.ok({ proposalId, rejected: true }); }
@@ -722,16 +938,20 @@ export class RiggingCommandService {
   }
 
   private async finalizePartCuts(actor: string): Promise<CommandResult<JsonObject>> {
-    const project = this.requireProject(); const source = project.sourceImage; if (!source) throw new Error("A source image is required"); const state = this.requirePartCutterState(); const segmentationData = partCutToSegmentation(state); if (!segmentationData.parts.length) throw new Error("Accept at least one part before finalizing");
-    const extractedParts = await Promise.all(segmentationData.parts.map(async (part) => { const cut = state.parts.find((item) => item.partId === part.id); const image = cut?.reconstructionImage ?? await extractPartToDataUrl(source.image, part.bounds, part.mask, 0); return { partId: part.id, image, width: part.bounds.width, height: part.bounds.height, padding: 0, status: cut?.provenance === "reconstructed" ? "reconstructed" as const : "accepted" as const }; }));
-    const proposal = buildRigProposal({ name: project.name, parts: segmentationData.parts, imageWidth: source.width, imageHeight: source.height, resolvedImages: Object.fromEntries(extractedParts.map((part) => [part.partId, part.image])) }); const validated = validateRigProposal(proposal); if (!validated.success) throw new Error(validated.message); this.pendingRigProposal = validated.data;
-    const finalized = { ...state, finalized: true, updatedAt: now() }; const next = updatedProject(project, { stage: "rig", partCutterState: finalized, segmentationData, extractedParts, reconstructedParts: detectOcclusionReviews(segmentationData.parts), rigDefinition: validated.data.rig, skins: validated.data.rig.skins, warnings: [...project.warnings, ...validated.data.warnings] }); this.setProject(next); this.standaloneRig = structuredClone(validated.data.rig); this.emit("rig.changed", actor, `Finalized ${extractedParts.length} parts into ${validated.data.rig.id}`, validated.data.rig.id); return this.ok({ finalized: true, partCount: extractedParts.length, rig: rigSummary(validated.data.rig, true), nextStep: "open rig editor" }, validated.data.warnings);
+    const project = this.requireProject(); const source = project.sourceImage; if (!source) throw new Error("A source image is required"); const state = ensureOwnershipPartition(this.requirePartCutterState()); const segmentationData = partCutToSegmentation(state); if (!segmentationData.parts.length) throw new Error("Accept at least one part before finalizing");
+    const extractedParts = await Promise.all(segmentationData.parts.map(async (part) => { const cut = state.parts.find((item) => item.partId === part.id); const extraction = deriveRiggingExtraction(state, part.id); const image = cut?.reconstructionImage ?? await extractPartToDataUrl(source.image, extraction.bounds, extraction.mask, 0); return { partId: part.id, image, width: extraction.bounds.width, height: extraction.bounds.height, padding: extraction.padding, status: cut?.provenance === "reconstructed" ? "reconstructed" as const : "accepted" as const }; }));
+    const proposal = buildRigProposal({ name: project.name, parts: segmentationData.parts, imageWidth: source.width, imageHeight: source.height, resolvedImages: Object.fromEntries(extractedParts.map((part) => [part.partId, part.image])), partCutterState: state }); const validated = validateRigProposal(proposal); if (!validated.success) throw new Error(validated.message);
+    const finalized = { ...state, finalized: true, updatedAt: now() }; const next = updatedProject(project, { stage: "rig", partCutterState: finalized, segmentationData, extractedParts, reconstructedParts: detectOcclusionReviews(segmentationData.parts), rigDefinition: validated.data.rig, skins: validated.data.rig.skins, warnings: [...project.warnings, ...validated.data.warnings] });
+    const candidateAnimations = this.animations ? { ...this.animations, rigId: validated.data.rig.id } : null;
+    const candidateProblems = blockingRigProjectProblems(validateRigProject({ storageVersion: LOCAL_PROJECT_STORAGE_VERSION, localProjectId: this.durableProjectId, project: next, rig: validated.data.rig, animations: candidateAnimations, selectedSkinId: validated.data.rig.defaultSkinId }));
+    if (candidateProblems.length) throw new Error(`Auto-rig candidate rejected before commit: ${candidateProblems.map((problem) => problem.message).join("; ")}`);
+    this.pendingRigProposal = validated.data; this.setProject(next); this.standaloneRig = structuredClone(validated.data.rig); this.animations = candidateAnimations; this.emit("rig.changed", actor, `Finalized ${extractedParts.length} parts into ${validated.data.rig.id}`, validated.data.rig.id); return this.ok({ finalized: true, partCount: extractedParts.length, rig: rigSummary(validated.data.rig, true), nextStep: "open rig editor" }, validated.data.warnings);
   }
 
   private createRigProposal(actor: string): CommandResult<JsonObject> {
     const project = this.requireProject(); const segmentation = project.segmentationData; const source = project.sourceImage;
     if (!segmentation || !source) throw new Error("Segment the character before creating a rig proposal");
-    const proposal = buildRigProposal({ name: project.name, parts: segmentation.parts, imageWidth: source.width, imageHeight: source.height });
+    const proposal = buildRigProposal({ name: project.name, parts: segmentation.parts, imageWidth: source.width, imageHeight: source.height, partCutterState: project.partCutterState });
     const validated = validateRigProposal(proposal); if (!validated.success) throw new Error(validated.message);
     this.pendingRigProposal = proposal; this.emit("rig.changed", actor, `Created rig proposal ${proposal.rig.id}`, proposal.rig.id);
     return this.ok({ proposalId: proposal.rig.id, summary: rigSummary(proposal.rig, true), requiresReview: true }, proposal.warnings);
@@ -741,10 +961,14 @@ export class RiggingCommandService {
     if (!this.pendingRigProposal) throw new Error("Create a rig proposal first");
     const validated = validateRigProposal(this.pendingRigProposal); if (!validated.success) throw new Error(validated.message);
     const rig = validated.data.rig;
+    const nextProject = this.project ? updatedProject(this.project, { stage: "rig", rigDefinition: rig, skins: rig.skins, warnings: [...this.project.warnings, ...validated.data.warnings] }) : null;
+    const nextAnimations = this.animations ? { ...this.animations, rigId: rig.id } : null;
+    const candidateProblems = blockingRigProjectProblems(validateRigProject({ storageVersion: LOCAL_PROJECT_STORAGE_VERSION, localProjectId: this.durableProjectId, project: nextProject, rig, animations: nextAnimations, selectedSkinId: rig.defaultSkinId }));
+    if (candidateProblems.length) throw new Error(`Auto-rig candidate rejected before commit: ${candidateProblems.map((problem) => problem.message).join("; ")}`);
     if (this.rigAdapter) this.rigAdapter.execute(`Accept agent rig proposal ${rig.id}`, () => rig);
     this.standaloneRig = structuredClone(rig); this.activeSkinId = rig.defaultSkinId;
     this.retargetAnimationsToRig(rig.id);
-    if (this.project) this.setProject(updatedProject(this.project, { stage: "rig", rigDefinition: rig, skins: rig.skins, warnings: [...this.project.warnings, ...validated.data.warnings] }));
+    if (nextProject) this.setProject(nextProject);
     this.syncRigFromUi(rig, actor); this.emit("rig.changed", actor, `Accepted rig proposal ${rig.id}`, rig.id);
     return this.ok({ rig: rigSummary(rig, true), accepted: true }, validated.data.warnings);
   }
@@ -754,12 +978,17 @@ export class RiggingCommandService {
   }
 
   private mutateRig(label: string, transform: (rig: RigDefinition) => RigDefinition, actor: string, eventType: StudioEventType = "rig.changed", entityId?: string): CommandResult<JsonObject> {
+    this.projectLifecycle.assertMutationsAllowed();
     const before = this.requireRig();
+    const candidate = transform(before);
+    const candidateProject = this.project ? updatedProject(this.project, { rigDefinition: candidate, skins: candidate.skins }) : null;
+    const candidateAnimations = this.animationAdapter?.getLibrary() ?? this.animations;
+    const candidateSnapshot: LocalProjectSnapshot = { storageVersion: LOCAL_PROJECT_STORAGE_VERSION, localProjectId: this.durableProjectId, project: candidateProject, rig: candidate, animations: candidateAnimations, selectedSkinId: this.activeSkinId && candidate.skins.some((skin) => skin.id === this.activeSkinId) ? this.activeSkinId : candidate.defaultSkinId };
+    const issues = blockingRigProjectProblems(validateRigProject(candidateSnapshot));
+    if (issues.length) throw new Error(`Mutation rejected: ${issues.map((problem) => problem.message).join("; ")}`);
     let next: RigDefinition;
-    if (this.rigAdapter) {
-      next = this.transactionId ? this.rigAdapter.updateTransaction(transform) : this.rigAdapter.execute(label, transform);
-    } else next = transform(before);
-    const issues = validateRigDefinition(next); if (issues.length) throw new Error(issues.map((issue) => issue.message).join("; "));
+    if (this.rigAdapter) next = this.transactionId ? this.rigAdapter.updateTransaction(() => candidate) : this.rigAdapter.execute(label, () => candidate);
+    else next = candidate;
     this.standaloneRig = structuredClone(next);
     if (this.project) this.setProject(updatedProject(this.project, { rigDefinition: next, skins: next.skins }));
     this.session.update({ selectedBoneId: eventType === "bone.changed" ? entityId ?? null : this.session.snapshot.selectedBoneId, dirtyState: true, validationState: { valid: true, errorCount: 0, checkedAt: now() } });
@@ -794,8 +1023,10 @@ export class RiggingCommandService {
 
   private async generateAnimation(request: string, requestedName: string | undefined, duration: number, loop: boolean, actor: string): Promise<CommandResult<JsonObject>> {
     const rig = this.requireRig(); const library = this.requireAnimations();
+    const operation = this.captureProjectOperation("animation-generation");
     const context = buildAnimationGenerationContext(rig, { request, mode: "create", constraints: { duration, loop, intensity: .65, weight: .65, exaggeration: .45, rootMovementAllowance: 80, preserveTiming: false, preserveContactFrames: true, styleNotes: "Agent-authored studio animation" }, selectedBoneIds: [], leftRightMappings: [], groundPlaneY: rig.canvas.height * .92, leftFootBoneId: rig.bones.find((bone) => /left.*foot/i.test(bone.id))?.id ?? null, rightFootBoneId: rig.bones.find((bone) => /right.*foot/i.test(bone.id))?.id ?? null, contactIntervals: [], referenceAnimations: library.animations, includeSlotNames: true });
     const proposal = await this.animationProvider.generateAnimationProposal({ prompt: request, context });
+    this.assertProjectOperationCurrent(operation, "animation-provider");
     const validation = validateAnimationProposal(proposal, rig); if (!validation.success) throw new Error(validation.message);
     const id = uniqueAnimationId(library, requestedName ?? validation.proposal.animation.id);
     const animation = { ...validation.proposal.animation, id, name: requestedName ?? validation.proposal.animation.name };
@@ -808,7 +1039,9 @@ export class RiggingCommandService {
     const rig = this.requireRig(); const library = this.requireAnimations(); const current = animationById(library, animationId);
     if (!current) throw new Error(`Animation ${animationId} does not exist`);
     const context = buildAnimationGenerationContext(rig, { request, mode: "revise", currentAnimation: current, constraints: { duration: current.duration, loop: current.loop, intensity: .65, weight: .8, exaggeration: .45, rootMovementAllowance: 80, preserveTiming: true, preserveContactFrames: true, styleNotes: request }, selectedBoneIds: [], leftRightMappings: [], groundPlaneY: rig.canvas.height * .92, leftFootBoneId: rig.bones.find((bone) => /left.*foot/i.test(bone.id))?.id ?? null, rightFootBoneId: rig.bones.find((bone) => /right.*foot/i.test(bone.id))?.id ?? null, contactIntervals: [], referenceAnimations: library.animations.filter((animation) => animation.id !== animationId), includeSlotNames: true });
+    const operation = this.captureProjectOperation("animation-revision");
     const proposal = await this.animationProvider.generateAnimationProposal({ prompt: request, context, refinement: request });
+    this.assertProjectOperationCurrent(operation, "animation-provider");
     const validation = validateAnimationProposal(proposal, rig); if (!validation.success) throw new Error(validation.message);
     const revised = { ...validation.proposal.animation, id: animationId, name: current.name };
     this.mutateAnimations(`Revise animation ${animationId}`, (document) => replaceAnimation(document, revised), actor);
@@ -849,12 +1082,18 @@ export class RiggingCommandService {
   }
 
   private mutateAnimations(label: string, transform: (library: AnimationLibrary) => AnimationLibrary, actor: string): CommandResult<JsonObject> {
+    this.projectLifecycle.assertMutationsAllowed();
     const attached = this.animationAdapter;
-    const next = attached ? attached.execute(label, transform) : transform(this.requireAnimations());
-    next.animations.forEach((animation) => { const result = safeParseAnimationDefinition(animation, this.requireRig()); if (!result.success) throw new Error(result.message); });
+    const candidate = transform(this.requireAnimations());
+    candidate.animations.forEach((animation) => { const result = safeParseAnimationDefinition(animation, this.requireRig()); if (!result.success) throw new Error(result.message); });
+    const candidateSnapshot: LocalProjectSnapshot = { storageVersion: LOCAL_PROJECT_STORAGE_VERSION, localProjectId: this.durableProjectId, project: this.project, rig: this.requireRig(), animations: candidate, selectedSkinId: this.activeSkinId };
+    const problems = blockingRigProjectProblems(validateRigProject(candidateSnapshot));
+    if (problems.length) throw new Error(`Mutation rejected: ${problems.map((problem) => problem.message).join("; ")}`);
+    const next = attached ? attached.execute(label, () => candidate) : candidate;
     this.animations = structuredClone(next);
     if (!attached) this.pendingAnimationCommands.push({ label, library: structuredClone(next) });
-    this.session.update({ dirtyState: true }); this.emit("animation.changed", actor, label, this.session.snapshot.selectedAnimationId ?? undefined);
+    this.projectLifecycle.recordMutation();
+    this.session.update({ dirtyState: true }); this.emit("animation.changed", actor, label, this.session.snapshot.selectedAnimationId ?? undefined); this.notifyDurableListeners();
     return this.ok({ animationCount: next.animations.length });
   }
 
@@ -876,7 +1115,9 @@ export class RiggingCommandService {
     const frameWidth = Math.max(160, Math.floor(width / Math.min(frameCount, 4)));
     const plan = createDiagnosticCapturePlan(animation, { frameCount, frameWidth, maxContactSheetWidth: width, overlays: { bones: overlay("bones"), boneNames: overlay("boneNames"), jointPoints: overlay("jointPoints") || overlay("bones"), slotBounds: overlay("slotBounds"), groundLine: overlay("ground"), rootTrajectory: overlay("rootTrajectory"), footTrajectories: overlay("footTrajectories"), motionArcs: overlay("motionArcs") } });
     const renderer = new DiagnosticFrameRenderer();
+    const operation = this.captureProjectOperation("preview-render");
     const captured = await renderer.capture(rig, animation, plan, { groundPlaneY: rig.canvas.height * .92, leftFootBoneId: rig.bones.find((bone) => /left.*foot/i.test(bone.id))?.id ?? null, rightFootBoneId: rig.bones.find((bone) => /right.*foot/i.test(bone.id))?.id ?? null });
+    this.assertProjectOperationCurrent(operation, "preview-renderer");
     const renderId = `render-${Date.now().toString(36)}-${(++this.operationSequence).toString(36)}`;
     this.latestPreview = { renderId, animationId, mimeType: "image/png", imageBase64: await blobBase64(captured.contactSheet), width: plan.contactSheetWidth, height: plan.contactSheetHeight, frameCount: plan.frameCount, frameTimes: plan.times, warnings: [], diagnostics: [`${plan.frameCount} deterministic samples`, `${plan.contactSheetWidth}×${plan.contactSheetHeight} contact sheet`] };
     this.session.update({ lastRenderId: renderId }); this.emit("preview.rendered", actor, `Rendered ${animationId} preview`, renderId);
@@ -953,11 +1194,10 @@ export class RiggingCommandService {
   }
 
   private getValidation(includeDetails: boolean): CommandResult<JsonObject> {
-    const rig = this.requireRig(); const rigIssues = validateRigDefinition(rig);
-    const animationIssues = this.requireAnimations().animations.flatMap((animation) => { const parsed = safeParseAnimationDefinition(animation, rig); return parsed.success ? [] : parsed.issues.map((issue) => ({ animationId: animation.id, path: issue.path.join("."), message: issue.message })); });
-    const valid = rigIssues.length === 0 && animationIssues.length === 0;
-    this.session.update({ validationState: { valid, errorCount: rigIssues.length + animationIssues.length, checkedAt: now() } });
-    return this.ok({ valid, errorCount: rigIssues.length + animationIssues.length, ...(includeDetails ? { rigIssues, animationIssues } : {}) });
+    const problems = validateRigProject({ storageVersion: LOCAL_PROJECT_STORAGE_VERSION, localProjectId: this.durableProjectId, project: this.project, rig: this.requireRig(), animations: this.requireAnimations(), selectedSkinId: this.activeSkinId }, { boneIds: this.session.snapshot.selectedBoneId ? [this.session.snapshot.selectedBoneId] : [], animationId: this.session.snapshot.selectedAnimationId });
+    const blocking = blockingRigProjectProblems(problems); const valid = blocking.length === 0;
+    this.session.update({ validationState: { valid, errorCount: blocking.length, checkedAt: now() } });
+    return this.ok({ valid, errorCount: blocking.length, warningCount: problems.length - blocking.length, ...(includeDetails ? { problems } : {}) });
   }
 
   private beginTransaction(label: string, actor: string): CommandResult<JsonObject> {
@@ -1005,8 +1245,16 @@ export class RiggingCommandService {
     return this.ok({ projectId: project.id, stageReached: "segmentation_review", generationId: project.sourceImage?.generationId ?? null, requiresReview: true }, project.warnings);
   }
 
-  private setProject(project: GeneratedCharacterProject, explicitActivation = false): void {
-    if (explicitActivation) { this.activationVersion += 1; this.activationSource = "explicit"; }
+  private setProject(project: GeneratedCharacterProject, explicitActivation = false, preserveDurableIdentity = false): void {
+    if (explicitActivation) {
+      this.activationVersion += 1; this.activationSource = "explicit";
+      if (!preserveDurableIdentity) {
+        this.durableProjectId = null;
+        this.projectLifecycle.activateInitial(project.id);
+      }
+    } else if (!this.projectLifecycle.snapshot.switching && this.projectLifecycle.snapshot.activeProjectId === project.id) {
+      this.projectLifecycle.recordMutation(project.id);
+    }
     this.project = structuredClone(project); this.projectAdapter?.replaceProject(project);
     if (project.rigDefinition) this.standaloneRig = structuredClone(project.rigDefinition);
     this.session.update({
@@ -1015,6 +1263,7 @@ export class RiggingCommandService {
       ...(explicitActivation ? { selectedAnimationId: null, selectedBoneId: null } : {}),
       dirtyState: true, warnings: project.warnings,
     });
+    this.notifyDurableListeners();
   }
 
   private retargetAnimationsToRig(rigId: string): void {
@@ -1023,7 +1272,12 @@ export class RiggingCommandService {
   }
 
   private requireProject(): GeneratedCharacterProject { if (!this.project) throw new Error("No active character project"); return this.project; }
-  private requireRig(): RigDefinition { const rig = this.rigAdapter?.getRig() ?? this.projectAdapter?.getProject().rigDefinition ?? this.project?.rigDefinition ?? this.standaloneRig; if (!rig) throw new Error("No active rig"); return rig; }
+  private requireRig(): RigDefinition {
+    if (this.project && !this.project.rigDefinition && this.session.snapshot.selectedRigId === null) throw new Error("No active rig");
+    const rig = this.rigAdapter?.getRig() ?? this.projectAdapter?.getProject().rigDefinition ?? this.project?.rigDefinition ?? this.standaloneRig;
+    if (!rig) throw new Error("No active rig");
+    return rig;
+  }
   private requireAnimations(): AnimationLibrary {
     const existing = this.animationAdapter?.getLibrary() ?? this.animations;
     if (existing) return existing;

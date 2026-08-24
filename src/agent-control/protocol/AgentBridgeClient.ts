@@ -1,6 +1,7 @@
 import type { RiggingCommandService } from "../commands/RiggingCommandService";
 import { BRIDGE_PROTOCOL_VERSION, bridgeActivitySchema, bridgeRequestSchema, type BridgeResponse } from "./messages";
 import { TOOL_NAMES } from "../validation/toolSchemas";
+import { OptionalServiceRetryBackoff } from "../../local-services/retryBackoff";
 
 export type AgentBridgeClientOptions = {
   readonly url?: string;
@@ -15,6 +16,7 @@ export class AgentBridgeClient {
   private readonly url: string;
   private readonly httpUrl: string;
   private readonly reconnectDelayMs: number;
+  private readonly reconnectBackoff = new OptionalServiceRetryBackoff();
 
   constructor(private readonly service: RiggingCommandService, options: AgentBridgeClientOptions = {}) {
     this.url = options.url ?? "ws://127.0.0.1:47831";
@@ -40,6 +42,7 @@ export class AgentBridgeClient {
     const socket = new WebSocket(this.url);
     this.socket = socket;
     socket.addEventListener("open", () => {
+      this.reconnectBackoff.reset();
       this.service.setBridgeConnected(true);
       this.polling = false;
       socket.send(JSON.stringify({ type: "hello", protocolVersion: BRIDGE_PROTOCOL_VERSION, sessionId: this.service.session.snapshot.sessionId, client: "rigging-studio-browser" }));
@@ -50,7 +53,10 @@ export class AgentBridgeClient {
       if (this.socket === socket) this.socket = null;
       this.service.setBridgeConnected(false);
       if (event.code === 4001) { this.stopped = true; return; }
-      if (!this.stopped) { this.startPolling(); this.reconnectTimer = setTimeout(() => this.connect(), Math.max(4_000, this.reconnectDelayMs)); }
+      if (!this.stopped) {
+        const delay = Math.max(this.reconnectDelayMs, this.reconnectBackoff.nextDelay(false));
+        this.reconnectTimer = setTimeout(() => this.connect(), delay);
+      }
     });
   }
 
@@ -93,13 +99,14 @@ export class AgentBridgeClient {
           }
         }
         this.service.setBridgeConnected(true);
-        await new Promise((resolve) => setTimeout(resolve, 350));
+        this.reconnectBackoff.reset();
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
       }
     } catch (reason: unknown) {
       this.service.setAgentConnectionError(reason instanceof Error ? reason.message : "Agent bridge polling failed");
       this.service.setBridgeConnected(false);
       this.polling = false;
-      if (!this.stopped) setTimeout(() => this.startPolling(), this.reconnectDelayMs);
+      if (!this.stopped) this.reconnectTimer = setTimeout(() => this.startPolling(), Math.max(this.reconnectDelayMs, this.reconnectBackoff.nextDelay(false)));
     }
   }
 }

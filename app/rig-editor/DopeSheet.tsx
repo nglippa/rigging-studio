@@ -7,9 +7,9 @@ import { keyframeSelectionKey, type KeyframeSelection } from "@/src/tools/rig-ed
 import type { TimelineIssueMarker } from "@/src/rigging/ai-vision/visualReviewDiff";
 import { humanizeTechnicalId } from "@/app/studio-ui/humanize";
 
-const LABEL_WIDTH = 218;
-const RULER_HEIGHT = 25;
-const ROW_HEIGHT = 22;
+const LABEL_WIDTH = 240;
+const RULER_HEIGHT = 32;
+const ROW_HEIGHT = 30;
 const OVERSCAN = 8;
 type TimelineRow = { readonly kind: "bone" | "property"; readonly boneId: string; readonly property?: AnimatedProperty; readonly depth: number };
 type Box = { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
@@ -160,7 +160,7 @@ export const DopeSheet = memo(forwardRef<DopeSheetHandle, Props>(function DopeSh
             return <div key={`${row.boneId}:${row.property ?? "bone"}:lane`} className={`timeline-lane ${row.kind}`} style={{ top: index * ROW_HEIGHT }}>
               {(track?.keyframes ?? aggregate).map((frame, frameIndex) => {
                 const selection = row.property ? { boneId: row.boneId, property: row.property, time: frame.time } : null;
-                return <button type="button" aria-label={selection ? `${row.boneId} ${row.property} key at ${frame.time.toFixed(3)} seconds` : `Key summary at ${frame.time.toFixed(3)} seconds`} key={`${frame.time}:${frameIndex}`} className={`key-diamond ${selection && selectedKeys.has(keyframeSelectionKey(selection)) ? "selected" : ""} ${row.kind === "bone" ? "summary" : ""}`} style={{ left: frame.time * props.pixelsPerSecond }} onPointerDown={selection ? (event) => keyDown(event, selection) : undefined} onPointerMove={selection ? keyMove : undefined} onPointerUp={selection ? keyUp : undefined} onDoubleClick={() => props.onTime(frame.time)} />;
+                return <button type="button" aria-label={selection ? `${row.boneId} ${row.property} key at ${frame.time.toFixed(3)} seconds` : `Key summary at ${frame.time.toFixed(3)} seconds`} key={`${frame.time}:${frameIndex}`} className={`key-diamond ${selection && selectedKeys.has(keyframeSelectionKey(selection)) ? "selected" : ""} ${row.kind === "bone" ? "summary" : ""}`} style={{ left: frame.time * props.pixelsPerSecond }} onPointerDown={selection ? (event) => keyDown(event, selection) : undefined} onPointerMove={selection ? keyMove : undefined} onPointerUp={selection ? keyUp : undefined} onFocus={selection ? () => { if (!selectedKeys.has(keyframeSelectionKey(selection))) props.onSelect([selection]); } : undefined} onClick={selection ? (event) => { event.stopPropagation(); if (!selectedKeys.has(keyframeSelectionKey(selection))) props.onSelect([selection]); } : undefined} onDoubleClick={() => props.onTime(frame.time)} />;
               })}
             </div>;
           })}

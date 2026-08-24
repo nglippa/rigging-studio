@@ -13,6 +13,7 @@ import type { AnimationDefinition, RigDefinition } from "@/src/rigging/schema/ty
 import type { RigRenderer } from "@/src/rigging/rendering/RigRenderer";
 import { RigAssetLoader } from "@/src/rigging/assets/RigAssetLoader";
 import type { BoneAuthoringPatch, EditorSelection } from "@/src/tools/rig-editor/types";
+import { selectionChainForBone } from "./viewportSelection";
 
 export type EditorViewportHandle = {
   readonly resetView: () => void;
@@ -42,6 +43,8 @@ type Props = {
   readonly snapToGrid: boolean;
   readonly wholePixelSnap: boolean;
   readonly rotationSnap: boolean;
+  readonly canvasTool?: "select" | "pan";
+  readonly interactionMode?: "body" | "pivots" | "equipment" | "validate" | "animate";
   readonly onSelect: (selection: EditorSelection | null, additive: boolean) => void;
   readonly onCursor: (point: Point) => void;
   readonly onZoom: (zoom: number) => void;
@@ -90,8 +93,12 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
   const propsRef = useRef(props);
   const dragRef = useRef<DragState | null>(null);
   const spacePressedRef = useRef(false);
+  const reduceMotionRef = useRef(false);
+  const hoveredSelectionRef = useRef<EditorSelection | null>(null);
   const [pixiReady, setPixiReady] = useState(false);
+  const [hoveredSelection, setHoveredSelection] = useState<EditorSelection | null>(null);
   propsRef.current = props;
+  hoveredSelectionRef.current = hoveredSelection;
 
   const screenToWorld = (clientX: number, clientY: number): Point => {
     const state = stateRef.current;
@@ -109,6 +116,7 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
     const mount = mountRef.current;
     if (!state || !mount) return;
     const { width, height } = mount.getBoundingClientRect();
+    state.app.renderer.resize(Math.max(1, width), Math.max(1, height));
     const scale = Math.max(0.15, Math.min(2.5, Math.min(width / propsRef.current.rig.canvas.width, height / propsRef.current.rig.canvas.height) * 0.88));
     state.view.scale.set(scale);
     state.view.position.set(
@@ -135,14 +143,13 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
     state.grid.visible = propsRef.current.showGrid;
     if (!state.grid.visible) return;
     const { width, height } = propsRef.current.rig.canvas;
-    state.grid.rect(0, 0, width, height).fill({ color: 0x111719, alpha: 1 });
-    for (let x = 0; x <= width; x += 16) state.grid.moveTo(x, 0).lineTo(x, height);
-    for (let y = 0; y <= height; y += 16) state.grid.moveTo(0, y).lineTo(width, y);
-    state.grid.stroke({ color: 0x536268, width: 1, alpha: 0.12 });
-    for (let x = 0; x <= width; x += 64) state.grid.moveTo(x, 0).lineTo(x, height);
-    for (let y = 0; y <= height; y += 64) state.grid.moveTo(0, y).lineTo(width, y);
-    state.grid.stroke({ color: 0x718188, width: 1, alpha: 0.18 });
-    state.grid.rect(0, 0, width, height).stroke({ color: 0x718188, width: 1, alpha: 0.34 });
+    const left = -width; const right = width * 2; const top = -height; const bottom = height * 2;
+    for (let x = left; x <= right; x += 16) state.grid.moveTo(x, top).lineTo(x, bottom);
+    for (let y = top; y <= bottom; y += 16) state.grid.moveTo(left, y).lineTo(right, y);
+    state.grid.stroke({ color: 0x7667c9, width: 1, alpha: 0.07 });
+    for (let x = left; x <= right; x += 64) state.grid.moveTo(x, top).lineTo(x, bottom);
+    for (let y = top; y <= bottom; y += 64) state.grid.moveTo(left, y).lineTo(right, y);
+    state.grid.stroke({ color: 0x8f82e8, width: 1, alpha: 0.13 });
   };
 
   const selectedBone = (): string | null => propsRef.current.selections.find((selection) => selection.type === "bone")?.id ?? null;
@@ -154,6 +161,9 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
     const world = runtime.getWorldTransforms();
     const zoom = Math.max(0.1, state.view.scale.x);
     const currentProps = propsRef.current;
+    const primaryBoneId = selectedBone();
+    const chain = primaryBoneId ? selectionChainForBone(runtime.definition, primaryBoneId) : null;
+    const pulse = reduceMotionRef.current ? 1 : 0.86 + Math.sin(performance.now() / 260) * 0.14;
     if (currentProps.authoringMode && currentProps.animation && (currentProps.showPreviousGhost || currentProps.showNextGhost)) {
       const currentTime = state.player?.currentTime ?? currentProps.animationTime ?? 0;
       const times = [...new Set(currentProps.animation.tracks.flatMap((track) => track.keyframes.map((frame) => frame.time)))].sort((a, b) => a - b);
@@ -172,35 +182,59 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
       if (currentProps.showPreviousGhost && previous !== undefined) drawGhost(previous, 0x87b8ff);
       if (currentProps.showNextGhost && next !== undefined) drawGhost(next, 0xff9a78);
     }
-    if (propsRef.current.showBones) {
+    if (currentProps.showBones || currentProps.interactionMode === "pivots") {
       runtime.definition.bones.forEach((bone) => {
-        if (propsRef.current.hiddenBoneIds.has(bone.id)) return;
+        if (currentProps.hiddenBoneIds.has(bone.id)) return;
         const transform = world[bone.id];
         if (!transform) return;
         const end = transformPoint(transform.matrix, { x: bone.length, y: 0 });
-        const selected = propsRef.current.selections.some((selection) => selection.type === "bone" && selection.id === bone.id);
-        const color = selected ? 0x57d9f0 : 0x9eb1b4;
-        state.overlay.moveTo(transform.x, transform.y).lineTo(end.x, end.y).stroke({ color, width: (selected ? 3 : 1.5) / zoom, alpha: selected ? 1 : 0.72 });
-        state.overlay.circle(transform.x, transform.y, (selected ? 5 : 3.5) / zoom).fill({ color, alpha: 0.95 });
+        const selected = bone.id === primaryBoneId;
+        const related = bone.id === chain?.parentId || (chain?.childIds.includes(bone.id) ?? false);
+        const hovered = hoveredSelectionRef.current?.type === "bone" && hoveredSelectionRef.current.id === bone.id;
+        const color = selected ? 0x5de4ff : related || hovered ? 0x56cde9 : 0x8b86ae;
+        const alpha = selected ? 1 : related ? 0.58 : hovered ? 0.88 : primaryBoneId ? 0.2 : 0.48;
+        if (selected || hovered) state.overlay.moveTo(transform.x, transform.y).lineTo(end.x, end.y).stroke({ color, width: (selected ? 8 : 5) / zoom, alpha: selected ? 0.16 : 0.1 });
+        state.overlay.moveTo(transform.x, transform.y).lineTo(end.x, end.y).stroke({ color, width: (selected ? 3 : related ? 2 : 1.25) / zoom, alpha });
+        if (selected) {
+          state.overlay.circle(transform.x, transform.y, 9 / zoom).fill({ color: 0xa77bff, alpha: 0.12 * pulse });
+          state.overlay.circle(transform.x, transform.y, 5.5 / zoom).fill({ color: 0xa77bff, alpha: pulse });
+        } else state.overlay.circle(transform.x, transform.y, (related || hovered ? 4 : 3) / zoom).fill({ color, alpha: Math.min(0.9, alpha + 0.2) });
       });
     }
-    const boneId = selectedBone();
+    const boneId = primaryBoneId;
     if (boneId) {
       const bone = runtime.definition.bones.find((candidate) => candidate.id === boneId);
       const transform = world[boneId];
       if (bone && transform && (!propsRef.current.previewMode || (propsRef.current.authoringMode && !propsRef.current.animationPlaying))) {
         const radius = Math.max(34, Math.min(70, bone.length * 0.72));
         const handle = transformPoint(matrixFromTransform({ x: transform.x, y: transform.y, rotation: transform.rotation, scaleX: 1, scaleY: 1 }), { x: radius, y: 0 });
-        state.overlay.circle(transform.x, transform.y, radius).stroke({ color: 0x57d9f0, width: 1 / zoom, alpha: 0.34 });
-        state.overlay.moveTo(transform.x, transform.y).lineTo(handle.x, handle.y).stroke({ color: 0x57d9f0, width: 1 / zoom, alpha: 0.55 });
-        state.overlay.circle(handle.x, handle.y, 6 / zoom).fill({ color: 0x57d9f0, alpha: 1 });
+        state.overlay.circle(transform.x, transform.y, radius).stroke({ color: 0xa77bff, width: 1 / zoom, alpha: 0.3 });
+        state.overlay.moveTo(transform.x, transform.y).lineTo(handle.x, handle.y).stroke({ color: 0xa77bff, width: 1 / zoom, alpha: 0.7 });
+        state.overlay.circle(handle.x, handle.y, 7 / zoom).fill({ color: 0xa77bff, alpha: pulse });
+        if (currentProps.interactionMode === "pivots") {
+          const guide = 26 / zoom;
+          state.overlay.moveTo(transform.x - guide, transform.y).lineTo(transform.x + guide, transform.y).stroke({ color: 0xa77bff, width: 1 / zoom, alpha: 0.26 });
+          state.overlay.moveTo(transform.x, transform.y - guide).lineTo(transform.x, transform.y + guide).stroke({ color: 0xa77bff, width: 1 / zoom, alpha: 0.26 });
+        }
       }
     }
+    const attachmentBoneIds = chain?.relatedIds ?? new Set<string>();
+    runtime.getResolvedSlots().forEach(({ slot, attachment }) => {
+      const equipment = /weapon|shield|sword|staff|bow|helmet|armor|cape|tail|quiver/i.test(`${slot.id} ${attachment?.id ?? ""}`);
+      if (!attachment || (!attachmentBoneIds.has(slot.boneId) && !(currentProps.interactionMode === "equipment" && equipment))) return;
+      const bone = world[slot.boneId];
+      if (!bone) return;
+      const anchor = transformPoint(bone.matrix, { x: attachment.offsetX, y: attachment.offsetY });
+      const color = equipment ? 0x5dffc0 : 0x54e8ff;
+      state.overlay.circle(anchor.x, anchor.y, 3.5 / zoom).fill({ color, alpha: 0.78 });
+      state.overlay.circle(anchor.x, anchor.y, 7 / zoom).stroke({ color, width: 1 / zoom, alpha: 0.24 });
+    });
     const selectedSlotId = propsRef.current.selections.find((selection) => selection.type === "slot")?.id;
     if (selectedSlotId) drawSelectedSlot(state, selectedSlotId, zoom);
+    if (hoveredSelectionRef.current?.type === "slot" && hoveredSelectionRef.current.id !== selectedSlotId) drawSelectedSlot(state, hoveredSelectionRef.current.id, zoom, true);
   };
 
-  const drawSelectedSlot = (state: PixiState, slotId: string, zoom: number): void => {
+  const drawSelectedSlot = (state: PixiState, slotId: string, zoom: number, hovered = false): void => {
     const runtime = state.runtime;
     if (!runtime) return;
     const resolved = runtime.getResolvedSlots().find(({ slot }) => slot.id === slotId);
@@ -220,7 +254,8 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
       transformPoint(matrix, { x: left + attachment.width, y: top + attachment.height }),
       transformPoint(matrix, { x: left, y: top + attachment.height }),
     ];
-    state.overlay.poly(corners.flatMap((point) => [point.x, point.y]), true).stroke({ color: 0x57d9f0, width: 2 / zoom, alpha: 1 });
+    if (!hovered) state.overlay.poly(corners.flatMap((point) => [point.x, point.y]), true).stroke({ color: 0x5de4ff, width: 8 / zoom, alpha: 0.12 });
+    state.overlay.poly(corners.flatMap((point) => [point.x, point.y]), true).stroke({ color: 0x5de4ff, width: (hovered ? 1.25 : 2) / zoom, alpha: hovered ? 0.75 : 1 });
   };
 
   useEffect(() => {
@@ -233,7 +268,7 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
       const { Application, Container, Graphics } = await import("pixi.js");
       if (cancelled) return;
       const app = new Application();
-      await app.init({ resizeTo: mount, backgroundColor: 0x0c1012, antialias: true, autoDensity: true, resolution: Math.min(2, window.devicePixelRatio || 1) });
+      await app.init({ resizeTo: mount, backgroundColor: 0x080718, antialias: true, autoDensity: true, resolution: Math.min(2, window.devicePixelRatio || 1) });
       if (cancelled) { app.destroy(true); return; }
       mount.appendChild(app.canvas);
       const view = new Container();
@@ -256,14 +291,25 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
         }
         current.renderer?.update();
         if (current.renderer && current.runtime) {
+          const primary = propsRef.current.selections[0];
+          const chain = primary?.type === "bone" ? selectionChainForBone(current.runtime.definition, primary.id) : null;
+          const selectedSlot = primary?.type === "slot" ? current.runtime.definition.slots.find((slot) => slot.id === primary.id) : null;
           current.runtime.definition.slots.forEach((slot) => {
             const sprite = current.renderer?.attachmentSprites.get(slot.id);
-            if (sprite && propsRef.current.hiddenBoneIds.has(slot.boneId)) sprite.visible = false;
+            if (!sprite) return;
+            if (propsRef.current.hiddenBoneIds.has(slot.boneId)) { sprite.visible = false; return; }
+            const attachment = current.runtime?.definition.attachments.find((item) => item.id === slot.attachmentId);
+            const equipment = /weapon|shield|sword|staff|bow|helmet|armor|cape|tail|quiver/i.test(`${slot.id} ${attachment?.id ?? ""}`);
+            if (primary?.type === "bone") sprite.alpha = slot.boneId === primary.id ? 1 : chain?.relatedIds.has(slot.boneId) ? 0.7 : 0.28;
+            else if (selectedSlot) sprite.alpha = slot.id === selectedSlot.id ? 1 : slot.boneId === selectedSlot.boneId ? 0.62 : 0.28;
+            else if (propsRef.current.interactionMode === "equipment") sprite.alpha = equipment ? 1 : 0.28;
+            else sprite.alpha = 1;
           });
         }
         drawOverlay(current);
       };
       app.ticker.add(tick);
+      reduceMotionRef.current = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       fitView();
       state.hasFit = true;
       setPixiReady(true);
@@ -418,7 +464,7 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
     const state = stateRef.current;
     if (!state) return;
     event.currentTarget.setPointerCapture(event.pointerId);
-    if (event.button === 1 || (event.button === 0 && spacePressedRef.current)) {
+    if (event.button === 1 || (event.button === 0 && (spacePressedRef.current || props.canvasTool === "pan"))) {
       dragRef.current = { mode: "pan", x: event.clientX, y: event.clientY, viewX: state.view.x, viewY: state.view.y };
       return;
     }
@@ -459,6 +505,12 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
     const point = screenToWorld(event.clientX, event.clientY);
     props.onCursor(point);
     const drag = dragRef.current;
+    if (!drag && props.canvasTool !== "pan") {
+      const boneId = props.showBones ? findBone(point) : null;
+      const slotId = boneId ? null : findSlot(point);
+      const next = boneId ? { type: "bone" as const, id: boneId } : slotId ? { type: "slot" as const, id: slotId } : null;
+      setHoveredSelection((current) => current?.type === next?.type && current?.id === next?.id ? current : next);
+    }
     if (!drag) return;
     if (drag.mode === "pan") {
       state.view.position.set(drag.viewX + event.clientX - drag.x, drag.viewY + event.clientY - drag.y);
@@ -515,5 +567,5 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
     props.onZoom(scale);
   };
 
-  return <div ref={mountRef} className="editor-viewport" tabIndex={0} aria-label="Rig editor viewport" onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp} onWheel={wheel} onContextMenu={(event) => event.preventDefault()} />;
+  return <div ref={mountRef} className={`editor-viewport ${props.canvasTool === "pan" ? "is-pan-tool" : "is-select-tool"}`} data-interaction-mode={props.interactionMode ?? "body"} tabIndex={0} aria-label="Rig editor viewport" onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp} onPointerLeave={() => setHoveredSelection(null)} onWheel={wheel} onContextMenu={(event) => event.preventDefault()}>{hoveredSelection && props.canvasTool !== "pan" && <span className="viewport-semantic-hint">{hoveredSelection.type === "bone" ? "Joint" : "Part"} · {hoveredSelection.id.replaceAll("-", " ")}</span>}</div>;
 });

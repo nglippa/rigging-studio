@@ -1,7 +1,7 @@
 export const CHARACTER_GENERATION_PRESETS = ["MODULAR_2D_RIG_CHARACTER"] as const;
 export type CharacterGenerationPreset = (typeof CHARACTER_GENERATION_PRESETS)[number];
 
-export const CHARACTER_STYLES = ["stylized-game", "pixel-art", "painted-2d", "flat-cartoon"] as const;
+export const CHARACTER_STYLES = ["chibi-pixel-art"] as const;
 export const VIEW_DIRECTIONS = ["left", "right"] as const;
 
 export type CharacterPromptControls = {

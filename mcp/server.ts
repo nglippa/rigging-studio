@@ -12,6 +12,7 @@ import { partCutProposalSchema } from "../src/part-cutter/schema";
 import { proposalToSegmentation } from "../src/part-cutter/operations";
 import type { CharacterImageGenerationResult } from "../src/character-generation/providers/characterPipelineProvider";
 import type { ProposedCharacterPart } from "../src/character-generation/segmentation/segmentationSchema";
+import type { LocalProjectSnapshot } from "../src/project-storage/types";
 
 const toolResponse = (structured: Record<string, unknown>) => ({
   content: [{ type: "text" as const, text: JSON.stringify(structured, null, 2) }],
@@ -38,13 +39,41 @@ export const createRiggingStudioMcpServer = (bridge: StudioBridgeServer): McpSer
       title: name.replaceAll("_", " "),
       description: toolDescription(name),
       inputSchema: studioToolSchemas[name],
-      annotations: { readOnlyHint: readOnly, destructiveHint: name === "animation_delete" || name === "animation_delete_keyframe", idempotentHint: readOnly, openWorldHint: false },
+      annotations: { readOnlyHint: readOnly, destructiveHint: name === "animation_delete" || name === "animation_delete_keyframe" || name === "project_archive", idempotentHint: readOnly, openWorldHint: false },
     }, async (input: unknown) => {
       if (name === "studio_get_status" && !bridge.connected) {
         const disconnected = { success: true, connected: false, sessionId: null, activeProjectId: null, warnings: [{ code: "studio_disconnected", message: "Start Rigging Studio and keep the editor open." }] };
         return { content: [{ type: "text", text: JSON.stringify(disconnected, null, 2) }], structuredContent: disconnected };
       }
       try {
+        if (name === "project_storage_status") return toolResponse({ success: true, ...(await bridge.projectStorage.status()) });
+        if (name === "project_list") return toolResponse({ success: true, projects: await bridge.projectStorage.list() });
+        if (name === "project_open") {
+          const parsed = studioToolSchemas.project_open.parse(input) as { readonly projectId?: string; readonly project?: unknown; readonly snapshot?: unknown };
+          if (!parsed.projectId) { const result = await bridge.request("project_open", parsed); return toolResponse(result as Record<string, unknown>); }
+          const loaded = await bridge.projectStorage.load(parsed.projectId); const opened = await bridge.request("project_open", { snapshot: loaded.snapshot });
+          return toolResponse({ ...(opened as Record<string, unknown>), project: loaded.summary, openedFrom: "disk" });
+        }
+        if (name === "project_save") {
+          const parsed = studioToolSchemas.project_save.parse(input) as { readonly projectId?: string }; if (parsed.projectId) await assertActiveProject(bridge, parsed.projectId);
+          const cached = await bridge.request("project_save", parsed) as Record<string, unknown>; if (cached.success === false || !cached.snapshot) return toolResponse(cached);
+          const saved = await bridge.projectStorage.save(cached.snapshot as LocalProjectSnapshot); return toolResponse({ success: true, ...saved, cachePersistence: cached.persistence });
+        }
+        if (name === "project_save_as") {
+          const parsed = studioToolSchemas.project_save_as.parse(input) as { readonly projectId?: string; readonly name: string }; if (parsed.projectId) await assertActiveProject(bridge, parsed.projectId);
+          const cached = await bridge.request("project_save", { projectId: parsed.projectId }) as Record<string, unknown>; if (!cached.snapshot) return toolResponse(cached);
+          return toolResponse({ success: true, ...(await bridge.projectStorage.saveAs(cached.snapshot as LocalProjectSnapshot, parsed.name)) });
+        }
+        if (name === "project_import") {
+          const parsed = studioToolSchemas.project_import.parse(input) as { readonly snapshot: LocalProjectSnapshot; readonly name?: string };
+          const saved = parsed.name ? await bridge.projectStorage.saveAs(parsed.snapshot, parsed.name) : await bridge.projectStorage.save(parsed.snapshot); return toolResponse({ success: true, ...saved });
+        }
+        if (name === "project_export_snapshot") {
+          const parsed = studioToolSchemas.project_export_snapshot.parse(input) as { readonly projectId?: string }; const projectId = parsed.projectId ?? await activeProjectId(bridge);
+          return toolResponse({ success: true, ...(await bridge.projectStorage.exportSnapshot(projectId)) });
+        }
+        if (name === "project_reveal") { const parsed = studioToolSchemas.project_reveal.parse(input) as { readonly projectId: string }; return toolResponse({ success: true, ...(await bridge.projectStorage.reveal(parsed.projectId)) }); }
+        if (name === "project_archive") { const parsed = studioToolSchemas.project_archive.parse(input) as { readonly projectId: string; readonly confirm: true }; return toolResponse({ success: true, ...(await bridge.projectStorage.archive(parsed.projectId)) }); }
         if (name === "segmentation_status") {
           const status = await bridge.characterPipeline.status();
           return toolResponse({ success: true, ...status });
@@ -75,7 +104,7 @@ export const createRiggingStudioMcpServer = (bridge: StudioBridgeServer): McpSer
           const result = await bridge.characterPipeline.reconstructPart({
             generationId: generation.generationId, image: generation.image, part, stylePrompt: generation.generationPrompt,
             reconstructionMask: parsed.reconstructionMask, reconstructionMaskBounds: parsed.reconstructionMaskBounds, expectedPivot: part.pivotHint,
-            consistencyContext: { projectId, sourceImageId: generation.generationId, sourceCanvasWidth: generation.width, sourceCanvasHeight: generation.height, characterPrompt: generation.generationPrompt, stylePrompt: generation.generationPrompt, generationProvider: generation.provider, ...(generation.seed === undefined ? {} : { generationSeed: generation.seed }), canonicalScale: { width: generation.width, height: generation.height }, acceptedParts: (partsResult.parts as readonly ProposedCharacterPart[] | undefined)?.filter((candidate) => candidate.accepted).map((candidate) => candidate.id) ?? [], semanticBBoxes: Object.fromEntries(((partsResult.parts as readonly ProposedCharacterPart[] | undefined) ?? []).map((candidate) => [candidate.semanticType, candidate.bounds])), jointHints: Object.fromEntries(((partsResult.parts as readonly ProposedCharacterPart[] | undefined) ?? []).map((candidate) => [candidate.semanticType, candidate.pivotHint])), paletteHints: [], equipmentHints: [], referenceAssetIds: [generation.sourceArtifact] },
+            consistencyContext: { projectId, sourceImageId: generation.generationId, sourceCanvasWidth: generation.width, sourceCanvasHeight: generation.height, characterPrompt: generation.generationPrompt, stylePrompt: generation.generationPrompt, generationProvider: generation.provider, ...(typeof generation.seed === "number" ? { generationSeed: generation.seed } : {}), canonicalSourceImage: generation.sourceArtifact, providerMetadata: generation.providerMetadata, canonicalScale: { width: generation.width, height: generation.height }, acceptedParts: (partsResult.parts as readonly ProposedCharacterPart[] | undefined)?.filter((candidate) => candidate.accepted).map((candidate) => candidate.id) ?? [], semanticBBoxes: Object.fromEntries(((partsResult.parts as readonly ProposedCharacterPart[] | undefined) ?? []).map((candidate) => [candidate.semanticType, candidate.bounds])), jointHints: Object.fromEntries(((partsResult.parts as readonly ProposedCharacterPart[] | undefined) ?? []).map((candidate) => [candidate.semanticType, candidate.pivotHint])), paletteHints: [], equipmentHints: [], referenceAssetIds: [generation.sourceArtifact] },
           });
           const installed = await bridge.request("part_install_reconstruction_proposal", { projectId, partId: parsed.partId, result });
           return toolResponse({ success: true, projectId, partId: parsed.partId, reconstructionId: result.reconstructionId, runtimeMs: result.runtimeMs ?? null, proposal: installed, previewResource: `rigging://active-project/reconstruction/${encodeURIComponent(parsed.partId)}`, requiresVisualInspection: true, requiresApproval: true });
@@ -94,10 +123,32 @@ export const createRiggingStudioMcpServer = (bridge: StudioBridgeServer): McpSer
           if (!capability.available) return toolResponse({ success: false, capability: name, available: false, warnings: [], errors: [{ code: "capability_unavailable", message: capability.reason ?? `${name} trusted workflow is unavailable` }] });
           return toolResponse({ success: false, capability: name, available: true, warnings: [], errors: [{ code: "capability_not_bound", message: `${name} requires a reviewed narrow source-binding implementation before it can execute` }] });
         }
-        if (name === "image_provider_status" || name === "image_provider_list_capabilities" || name === "comfy_get_status") {
+        if (name === "image_provider_status" || name === "image_provider_list_capabilities" || name === "image_provider_list" || name === "comfy_get_status") {
           const refresh = name === "image_provider_list_capabilities" && Boolean((studioToolSchemas.image_provider_list_capabilities.parse(input) as { readonly refresh: boolean }).refresh);
           const status = await bridge.imageProviderStatus(refresh);
           return toolResponse({ success: true, ...status });
+        }
+        if (name === "character_generate" || name === "character_generate_variant") {
+          const parsed = studioToolSchemas[name].parse(input) as Record<string, unknown>;
+          const projectId = String(parsed.projectId); await assertActiveProject(bridge, projectId);
+          const providerId = String(parsed.provider);
+          const status = await bridge.imageProviderStatus(false);
+          const providerStatus = status.providers.find((provider) => provider.provider === providerId);
+          const readiness = name === "character_generate_variant" ? providerStatus?.characterVariant : providerStatus?.characterGeneration;
+          if (!providerStatus || !readiness?.available) return toolResponse({ success: false, provider: providerId, warnings: [], errors: [{ code: "provider_unavailable", message: readiness && "reason" in readiness ? readiness.reason ?? providerStatus?.message : providerStatus?.message ?? `Provider ${providerId} is not registered` }] });
+          const job = bridge.startImageGenerationJob({
+            projectId, provider: providerId as "comfyui" | "draw_things", operation: name === "character_generate_variant" ? "character_variant" : parsed.generationIntent === "equipment_variant" ? "equipment_variant" : "character_generation",
+            prompt: String(parsed.prompt), candidateCount: Number(parsed.candidateCount), width: Number(parsed.width), height: Number(parsed.height),
+            ...(typeof parsed.negativePrompt === "string" ? { negativePrompt: parsed.negativePrompt } : {}), ...(typeof parsed.model === "string" ? { model: parsed.model } : {}),
+            ...(typeof parsed.seed === "number" ? { seed: parsed.seed } : {}), ...(typeof parsed.sourceProposalId === "string" ? { parentProposalId: parsed.sourceProposalId } : {}),
+          });
+          bridge.notifyActivity("generation.started", `Started ${providerStatus.label} ${name === "character_generate_variant" ? "variant" : "character"} job`, job.jobId);
+          return toolResponse({ success: true, ...job, asynchronous: true, nextTool: "image_generation_get_job" });
+        }
+        if (name === "image_generation_get_job") {
+          const parsed = studioToolSchemas.image_generation_get_job.parse(input) as { readonly jobId: string }; const job = bridge.getImageGenerationJob(parsed.jobId);
+          const proposal = job.proposalId ? await bridge.getImageProposal(job.proposalId).catch(() => undefined) : undefined;
+          return toolResponse({ success: job.status !== "failed", ...job, proposalStatus: proposal?.status, candidateIds: proposal?.candidateIds, requiresReview: proposal?.status === "awaiting_review", requiresHumanApproval: proposal?.approvalPolicy === "manual" && proposal.status === "awaiting_review" });
         }
         if (name === "image_generate_candidates" || name === "character_generate_with_comfy") {
           const parsed = studioToolSchemas[name].parse(input) as Record<string, unknown>;
@@ -127,8 +178,8 @@ export const createRiggingStudioMcpServer = (bridge: StudioBridgeServer): McpSer
             requiresReview: true, requiresHumanApproval: proposal.approvalPolicy === "manual", warnings: [...proposal.warnings, ...(sheetWarning ? [sheetWarning] : [])], errors: proposal.errors,
           });
         }
-        if (name === "image_get_proposal") {
-          const parsed = studioToolSchemas.image_get_proposal.parse(input) as { readonly proposalId: string }; const proposal = await bridge.getImageProposal(parsed.proposalId);
+        if (name === "image_get_proposal" || name === "image_generation_get_proposal") {
+          const parsed = studioToolSchemas[name].parse(input) as { readonly proposalId: string }; const proposal = await bridge.getImageProposal(parsed.proposalId);
           return toolResponse({ success: true, proposal, requiresHumanApproval: proposal.approvalPolicy === "manual" && proposal.status === "awaiting_review" });
         }
         if (name === "image_get_candidates") {
@@ -143,8 +194,8 @@ export const createRiggingStudioMcpServer = (bridge: StudioBridgeServer): McpSer
           const parsed = studioToolSchemas.image_get_candidate.parse(input) as { readonly proposalId: string; readonly candidateId: string }; const result = await bridge.getImageCandidate(parsed.proposalId, parsed.candidateId);
           return imageToolResponse({ success: true, proposalId: parsed.proposalId, candidate: result.candidate, inspectedResourceId: `rigging://image-proposals/${parsed.proposalId}/candidates/${parsed.candidateId}`, inspectionTimestamp: result.proposal.inspectionEvidence.at(-1)?.inspectedAt }, { bytes: result.bytes, mimeType: result.mimeType });
         }
-        if (name === "image_render_candidate_sheet") {
-          const parsed = studioToolSchemas.image_render_candidate_sheet.parse(input) as { readonly proposalId: string; readonly width: number }; const result = await bridge.renderImageCandidateSheet(parsed.proposalId, parsed.width);
+        if (name === "image_render_candidate_sheet" || name === "image_generation_render_proposal") {
+          const parsed = studioToolSchemas[name].parse(input) as { readonly proposalId: string; readonly width: number }; const result = await bridge.renderImageCandidateSheet(parsed.proposalId, parsed.width);
           return imageToolResponse({ success: true, proposalId: parsed.proposalId, resourceUri: `rigging://image-proposals/${parsed.proposalId}/contact-sheet`, width: result.width, height: result.height, candidateIds: result.proposal.candidateIds, inspectionTimestamp: result.proposal.inspectionEvidence.at(-1)?.inspectedAt }, { bytes: result.bytes, mimeType: "image/png" });
         }
         if (name === "image_review_proposal") {
@@ -152,16 +203,16 @@ export const createRiggingStudioMcpServer = (bridge: StudioBridgeServer): McpSer
           bridge.notifyActivity("project.changed", `${process.env.RIGGING_STUDIO_AGENT_NAME ?? "Agent"} reviewed ${proposal.proposalId}`, proposal.proposalId);
           return toolResponse({ success: true, proposalId: proposal.proposalId, status: proposal.status, review: proposal.agentReview, requiresHumanApproval: proposal.approvalPolicy === "manual" });
         }
-        if (name === "image_approve_candidate") {
-          const parsed = studioToolSchemas.image_approve_candidate.parse(input) as { readonly proposalId: string; readonly candidateId: string };
+        if (name === "image_approve_candidate" || name === "image_generation_approve_candidate") {
+          const parsed = studioToolSchemas[name].parse(input) as { readonly proposalId: string; readonly candidateId: string };
           try { return toolResponse(await bridge.approveImageCandidate(parsed.proposalId, parsed.candidateId, "agent") as Record<string, unknown>); }
           catch (error: unknown) {
             const message = error instanceof Error ? error.message : "Candidate approval failed";
             return toolResponse({ success: false, proposalId: parsed.proposalId, candidateId: parsed.candidateId, requiresHumanApproval: /requires explicit human/.test(message), warnings: [], errors: [{ code: "approval_blocked", message }] });
           }
         }
-        if (name === "image_reject_candidate") {
-          const parsed = studioToolSchemas.image_reject_candidate.parse(input) as { readonly proposalId: string; readonly candidateId: string; readonly reason: string }; const proposal = await bridge.rejectImageCandidate(parsed.proposalId, parsed.candidateId, process.env.RIGGING_STUDIO_AGENT_NAME ?? "MCP Agent", parsed.reason);
+        if (name === "image_reject_candidate" || name === "image_generation_reject_candidate") {
+          const parsed = studioToolSchemas[name].parse(input) as { readonly proposalId: string; readonly candidateId: string; readonly reason: string }; const proposal = await bridge.rejectImageCandidate(parsed.proposalId, parsed.candidateId, process.env.RIGGING_STUDIO_AGENT_NAME ?? "MCP Agent", parsed.reason);
           bridge.notifyActivity("project.changed", `Rejected ${parsed.candidateId} from ${parsed.proposalId}`, parsed.proposalId);
           return toolResponse({ success: true, proposalId: proposal.proposalId, candidateId: parsed.candidateId, status: proposal.status });
         }

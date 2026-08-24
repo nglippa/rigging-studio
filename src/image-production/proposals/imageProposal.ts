@@ -21,6 +21,8 @@ export const IMAGE_CANDIDATE_STATUSES = ["generated", "recommended", "approved",
 export type ImageCandidateStatus = (typeof IMAGE_CANDIDATE_STATUSES)[number];
 export const IMAGE_APPROVAL_POLICIES = ["manual", "agent_recommendation"] as const;
 export type ImageApprovalPolicy = (typeof IMAGE_APPROVAL_POLICIES)[number];
+export const IMAGE_PROPOSAL_PROVIDERS = ["comfyui", "draw_things"] as const;
+export type ImageProposalProvider = (typeof IMAGE_PROPOSAL_PROVIDERS)[number];
 
 const jsonPrimitiveSchema = z.union([z.string(), z.number().finite(), z.boolean(), z.null()]);
 export const imageProductionJsonSchema: z.ZodType<ImageProductionJson> = z.lazy(() => z.union([
@@ -41,7 +43,7 @@ export type ImageCandidate = {
   readonly imageFileName: string;
   readonly width: number;
   readonly height: number;
-  readonly seed: number;
+  readonly seed: number | null;
   readonly providerMetadata: Readonly<Record<string, ImageProductionJson>>;
   readonly diagnostics: CandidateDiagnostics;
   readonly status: ImageCandidateStatus;
@@ -87,7 +89,7 @@ export type ImageProposal = {
   readonly proposalId: string;
   readonly projectId: string;
   readonly operationType: ImageProductionCapability;
-  readonly provider: "comfyui";
+  readonly provider: ImageProposalProvider;
   readonly workflowId: string;
   readonly status: ImageProposalStatus;
   readonly approvalPolicy: ImageApprovalPolicy;
@@ -122,7 +124,7 @@ export const imageCandidateSchema: z.ZodType<ImageCandidate> = z.object({
   imageFileName: z.string().regex(/^[a-zA-Z0-9._-]+\.(png|jpg|jpeg)$/),
   width: z.number().int().positive(),
   height: z.number().int().positive(),
-  seed: z.number().int().nonnegative(),
+  seed: z.number().int().nonnegative().nullable(),
   providerMetadata: z.record(z.string(), imageProductionJsonSchema),
   diagnostics: candidateDiagnosticsSchema,
   status: z.enum(IMAGE_CANDIDATE_STATUSES),
@@ -156,7 +158,7 @@ const progressSchema: z.ZodType<ImageProposalProgress> = z.object({
 
 export const imageProposalSchema: z.ZodType<ImageProposal> = z.object({
   proposalVersion: z.literal(1), proposalId: z.string().min(1), projectId: z.string().min(1), operationType: z.enum(IMAGE_PRODUCTION_CAPABILITIES),
-  provider: z.literal("comfyui"), workflowId: z.string().min(1), status: z.enum(IMAGE_PROPOSAL_STATUSES), approvalPolicy: z.enum(IMAGE_APPROVAL_POLICIES),
+  provider: z.enum(IMAGE_PROPOSAL_PROVIDERS), workflowId: z.string().min(1), status: z.enum(IMAGE_PROPOSAL_STATUSES), approvalPolicy: z.enum(IMAGE_APPROVAL_POLICIES),
   createdAt: z.string().datetime(), updatedAt: z.string().datetime(), sourcePrompt: z.string(), negativePrompt: z.string(),
   generationParameters: z.record(z.string(), imageProductionJsonSchema), targetPartId: z.string().min(1).optional(), parentProposalId: z.string().min(1).optional(), proposalRound: z.number().int().min(1).max(100),
   candidateIds: z.array(z.string().min(1)), candidates: z.array(imageCandidateSchema), warnings: z.array(z.string()), errors: z.array(z.string()), progress: progressSchema,
@@ -171,7 +173,16 @@ export const imageProposalReviewInputSchema = z.object({
 export type ImageProposalReviewInput = z.infer<typeof imageProposalReviewInputSchema>;
 
 export function parseImageProposal(input: unknown): ImageProposal {
-  const parsed = imageProposalSchema.safeParse(input);
+  const migrated = input && typeof input === "object" && !Array.isArray(input)
+    ? (() => {
+      const proposal = input as Record<string, unknown>;
+      const candidates = Array.isArray(proposal.candidates)
+        ? proposal.candidates.map((candidate) => candidate && typeof candidate === "object" && !Array.isArray(candidate) && !("seed" in candidate) ? { ...candidate as Record<string, unknown>, seed: null } : candidate)
+        : proposal.candidates;
+      return { ...proposal, candidates };
+    })()
+    : input;
+  const parsed = imageProposalSchema.safeParse(migrated);
   if (!parsed.success) throw new Error(`Invalid image proposal: ${parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ")}`);
   return parsed.data;
 }

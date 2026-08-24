@@ -52,6 +52,7 @@ test("server-renders the Create Character pipeline", async () => {
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /<title>Create Character/);
-  assert.match(html, /Describe the source art you need to rig/);
-  assert.match(html, /Generate character/);
+  assert.match(html, /Describe the chibi sprite you need to rig/);
+  assert.match(html, /Generate chibi sprite/);
+  assert.match(html, /Chibi pixel art locked/);
 });

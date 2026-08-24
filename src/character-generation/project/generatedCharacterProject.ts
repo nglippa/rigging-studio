@@ -6,6 +6,7 @@ import { characterSegmentationResponseSchema, type CharacterSegmentationResponse
 import type { OcclusionReview } from "../occlusion/occlusionRepair";
 import type { CharacterImageGenerationResult, SuitabilityReview } from "../providers/characterPipelineProvider";
 import { partCutterStateSchema, type PartCutterState } from "../../part-cutter/schema";
+import { ensureOwnershipPartition } from "../../part-cutter/ownership";
 
 export const CHARACTER_PROJECT_STAGES = ["describe", "generate", "prepare", "rig", "test", "edit"] as const;
 export type CharacterProjectStage = (typeof CHARACTER_PROJECT_STAGES)[number];
@@ -28,6 +29,7 @@ export type GeneratedCharacterProject = {
   readonly generationHistory: readonly CharacterImageGenerationResult[];
   readonly imageProductionHistory: readonly {
     readonly proposalId: string;
+    readonly provider: string;
     readonly operation: string;
     readonly candidateId: string;
     readonly workflowId: string;
@@ -49,9 +51,9 @@ export type GeneratedCharacterProject = {
   readonly updatedAt: string;
 };
 
-const providerMetadataSchema = z.record(z.string(), z.union([z.string(), z.number(), z.boolean()]));
+const providerMetadataSchema = z.record(z.string(), jsonValueSchema);
 const imageSchema: z.ZodType<CharacterImageGenerationResult> = z.object({
-  generationId: z.string(), image: z.string(), width: z.number().int().positive(), height: z.number().int().positive(), generationPrompt: z.string(), generationSettings: providerMetadataSchema, seed: z.number().int().optional(), providerMetadata: providerMetadataSchema, warnings: z.array(z.string()),
+  generationId: z.string(), image: z.string(), width: z.number().int().positive(), height: z.number().int().positive(), generationPrompt: z.string(), generationSettings: providerMetadataSchema, seed: z.number().int().nullable().optional(), providerMetadata: providerMetadataSchema, warnings: z.array(z.string()),
   generationMode: z.enum(["fixture", "provider_generated", "imported_external"]), novelArtwork: z.boolean(), provider: z.string().min(1), sourceArtifact: z.string().min(1),
 }).strict();
 const suitabilitySchema: z.ZodType<SuitabilityReview> = z.object({
@@ -65,7 +67,7 @@ export const generatedCharacterProjectSchema: z.ZodType<GeneratedCharacterProjec
   projectVersion: z.literal(1), id: z.string().min(1), name: z.string().min(1), stage: z.enum(CHARACTER_PROJECT_STAGES), originalUserPrompt: z.string(), generationPrompt: z.string(),
   generationMetadata: z.record(z.string(), jsonValueSchema), generationHistory: z.array(imageSchema), sourceImage: imageSchema.optional(), suitability: suitabilitySchema.optional(), segmentationData: characterSegmentationResponseSchema.optional(),
   partCutterState: partCutterStateSchema.optional(),
-  imageProductionHistory: z.array(z.object({ proposalId: z.string().min(1), operation: z.string().min(1), candidateId: z.string().min(1), workflowId: z.string().min(1), approvalPolicy: z.enum(["manual", "agent_recommendation"]), targetPartId: z.string().min(1).optional(), acceptedAt: z.string() }).strict()),
+  imageProductionHistory: z.array(z.object({ proposalId: z.string().min(1), provider: z.string().min(1), operation: z.string().min(1), candidateId: z.string().min(1), workflowId: z.string().min(1), approvalPolicy: z.enum(["manual", "agent_recommendation"]), targetPartId: z.string().min(1).optional(), acceptedAt: z.string() }).strict()),
   extractedParts: z.array(z.object({ partId: z.string(), image: z.string(), width: z.number().positive(), height: z.number().positive(), padding: z.number().int().nonnegative(), status: z.enum(["generated", "reconstructed", "manual", "accepted"]) }).strict()),
   reconstructedParts: z.array(occlusionSchema), rigDefinition: rigDefinitionSchema.optional(), skins: z.array(skinDefinitionSchema), warnings: z.array(z.string()),
   userCorrections: z.array(z.object({ stage: z.enum(CHARACTER_PROJECT_STAGES), description: z.string(), timestamp: z.string() }).strict()), createdAt: z.string(), updatedAt: z.string(),
@@ -99,7 +101,8 @@ export function parseGeneratedCharacterProject(input: unknown): { readonly succe
       const record = input as Record<string, unknown>;
       const sourceImage = migrateGeneration(record.sourceImage);
       const history = Array.isArray(record.generationHistory) ? record.generationHistory.map(migrateGeneration) : sourceImage ? [sourceImage] : [];
-      return { ...record, sourceImage, generationHistory: history, imageProductionHistory: Array.isArray(record.imageProductionHistory) ? record.imageProductionHistory : [] };
+      const imageProductionHistory = Array.isArray(record.imageProductionHistory) ? record.imageProductionHistory.map((item) => item && typeof item === "object" && !Array.isArray(item) ? { provider: "comfyui", ...item as Record<string, unknown> } : item) : [];
+      return { ...record, sourceImage, generationHistory: history, imageProductionHistory };
     })()
     : input;
   const parsed = generatedCharacterProjectSchema.safeParse(migrated);
@@ -108,7 +111,7 @@ export function parseGeneratedCharacterProject(input: unknown): { readonly succe
     const rig = safeParseRigDefinition(parsed.data.rigDefinition);
     if (!rig.success) return { success: false, message: rig.message };
   }
-  return { success: true, data: parsed.data };
+  return { success: true, data: parsed.data.partCutterState ? { ...parsed.data, partCutterState: ensureOwnershipPartition(parsed.data.partCutterState) } : parsed.data };
 }
 
 export function serializeGeneratedCharacterProject(project: GeneratedCharacterProject): string {

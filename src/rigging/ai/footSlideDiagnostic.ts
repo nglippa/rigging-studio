@@ -10,9 +10,14 @@ export type FootSlideDiagnostic = {
   readonly start: number;
   readonly end: number;
   readonly drift: number;
+  readonly normalizedToHeight?: number;
+  readonly normalizedToLegLength?: number;
+  readonly tolerance?: number;
   readonly likelySliding: boolean;
   readonly message: string;
 };
+
+export type NormalizedFootSlideOptions = { readonly maximumHeightRatio?: number; readonly maximumLegLengthRatio?: number };
 
 export const diagnoseFootSliding = (
   rig: RigDefinition,
@@ -42,3 +47,30 @@ export const diagnoseFootSliding = (
     message: likelySliding ? `${boneId} drifts ${drift.toFixed(1)}px during marked contact` : `${boneId} stays within ${drift.toFixed(1)}px during marked contact`,
   }];
 });
+
+export const diagnoseNormalizedFootSliding = (
+  rig: RigDefinition,
+  animation: AnimationDefinition,
+  footBones: { readonly leftFootBoneId: string | null; readonly rightFootBoneId: string | null },
+  intervals: readonly FootContactInterval[],
+  options: NormalizedFootSlideOptions = {},
+): readonly FootSlideDiagnostic[] => {
+  const world = computeWorldTransforms(rig, createRestPose(rig));
+  const ys = Object.values(world).map((position) => position.y);
+  const height = Math.max(1, Math.max(...ys) - Math.min(...ys));
+  const chainLength = (side: "left" | "right"): number => rig.bones
+    .filter((bone) => new RegExp(`${side}.*(?:upper.*leg|lower.*leg|hock|foot)`, "i").test(bone.id))
+    .reduce((sum, bone) => sum + (bone.parentId ? Math.hypot(bone.x, bone.y) : 0), 0);
+  const legLength = Math.max(1, (chainLength("left") + chainLength("right")) / 2);
+  const tolerance = Math.min(height * (options.maximumHeightRatio ?? .02), legLength * (options.maximumLegLengthRatio ?? .035));
+  return diagnoseFootSliding(rig, animation, footBones, intervals, tolerance).map((item) => {
+    const normalizedToHeight = item.drift / height; const normalizedToLegLength = item.drift / legLength;
+    const likelySliding = item.drift > tolerance;
+    return {
+      ...item, normalizedToHeight, normalizedToLegLength, tolerance, likelySliding,
+      message: likelySliding
+        ? `${item.boneId} drifts ${(normalizedToHeight * 100).toFixed(2)}% height / ${(normalizedToLegLength * 100).toFixed(2)}% leg length during contact`
+        : `${item.boneId} contact drift ${(normalizedToHeight * 100).toFixed(2)}% height / ${(normalizedToLegLength * 100).toFixed(2)}% leg length`,
+    };
+  });
+};

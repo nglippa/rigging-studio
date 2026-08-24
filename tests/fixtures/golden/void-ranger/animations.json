@@ -1,0 +1,719 @@
+{
+  "format": "rig-studio-animation-library",
+  "formatVersion": 1,
+  "rigId": "rig-void-ranger",
+  "animations": [
+    {
+      "schemaVersion": 1,
+      "id": "game-idle",
+      "name": "Game Idle",
+      "duration": 1.6,
+      "loop": true,
+      "tracks": [
+        {
+          "boneId": "torso",
+          "property": "y",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 0,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.8,
+              "value": -5,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 1.6,
+              "value": 0,
+              "easing": "easeInOut"
+            }
+          ]
+        },
+        {
+          "boneId": "head",
+          "property": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 1,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.8,
+              "value": -2,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 1.6,
+              "value": 1,
+              "easing": "easeInOut"
+            }
+          ]
+        },
+        {
+          "boneId": "right-hand",
+          "property": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 0,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.8,
+              "value": 2,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 1.6,
+              "value": 0,
+              "easing": "easeInOut"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "id": "game-walk",
+      "name": "Game Walk",
+      "duration": 0.9,
+      "loop": true,
+      "tracks": [
+        {
+          "boneId": "pelvis",
+          "property": "y",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 0,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.225,
+              "value": -6,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.45,
+              "value": 0,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.675,
+              "value": -6,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.9,
+              "value": 0,
+              "easing": "easeInOut"
+            }
+          ]
+        },
+        {
+          "boneId": "torso",
+          "property": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 2,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.45,
+              "value": -2,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.9,
+              "value": 2,
+              "easing": "easeInOut"
+            }
+          ]
+        },
+        {
+          "boneId": "left-upper-arm",
+          "property": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": -22,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.45,
+              "value": 22,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.9,
+              "value": -22,
+              "easing": "easeInOut"
+            }
+          ]
+        },
+        {
+          "boneId": "right-upper-arm",
+          "property": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 22,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.45,
+              "value": -22,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.9,
+              "value": 22,
+              "easing": "easeInOut"
+            }
+          ]
+        },
+        {
+          "boneId": "left-upper-leg",
+          "property": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 25,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.45,
+              "value": -25,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.9,
+              "value": 25,
+              "easing": "easeInOut"
+            }
+          ]
+        },
+        {
+          "boneId": "right-upper-leg",
+          "property": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": -25,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.45,
+              "value": 25,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.9,
+              "value": -25,
+              "easing": "easeInOut"
+            }
+          ]
+        },
+        {
+          "boneId": "left-lower-leg",
+          "property": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 5,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.225,
+              "value": 30,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.45,
+              "value": 5,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.9,
+              "value": 5,
+              "easing": "easeInOut"
+            }
+          ]
+        },
+        {
+          "boneId": "right-lower-leg",
+          "property": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 5,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.45,
+              "value": 5,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.675,
+              "value": 30,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.9,
+              "value": 5,
+              "easing": "easeInOut"
+            }
+          ]
+        },
+        {
+          "boneId": "left-foot",
+          "property": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": -8,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.45,
+              "value": 10,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.9,
+              "value": -8,
+              "easing": "easeInOut"
+            }
+          ]
+        },
+        {
+          "boneId": "right-foot",
+          "property": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 10,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.45,
+              "value": -8,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.9,
+              "value": 10,
+              "easing": "easeInOut"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "id": "game-run",
+      "name": "Game Run",
+      "duration": 0.62,
+      "loop": true,
+      "tracks": [
+        {
+          "boneId": "pelvis",
+          "property": "y",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 0,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.155,
+              "value": -12,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.31,
+              "value": 0,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.465,
+              "value": -12,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.62,
+              "value": 0,
+              "easing": "easeInOut"
+            }
+          ]
+        },
+        {
+          "boneId": "torso",
+          "property": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 7,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.31,
+              "value": 3,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.62,
+              "value": 7,
+              "easing": "easeInOut"
+            }
+          ]
+        },
+        {
+          "boneId": "left-upper-arm",
+          "property": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": -42,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.31,
+              "value": 42,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.62,
+              "value": -42,
+              "easing": "easeInOut"
+            }
+          ]
+        },
+        {
+          "boneId": "right-upper-arm",
+          "property": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 42,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.31,
+              "value": -42,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.62,
+              "value": 42,
+              "easing": "easeInOut"
+            }
+          ]
+        },
+        {
+          "boneId": "left-upper-leg",
+          "property": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 43,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.31,
+              "value": -43,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.62,
+              "value": 43,
+              "easing": "easeInOut"
+            }
+          ]
+        },
+        {
+          "boneId": "right-upper-leg",
+          "property": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": -43,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.31,
+              "value": 43,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.62,
+              "value": -43,
+              "easing": "easeInOut"
+            }
+          ]
+        },
+        {
+          "boneId": "left-lower-leg",
+          "property": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 8,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.155,
+              "value": 48,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.31,
+              "value": 8,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.62,
+              "value": 8,
+              "easing": "easeInOut"
+            }
+          ]
+        },
+        {
+          "boneId": "right-lower-leg",
+          "property": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 8,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.31,
+              "value": 8,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.465,
+              "value": 48,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.62,
+              "value": 8,
+              "easing": "easeInOut"
+            }
+          ]
+        },
+        {
+          "boneId": "left-foot",
+          "property": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": -12,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.31,
+              "value": 15,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.62,
+              "value": -12,
+              "easing": "easeInOut"
+            }
+          ]
+        },
+        {
+          "boneId": "right-foot",
+          "property": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 15,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.31,
+              "value": -12,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.62,
+              "value": 15,
+              "easing": "easeInOut"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "id": "game-attack",
+      "name": "Game Attack",
+      "duration": 0.78,
+      "loop": false,
+      "tracks": [
+        {
+          "boneId": "torso",
+          "property": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 0,
+              "easing": "easeOut"
+            },
+            {
+              "time": 0.14,
+              "value": -9,
+              "easing": "easeIn"
+            },
+            {
+              "time": 0.38,
+              "value": 14,
+              "easing": "easeOut"
+            },
+            {
+              "time": 0.78,
+              "value": 0,
+              "easing": "easeInOut"
+            }
+          ]
+        },
+        {
+          "boneId": "right-upper-arm",
+          "property": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 0,
+              "easing": "easeOut"
+            },
+            {
+              "time": 0.14,
+              "value": 35,
+              "easing": "easeIn"
+            },
+            {
+              "time": 0.38,
+              "value": -62,
+              "easing": "easeOut"
+            },
+            {
+              "time": 0.78,
+              "value": 0,
+              "easing": "easeInOut"
+            }
+          ]
+        },
+        {
+          "boneId": "right-lower-arm",
+          "property": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 0,
+              "easing": "easeOut"
+            },
+            {
+              "time": 0.14,
+              "value": 28,
+              "easing": "easeIn"
+            },
+            {
+              "time": 0.38,
+              "value": -48,
+              "easing": "easeOut"
+            },
+            {
+              "time": 0.78,
+              "value": 0,
+              "easing": "easeInOut"
+            }
+          ]
+        },
+        {
+          "boneId": "right-hand",
+          "property": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 0,
+              "easing": "easeOut"
+            },
+            {
+              "time": 0.14,
+              "value": 18,
+              "easing": "easeIn"
+            },
+            {
+              "time": 0.38,
+              "value": -25,
+              "easing": "easeOut"
+            },
+            {
+              "time": 0.78,
+              "value": 0,
+              "easing": "easeInOut"
+            }
+          ]
+        },
+        {
+          "boneId": "left-upper-arm",
+          "property": "rotation",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 0,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.38,
+              "value": 12,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.78,
+              "value": 0,
+              "easing": "easeInOut"
+            }
+          ]
+        },
+        {
+          "boneId": "pelvis",
+          "property": "x",
+          "keyframes": [
+            {
+              "time": 0,
+              "value": 0,
+              "easing": "easeInOut"
+            },
+            {
+              "time": 0.38,
+              "value": 10,
+              "easing": "easeOut"
+            },
+            {
+              "time": 0.78,
+              "value": 0,
+              "easing": "easeInOut"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "authoringIntent": "Void Ranger game-ready baseline",
+    "playbackTested": true,
+    "sourceAlignedRig": true,
+    "fixture": "void-ranger-v1"
+  },
+  "extensions": {}
+}

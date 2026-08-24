@@ -34,7 +34,9 @@ export function readStoredZip(bytes: Uint8Array): ReadonlyMap<string, Uint8Array
     const size = view.getUint32(cursor + 18, true); const nameLength = view.getUint16(cursor + 26, true); const extraLength = view.getUint16(cursor + 28, true);
     const nameStart = cursor + 30; const dataStart = nameStart + nameLength + extraLength; const dataEnd = dataStart + size;
     if (dataEnd > bytes.length) throw new Error("Character project ZIP is truncated");
-    files.set(decoder.decode(bytes.slice(nameStart, nameStart + nameLength)), bytes.slice(dataStart, dataEnd)); cursor = dataEnd;
+    const name = decoder.decode(bytes.slice(nameStart, nameStart + nameLength));
+    if (files.has(name)) throw new Error(`Character project ZIP contains a duplicate path: ${name}`);
+    files.set(name, bytes.slice(dataStart, dataEnd)); cursor = dataEnd;
   }
   return files;
 }

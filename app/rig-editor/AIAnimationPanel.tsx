@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AnimationDefinition, RigDefinition } from "@/src/rigging/schema/types";
 import { applyAnimationProposal } from "@/src/rigging/ai/animationProposalApplier";
 import { buildAnimationGenerationContext, type AnimationAuthoringConstraints, type AnimationGenerationMode, type FootContactInterval, type LeftRightMapping } from "@/src/rigging/ai/animationContextBuilder";
@@ -9,10 +9,11 @@ import type { AnimationGenerationProvider } from "@/src/rigging/ai/animationGene
 import { buildAnimationGenerationPrompt } from "@/src/rigging/ai/animationPromptBuilder";
 import type { AnimationProposal } from "@/src/rigging/ai/animationProposalSchema";
 import { DEFAULT_ANIMATION_SAFETY_LIMITS, validateAnimationProposal, type AnimationSafetyLimits, type ProposalValidationIssue } from "@/src/rigging/ai/animationProposalValidator";
-import { diagnoseFootSliding, type FootSlideDiagnostic } from "@/src/rigging/ai/footSlideDiagnostic";
+import { diagnoseNormalizedFootSliding, type FootSlideDiagnostic } from "@/src/rigging/ai/footSlideDiagnostic";
 import { HttpAnimationGenerationProvider } from "@/src/rigging/ai/httpAnimationGenerationProvider";
 import { MockAnimationGenerationProvider } from "@/src/rigging/ai/mockAnimationGenerationProvider";
 import { animationPresetId } from "@/src/rigging/ai/animationContinuity";
+import { AnimationGenerationGuard } from "@/src/rigging/ai/animationGenerationGuard";
 
 type Preset = { readonly id: string; readonly label: string; readonly prompt: string; readonly duration: number; readonly loop: boolean };
 const PRESETS: readonly Preset[] = [
@@ -54,6 +55,9 @@ const parseRotationOverrides = (source: string): Record<string, number> => Objec
   const [id, raw] = entry.split(":").map((value) => value.trim()); const limit = Number(raw);
   return id && Number.isFinite(limit) && limit > 0 ? [[id, limit]] : [];
 }));
+const presetContacts = (presetId: string, duration: number): string => presetId === "run"
+  ? `left:0-${(duration * .125).toFixed(4)}\nright:${(duration * .5).toFixed(4)}-${(duration * .625).toFixed(4)}`
+  : `left:0-${(duration * .375).toFixed(4)}\nright:${(duration * .5).toFixed(4)}-${(duration * .875).toFixed(4)}`;
 
 export function AIAnimationPanel({ rig, currentAnimation, referenceAnimations, selectedBoneIds, leftRightMappings, onPreview, onAccept, onMessage }: Props) {
   const initialPreset = PRESETS.find((preset) => preset.id === animationPresetId(currentAnimation)) ?? PRESETS[0];
@@ -72,7 +76,7 @@ export function AIAnimationPanel({ rig, currentAnimation, referenceAnimations, s
   const [leftFoot, setLeftFoot] = useState(rig.bones.find((bone) => bone.id.toLowerCase().includes("left-foot"))?.id ?? "");
   const [rightFoot, setRightFoot] = useState(rig.bones.find((bone) => bone.id.toLowerCase().includes("right-foot"))?.id ?? "");
   const [groundPlaneY, setGroundPlaneY] = useState(rig.canvas.height - 28);
-  const [contactSource, setContactSource] = useState("left:0-0.25\nright:0.5-0.75");
+  const [contactSource, setContactSource] = useState(presetContacts(initialPreset.id, initialPreset.duration));
   const [referenceIds, setReferenceIds] = useState<string[]>([]);
   const [defaultRotation, setDefaultRotation] = useState(DEFAULT_ANIMATION_SAFETY_LIMITS.defaultMaximumRotation);
   const [rotationOverrides, setRotationOverrides] = useState("");
@@ -80,6 +84,7 @@ export function AIAnimationPanel({ rig, currentAnimation, referenceAnimations, s
   const [maximumScale, setMaximumScale] = useState(DEFAULT_ANIMATION_SAFETY_LIMITS.maximumScale);
   const [maximumKeys, setMaximumKeys] = useState(DEFAULT_ANIMATION_SAFETY_LIMITS.maximumKeyframesPerTrack);
   const [proposal, setProposal] = useState<AnimationProposal | null>(null);
+  const [proposalSourceFingerprint, setProposalSourceFingerprint] = useState<string | null>(null);
   const [effectiveAnimation, setEffectiveAnimation] = useState<AnimationDefinition | null>(null);
   const [diff, setDiff] = useState<AnimationDiff | null>(null);
   const [selectedTracks, setSelectedTracks] = useState<Set<string>>(new Set());
@@ -89,6 +94,14 @@ export function AIAnimationPanel({ rig, currentAnimation, referenceAnimations, s
   const [loading, setLoading] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const provider = useMemo(() => configuredProvider(), []);
+  const sourceFingerprint = `${rig.id}:${JSON.stringify(currentAnimation)}`;
+  const sourceRef = useRef(sourceFingerprint);
+  const generationGuard = useRef(new AnimationGenerationGuard());
+
+  useEffect(() => {
+    sourceRef.current = sourceFingerprint;
+    generationGuard.current.setSource(sourceFingerprint);
+  }, [sourceFingerprint]);
 
   const constraints: AnimationAuthoringConstraints = { duration, loop, intensity, weight, exaggeration, rootMovementAllowance: rootAllowance, preserveTiming, preserveContactFrames: preserveContacts, styleNotes };
   const contactIntervals = parseContacts(contactSource, duration);
@@ -104,6 +117,7 @@ export function AIAnimationPanel({ rig, currentAnimation, referenceAnimations, s
 
   const generate = async (followUp?: string): Promise<void> => {
     if (!request.trim()) { setValidationIssues([{ path: "request", message: "Enter an animation request" }]); return; }
+    const generationToken = generationGuard.current.begin(sourceFingerprint);
     setLoading(true); setValidationIssues([]); setPreviewing(false); onPreview(null);
     try {
       const context = buildAnimationGenerationContext(rig, {
@@ -112,29 +126,34 @@ export function AIAnimationPanel({ rig, currentAnimation, referenceAnimations, s
         currentAnimation, referenceAnimations: referenceAnimations.filter((animation) => referenceIds.includes(animation.id)),
         includeSlotNames: /shield|sword|weapon|hand|grip|slot/i.test(request),
       });
-      const raw = await provider.generateAnimationProposal({ prompt: buildAnimationGenerationPrompt(context, followUp), context, refinement: followUp, previousProposal: proposal ?? undefined });
+      const raw = await provider.generateAnimationProposal({ prompt: buildAnimationGenerationPrompt(context, followUp), context, refinement: followUp, previousProposal: proposalSourceFingerprint === sourceFingerprint ? proposal ?? undefined : undefined });
+      if (!generationGuard.current.isCurrent(generationToken, sourceRef.current)) { onMessage("Stale animation generation result discarded after the source changed"); return; }
       const validation = validateAnimationProposal(raw, rig, safetyLimits, { selectedBonesOnly: mode === "reviseSelectedBones", selectedBoneIds });
-      if (!validation.success) { setProposal(null); setEffectiveAnimation(null); setDiff(null); setValidationIssues(validation.issues); onMessage(validation.message); return; }
+      if (!validation.success) { setProposal(null); setProposalSourceFingerprint(null); setEffectiveAnimation(null); setDiff(null); setValidationIssues(validation.issues); onMessage(validation.message); return; }
       const acceptedProposal = validation.proposal;
       const effective = mode === "create" ? acceptedProposal.animation : applyAnimationProposal({ animations: [currentAnimation] }, acceptedProposal, { mode, currentAnimationId: currentAnimation.id, selectedBoneIds }).document.animations[0];
       const diffBase = mode === "create" ? { ...currentAnimation, duration: effective.duration, loop: effective.loop, tracks: [] } : currentAnimation;
       const resultDiff = diffAnimations(diffBase, effective);
-      setProposal(acceptedProposal); setEffectiveAnimation(effective); setDiff(resultDiff); setSelectedTracks(new Set(resultDiff.tracks.map((track) => track.key)));
-      setDiagnostics(diagnoseFootSliding(rig, effective, { leftFootBoneId: leftFoot || null, rightFootBoneId: rightFoot || null }, contactIntervals));
+      setProposal(acceptedProposal); setProposalSourceFingerprint(sourceFingerprint); setEffectiveAnimation(effective); setDiff(resultDiff); setSelectedTracks(new Set(resultDiff.tracks.map((track) => track.key)));
+      setDiagnostics(diagnoseNormalizedFootSliding(rig, effective, { leftFootBoneId: leftFoot || null, rightFootBoneId: rightFoot || null }, contactIntervals));
       onMessage(`Valid ${provider.name} proposal ready for review`);
     } catch (reason: unknown) {
       setValidationIssues([{ path: "provider", message: reason instanceof Error ? reason.message : "Animation generation failed" }]);
-    } finally { setLoading(false); }
+    } finally { if (generationGuard.current.isCurrent(generationToken, sourceRef.current)) setLoading(false); }
   };
 
-  const reject = (): void => { setProposal(null); setEffectiveAnimation(null); setDiff(null); setDiagnostics([]); setPreviewing(false); onPreview(null); onMessage("AI proposal rejected. Animation document was not changed"); };
+  const reject = (): void => { setProposal(null); setProposalSourceFingerprint(null); setEffectiveAnimation(null); setDiff(null); setDiagnostics([]); setPreviewing(false); onPreview(null); onMessage("AI proposal rejected. Animation document was not changed"); };
   const togglePreview = (): void => { if (!effectiveAnimation) return; const next = !previewing; setPreviewing(next); onPreview(next ? effectiveAnimation : null); };
+  const accept = (selectedTrackKeys?: readonly string[]): void => {
+    if (!proposal || proposalSourceFingerprint !== sourceFingerprint) { onMessage("Stale animation proposal discarded after the source changed"); return; }
+    onAccept(proposal, mode, selectedTrackKeys);
+  };
 
   return <div className="ai-animation-panel">
     <header className="ai-panel-heading"><span>AI Animation</span><small>{provider.name}</small></header>
     <div className="ai-panel-scroll">
       <section className="ai-section">
-        <label className="ai-field"><span>Preset</span><select value={presetId} onChange={(event) => { const preset = PRESETS.find((candidate) => candidate.id === event.target.value); if (preset) { setPresetId(preset.id); setRequest(preset.prompt); setDuration(preset.duration); setLoop(preset.loop); } }}>{PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</select></label>
+        <label className="ai-field"><span>Preset</span><select value={presetId} onChange={(event) => { const preset = PRESETS.find((candidate) => candidate.id === event.target.value); if (preset) { setPresetId(preset.id); setRequest(preset.prompt); setDuration(preset.duration); setLoop(preset.loop); if (preset.id === "walk" || preset.id === "run") setContactSource(presetContacts(preset.id, preset.duration)); } }}>{PRESETS.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</select></label>
         <label className="ai-field stacked"><span>Request</span><textarea value={request} onChange={(event) => setRequest(event.target.value)} rows={4} placeholder="Describe the motion or revision" /></label>
         <label className="ai-field"><span>Operation</span><select value={mode} onChange={(event) => setMode(event.target.value as AnimationGenerationMode)}><option value="create">Create new animation</option><option value="revise">Revise current animation</option><option value="reviseSelectedBones">Revise selected bones only</option></select></label>
         {mode === "reviseSelectedBones" && <p className="ai-scope-note">Scope: {selectedBoneIds.length ? selectedBoneIds.join(", ") : "No bones selected"}</p>}
@@ -164,7 +183,7 @@ export function AIAnimationPanel({ rig, currentAnimation, referenceAnimations, s
         <NumberField label="Keys / track" value={maximumKeys} min={2} step={1} onChange={setMaximumKeys} />
       </details>
 
-      <div className="ai-primary-actions"><button type="button" className="ai-generate" disabled={loading || (mode === "reviseSelectedBones" && !selectedBoneIds.length)} onClick={() => void generate()}>{loading ? "Generating…" : proposal ? "Regenerate proposal" : "Generate proposal"}</button></div>
+      <div className="ai-primary-actions"><button type="button" className="ai-generate" aria-busy={loading} disabled={loading || (mode === "reviseSelectedBones" && !selectedBoneIds.length)} onClick={() => void generate()}>{loading ? "Generating…" : proposal ? "Regenerate proposal" : "Generate proposal"}</button></div>
 
       {validationIssues.length > 0 && <section className="ai-validation" role="alert"><strong>Proposal rejected</strong>{validationIssues.slice(0, 8).map((issue, index) => <p key={`${issue.path}:${index}`}><code>{issue.path || "proposal"}</code> {issue.message}</p>)}</section>}
 
@@ -178,7 +197,7 @@ export function AIAnimationPanel({ rig, currentAnimation, referenceAnimations, s
         <NoteList label="Confidence" items={proposal.confidenceNotes} />
         <NoteList label="Recommended rig changes" items={(proposal.recommendedRigChanges ?? []).map((change) => `${change.summary}: ${change.rationale}`)} warning />
         {diagnostics.length > 0 && <div className="foot-diagnostics"><strong>Foot contact diagnostic</strong>{diagnostics.map((item) => <p key={`${item.foot}:${item.start}`} className={item.likelySliding ? "warn" : "ok"}>{item.message} ({item.start.toFixed(2)}–{item.end.toFixed(2)}s)</p>)}</div>}
-        <div className="proposal-actions"><button type="button" onClick={togglePreview}>{previewing ? "Stop preview" : "Preview"}</button><button type="button" className="accept" onClick={() => onAccept(proposal, mode)}>Accept all</button><button type="button" disabled={!selectedTracks.size} onClick={() => onAccept(proposal, mode, [...selectedTracks])}>Apply selected tracks</button><button type="button" className="reject" onClick={reject}>Reject</button></div>
+        <div className="proposal-actions"><button type="button" onClick={togglePreview}>{previewing ? "Stop preview" : "Preview"}</button><button type="button" className="accept" disabled={proposalSourceFingerprint !== sourceFingerprint} onClick={() => accept()}>Accept all</button><button type="button" disabled={!selectedTracks.size || proposalSourceFingerprint !== sourceFingerprint} onClick={() => accept([...selectedTracks])}>Apply selected tracks</button><button type="button" className="reject" onClick={reject}>Reject</button></div>
         <label className="ai-field stacked refine"><span>Follow-up refinement</span><textarea value={refinement} onChange={(event) => setRefinement(event.target.value)} rows={2} placeholder="Keep the timing but reduce the head movement" /><button type="button" disabled={!refinement.trim() || loading} onClick={() => void generate(refinement)}>Refine proposal</button></label>
       </section>}
     </div>

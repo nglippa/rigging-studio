@@ -1,3 +1,5 @@
+import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { AddressInfo } from "node:net";
@@ -9,10 +11,13 @@ import type { StudioToolName } from "../../src/agent-control/validation/toolSche
 import { DiagnosticReportExporter, type DiagnosticReportRequest } from "../storage/diagnosticReportExporter";
 import { ManagedGenerationStorage, type GenerationImportRequest } from "../storage/managedGenerationStorage";
 import { ImageProductionService, type GenerateImageCandidatesRequest } from "../../src/image-production/service/ImageProductionService";
+import { ImageGenerationJobService } from "../../src/image-production/service/ImageGenerationJobService";
 import { ComfyCharacterPipelineService } from "../../src/image-production/service/ComfyCharacterPipelineService";
 import { suitabilityReviewSchema } from "../../src/character-generation/providers/characterPipelineProvider";
 import type { ImageApprovalPolicy, ImageProposalReviewInput } from "../../src/image-production/proposals/imageProposal";
 import { ImageProposalStorage } from "../../src/image-production/assets/imageProposalStorage";
+import { LocalProjectStore } from "../storage/localProjectStore";
+import type { LocalProjectSnapshot } from "../../src/project-storage/types";
 
 type PendingRequest = { readonly resolve: (value: unknown) => void; readonly reject: (error: Error) => void; readonly timer: ReturnType<typeof setTimeout> };
 
@@ -33,7 +38,9 @@ export class StudioBridgeServer {
   private pollQueue: (BridgeRequest | BridgeActivity)[] = [];
   private readonly generationStorage: ManagedGenerationStorage;
   private readonly diagnosticExporter: DiagnosticReportExporter;
+  projectStorage: LocalProjectStore;
   readonly imageProduction: ImageProductionService;
+  readonly imageGenerationJobs: ImageGenerationJobService;
   readonly characterPipeline: ComfyCharacterPipelineService;
 
   constructor(options: StudioBridgeOptions = {}) {
@@ -41,6 +48,7 @@ export class StudioBridgeServer {
     this.cwd = options.cwd ?? process.cwd();
     this.generationStorage = new ManagedGenerationStorage({ cwd: this.cwd });
     this.diagnosticExporter = new DiagnosticReportExporter({ cwd: this.cwd });
+    this.projectStorage = new LocalProjectStore({ cwd: this.cwd, ...(this.configuredProjectRoot() ? { root: this.configuredProjectRoot() } : {}) });
     this.imageProduction = options.imageProductionService ?? new ImageProductionService({
       storage: new ImageProposalStorage({ cwd: this.cwd }),
       currentSessionId: () => this.sessionId,
@@ -66,6 +74,7 @@ export class StudioBridgeServer {
       },
     });
     this.characterPipeline = new ComfyCharacterPipelineService(this.imageProduction);
+    this.imageGenerationJobs = new ImageGenerationJobService(this.imageProduction);
     this.httpServer = createServer((request, response) => { void this.onHttpRequest(request, response); });
     this.server = new WebSocketServer({ server: this.httpServer });
     this.listening = new Promise((resolve, reject) => {
@@ -99,7 +108,7 @@ export class StudioBridgeServer {
       if (websocketConnected && socket) socket.send(JSON.stringify(message), (error) => { if (error) { clearTimeout(timer); this.pending.delete(id); reject(error); } });
       else this.pollQueue.push(message);
     });
-    return tool === "preview_render" ? this.persistPreview(result) : result;
+    return tool === "preview_render" ? this.persistPreview(result, input) : result;
   }
 
   notifyActivity(eventType: StudioEventType, summary: string, entityId?: string, actor = process.env.RIGGING_STUDIO_AGENT_NAME ?? "MCP Agent"): void {
@@ -117,6 +126,8 @@ export class StudioBridgeServer {
 
   imageProviderStatus(refreshWorkflows = false) { return this.imageProduction.status(refreshWorkflows); }
   generateImageCandidates(request: GenerateImageCandidatesRequest) { return this.imageProduction.generateCandidates(request); }
+  startImageGenerationJob(request: GenerateImageCandidatesRequest) { return this.imageGenerationJobs.start(request); }
+  getImageGenerationJob(jobId: string) { return this.imageGenerationJobs.get(jobId); }
   getImageProposal(proposalId: string) { return this.imageProduction.getProposal(proposalId); }
   listImageProposals(projectId?: string) { return this.imageProduction.listProposals(projectId); }
   reviewImageProposal(input: ImageProposalReviewInput, reviewer: string) { return this.imageProduction.review(input, reviewer); }
@@ -147,11 +158,13 @@ export class StudioBridgeServer {
       projectId: approved.proposal.projectId,
       imageSource: { type: "provider_asset", path: approved.filePath, assetId: approved.candidate.imageAssetId },
       generationId: `${approved.proposal.proposalId}-${approved.candidate.candidateId}`,
-      provider: "comfyui", prompt: approved.proposal.sourcePrompt, accepted: true,
+      provider: approved.proposal.provider, prompt: approved.proposal.sourcePrompt, accepted: true,
       operation: pending.operationType, targetPartId: approved.proposal.targetPartId, generationMode: "provider_generated",
       metadata: {
         proposalId: approved.proposal.proposalId, candidateId: approved.candidate.candidateId, workflowId: approved.proposal.workflowId,
-        seed: approved.candidate.seed, approvalPolicy: approved.proposal.approvalPolicy, proposalRound: approved.proposal.proposalRound,
+        provider: approved.proposal.provider, seed: approved.candidate.seed, negativePrompt: approved.proposal.negativePrompt,
+        approvalPolicy: approved.proposal.approvalPolicy, proposalRound: approved.proposal.proposalRound,
+        generationParameters: approved.proposal.generationParameters, providerMetadata: approved.candidate.providerMetadata,
       },
     }, `http://127.0.0.1:${port}`);
     const ingress = await this.request("character_import_generation", normalized, source === "human" ? "Human" : process.env.RIGGING_STUDIO_AGENT_NAME ?? "MCP Agent");
@@ -171,6 +184,28 @@ export class StudioBridgeServer {
     this.pollQueue = [];
     await new Promise<void>((resolve) => this.server.close(() => resolve()));
     if (this.httpServer.address()) await new Promise<void>((resolve) => this.httpServer.close(() => resolve()));
+  }
+
+  private configuredProjectRoot(): string | undefined {
+    if (process.env.RIGGING_STUDIO_PROJECTS_ROOT) return undefined;
+    try {
+      const input = JSON.parse(readFileSync(path.join(this.cwd, ".rigging-studio", "storage-config.json"), "utf8")) as unknown;
+      if (input && typeof input === "object" && !Array.isArray(input) && typeof (input as Record<string, unknown>).root === "string") return (input as Record<string, string>).root;
+    } catch { /* the repository default is used until a folder has been selected */ }
+    return undefined;
+  }
+
+  private async chooseProjectStorageRoot(): Promise<Awaited<ReturnType<LocalProjectStore["status"]>>> {
+    if (process.env.RIGGING_STUDIO_PROJECTS_ROOT) throw new Error("Project storage is fixed by RIGGING_STUDIO_PROJECTS_ROOT for this process");
+    if (process.platform !== "darwin") throw new Error("The native folder picker is currently available on macOS; use RIGGING_STUDIO_PROJECTS_ROOT on this platform");
+    const selected = await new Promise<string>((resolve, reject) => {
+      execFile("osascript", ["-e", "POSIX path of (choose folder with prompt \"Choose a Rig Studio project storage folder\")"], (error, stdout) => error ? reject(new Error(/canceled/i.test(error.message) ? "Folder selection was canceled" : error.message)) : resolve(stdout.trim()));
+    });
+    if (!selected) throw new Error("No project storage folder was selected");
+    const next = new LocalProjectStore({ cwd: this.cwd, root: path.resolve(selected) }); const status = await next.status(); if (!status.available || !status.writable) throw new Error("The selected project storage folder is not writable");
+    const configDirectory = path.join(this.cwd, ".rigging-studio"); await mkdir(configDirectory, { recursive: true });
+    await writeFile(path.join(configDirectory, "storage-config.json"), `${JSON.stringify({ storageVersion: 1, root: status.root }, null, 2)}\n`, "utf8");
+    this.projectStorage = next; return status;
   }
 
   private onConnection(socket: WebSocket): void {
@@ -200,6 +235,33 @@ export class StudioBridgeServer {
     response.setHeader("Access-Control-Allow-Headers", "content-type");
     response.setHeader("Cache-Control", "no-store");
     if (request.method === "OPTIONS") { response.writeHead(204).end(); return; }
+    if (request.url?.startsWith("/project-storage")) {
+      try {
+        const url = new URL(request.url, "http://127.0.0.1"); const parts = url.pathname.split("/").filter(Boolean);
+        if (request.method === "GET" && parts.length === 2 && parts[1] === "status") { response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(await this.projectStorage.status())); return; }
+        if (request.method === "GET" && parts.length === 2 && parts[1] === "projects") { response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ projects: await this.projectStorage.list() })); return; }
+        if (request.method === "GET" && parts.length >= 4 && parts[1] === "assets") {
+          const projectId = decodeURIComponent(parts[2]); const assetPath = parts.slice(3).map(decodeURIComponent).join("/"); const asset = await this.projectStorage.readAsset(projectId, assetPath);
+          response.writeHead(200, { "Content-Type": asset.mimeType, "Content-Length": asset.bytes.length, "Cache-Control": "private, max-age=60" }).end(asset.bytes); return;
+        }
+        if (request.method !== "POST" || parts.length !== 2) throw new Error("Unsupported project-storage route");
+        const body = await this.readJsonBody(request, 64_000_000); if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("Project-storage request must be an object");
+        const values = body as Record<string, unknown>; let result: unknown;
+        if (parts[1] === "choose-root") result = await this.chooseProjectStorageRoot();
+        else if (parts[1] === "save") result = await this.projectStorage.save(values.snapshot as LocalProjectSnapshot, { ...(typeof values.expectedModifiedAt === "string" ? { expectedModifiedAt: values.expectedModifiedAt } : {}) });
+        else if (parts[1] === "load" && typeof values.projectId === "string") result = await this.projectStorage.load(values.projectId);
+        else if (parts[1] === "save-as" && typeof values.name === "string") result = await this.projectStorage.saveAs(values.snapshot as LocalProjectSnapshot, values.name);
+        else if (parts[1] === "import" && typeof values.zipBase64 === "string") result = await this.projectStorage.importPortableZip(Buffer.from(values.zipBase64, "base64"), typeof values.name === "string" ? values.name : undefined);
+        else if (parts[1] === "import") result = await this.projectStorage.save(values.snapshot as LocalProjectSnapshot, typeof values.name === "string" ? { saveAs: { name: values.name } } : {});
+        else if (parts[1] === "archive" && typeof values.projectId === "string" && values.confirm === true) result = await this.projectStorage.archive(values.projectId);
+        else if (parts[1] === "export-snapshot" && typeof values.projectId === "string") result = await this.projectStorage.exportSnapshot(values.projectId);
+        else if (parts[1] === "reveal" && typeof values.projectId === "string") result = await this.projectStorage.reveal(values.projectId);
+        else throw new Error("Invalid project-storage action or input");
+        response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(result)); return;
+      } catch (error: unknown) {
+        response.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error instanceof Error ? error.message : "Project storage failed" })); return;
+      }
+    }
     if (request.method === "POST" && request.url === "/character-pipeline") {
       try {
         const input = await this.readJsonBody(request, 32_000_000);
@@ -253,6 +315,29 @@ export class StudioBridgeServer {
       catch (error: unknown) { response.writeHead(503, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error instanceof Error ? error.message : "Image provider status failed" })); }
       return;
     }
+    if (request.method === "POST" && request.url === "/image-generation/jobs") {
+      try {
+        const body = await this.readJsonBody(request); if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("Generation request must be an object");
+        const record = body as Record<string, unknown>;
+        if (typeof record.projectId !== "string" || typeof record.prompt !== "string" || (record.provider !== "comfyui" && record.provider !== "draw_things")) throw new Error("projectId, provider, and prompt are required");
+        const studioStatus = await this.request("studio_get_status", { includeActivity: false }, "Human");
+        if (!studioStatus || typeof studioStatus !== "object" || (studioStatus as Record<string, unknown>).activeProjectId !== record.projectId) throw new Error(`Project ${record.projectId} is not the active Studio project`);
+        const job = this.imageGenerationJobs.start({
+          projectId: record.projectId, provider: record.provider, operation: record.generationIntent === "character_variant" ? "character_variant" : record.generationIntent === "equipment_variant" ? "equipment_variant" : "character_generation",
+          prompt: record.prompt, candidateCount: typeof record.candidateCount === "number" ? record.candidateCount : 1,
+          ...(typeof record.negativePrompt === "string" ? { negativePrompt: record.negativePrompt } : {}), ...(typeof record.width === "number" ? { width: record.width } : {}),
+          ...(typeof record.height === "number" ? { height: record.height } : {}), ...(typeof record.seed === "number" ? { seed: record.seed } : {}),
+          ...(typeof record.model === "string" ? { model: record.model } : {}),
+        });
+        response.writeHead(202, { "Content-Type": "application/json" }).end(JSON.stringify(job));
+      } catch (error: unknown) { response.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error instanceof Error ? error.message : "Image generation job could not start" })); }
+      return;
+    }
+    if (request.method === "GET" && request.url?.startsWith("/image-generation/jobs/")) {
+      try { const jobId = decodeURIComponent(request.url.split("?")[0].slice("/image-generation/jobs/".length)); response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(this.imageGenerationJobs.get(jobId))); }
+      catch (error: unknown) { response.writeHead(404, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error instanceof Error ? error.message : "Image generation job is unavailable" })); }
+      return;
+    }
     if (request.method === "GET" && request.url?.startsWith("/image-production/proposals")) {
       try {
         const url = new URL(request.url, "http://127.0.0.1"); const parts = url.pathname.split("/").filter(Boolean);
@@ -267,7 +352,7 @@ export class StudioBridgeServer {
           const port = await this.waitUntilListening();
           const candidates = proposal.candidates.map((candidate) => ({
             candidateId: candidate.candidateId, width: candidate.width, height: candidate.height, seed: candidate.seed, status: candidate.status,
-            suitabilityScore: candidate.diagnostics.suitability?.score,
+            suitabilityScore: candidate.diagnostics.suitability?.score, providerMetadata: candidate.providerMetadata,
             imageUrl: `http://127.0.0.1:${port}/image-production/assets/${encodeURIComponent(proposalId)}/${encodeURIComponent(candidate.imageFileName)}`,
           }));
           response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ proposal: this.publicProposal(proposal), candidates })); return;
@@ -325,7 +410,8 @@ export class StudioBridgeServer {
 
   private publicProposal(proposal: Awaited<ReturnType<ImageProductionService["getProposal"]>>) {
     return {
-      proposalId: proposal.proposalId, projectId: proposal.projectId, operationType: proposal.operationType, workflowId: proposal.workflowId, status: proposal.status,
+      proposalId: proposal.proposalId, projectId: proposal.projectId, operationType: proposal.operationType, provider: proposal.provider, workflowId: proposal.workflowId, status: proposal.status,
+      sourcePrompt: proposal.sourcePrompt, negativePrompt: proposal.negativePrompt, generationParameters: proposal.generationParameters,
       approvalPolicy: proposal.approvalPolicy, createdAt: proposal.createdAt, updatedAt: proposal.updatedAt, progress: proposal.progress,
       candidateCount: proposal.candidates.length, candidateIds: proposal.candidateIds, warnings: proposal.warnings, errors: proposal.errors,
       agentReview: proposal.agentReview, humanReview: proposal.humanReview, approvedCandidateId: proposal.approvedCandidateId,
@@ -333,7 +419,7 @@ export class StudioBridgeServer {
     };
   }
 
-  private async persistPreview(result: unknown): Promise<unknown> {
+  private async persistPreview(result: unknown, input?: unknown): Promise<unknown> {
     if (!result || typeof result !== "object") return result;
     const record = result as Record<string, unknown>;
     const preview = record.preview;
@@ -344,9 +430,11 @@ export class StudioBridgeServer {
     await mkdir(directory, { recursive: true });
     const filePath = path.resolve(directory, `${data.renderId}.png`);
     if (!filePath.startsWith(`${directory}${path.sep}`)) throw new Error("Preview path escaped its fixed output directory");
-    await writeFile(filePath, Buffer.from(data.imageBase64, "base64"));
+    const bytes = Buffer.from(data.imageBase64, "base64"); await writeFile(filePath, bytes);
     this.latestPreviewPath = filePath;
-    const safePreview = { ...data, imageBase64: undefined, imagePath: filePath, resourceUri: "rigging://active-project/preview/latest" };
+    const projectId = input && typeof input === "object" && typeof (input as Record<string, unknown>).projectId === "string" ? String((input as Record<string, unknown>).projectId) : null;
+    const projectPreviewPath = projectId ? await this.projectStorage.savePreview(projectId, data.renderId, bytes).catch(() => null) : null;
+    const safePreview = { ...data, imageBase64: undefined, imagePath: projectPreviewPath ?? filePath, resourceUri: "rigging://active-project/preview/latest" };
     return { ...record, preview: safePreview };
   }
 }

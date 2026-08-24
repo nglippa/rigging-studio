@@ -1,0 +1,24 @@
+{
+  "fixtureFormat": "rig-studio-golden-project",
+  "fixtureVersion": 1,
+  "id": "void-ranger-v1",
+  "name": "Void Ranger",
+  "source": "public/assets/generated/void-ranger-sprite.png",
+  "files": {
+    "project": "project.json",
+    "rig": "rig.json",
+    "animations": "animations.json",
+    "expectedContract": "expected-contract.json"
+  },
+  "provenance": {
+    "provider": "imagegen",
+    "originalProjectId": "character-void-ranger-golden-v1",
+    "promotedAfter": [
+      "prepare-restart",
+      "setup-restart",
+      "animate-restart",
+      "clean-profile-reopen",
+      "zip-round-trip"
+    ]
+  }
+}

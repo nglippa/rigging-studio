@@ -4,6 +4,7 @@ import type { GeneratedCharacterProject } from "../../character-generation/proje
 
 export interface RigEditorAdapter {
   getRig(): RigDefinition;
+  replace?(rig: RigDefinition): RigDefinition;
   execute(label: string, transform: (rig: RigDefinition) => RigDefinition): RigDefinition;
   beginTransaction(label: string): void;
   updateTransaction(transform: (rig: RigDefinition) => RigDefinition): RigDefinition;
@@ -17,6 +18,7 @@ export interface RigEditorAdapter {
 export interface AnimationEditorAdapter {
   getLibrary(): AnimationLibrary;
   getActiveAnimationId(): string | null;
+  replace?(library: AnimationLibrary): AnimationLibrary;
   execute(label: string, transform: (library: AnimationLibrary) => AnimationLibrary): AnimationLibrary;
   setActiveAnimation(animationId: string): void;
   setPlayback(action: "play" | "pause" | "stop" | "seek", time?: number): void;
@@ -26,4 +28,3 @@ export interface CharacterProjectAdapter {
   getProject(): GeneratedCharacterProject;
   replaceProject(project: GeneratedCharacterProject): void;
 }
-

@@ -59,6 +59,9 @@ describe("agent-control validation and synchronization", () => {
   it("rejects malformed and extra tool input", () => {
     expect(parseToolInput("rig_move_bone", { boneId: "root", x: 2, y: Number.NaN }).success).toBe(false);
     expect(parseToolInput("studio_get_status", { runShell: "rm" }).success).toBe(false);
+    expect(parseToolInput("project_reveal", { projectId: "known-project", path: "/etc" }).success).toBe(false);
+    expect(parseToolInput("project_import", { path: "/tmp/project.zip" }).success).toBe(false);
+    expect(parseToolInput("project_archive", { projectId: "known-project", confirm: false }).success).toBe(false);
     expect(TOOL_NAMES.some((name) => /shell|eval|javascript|write_arbitrary/i.test(name))).toBe(false);
   });
 
@@ -214,6 +217,17 @@ describe("agent-control validation and synchronization", () => {
     expect(opened.success).toBe(true);
     expect(uiProject.id).toBe(openedProject.id);
     expect(service.session.snapshot.activeProjectId).toBe(openedProject.id);
+  });
+
+  it("clears a stale rig and animations when a Prepare-only disk snapshot is opened", () => {
+    const { service } = createHarness();
+    const prepared = { ...createGeneratedCharacterProject("Prepared", "source"), stage: "prepare" as const };
+    service.installDurableSnapshot({ storageVersion: 1, localProjectId: prepared.id, project: prepared, rig: null, animations: null, selectedSkinId: null });
+    const snapshot = service.getDurableSnapshot();
+    expect(snapshot.project?.id).toBe(prepared.id);
+    expect(snapshot.rig).toBeNull();
+    expect(snapshot.animations).toBeNull();
+    expect(service.session.snapshot).toMatchObject({ selectedRigId: null, selectedAnimationId: null, activeStage: "prepare" });
   });
 
   it("imports managed external artwork into normal suitability and segmentation flow", async () => {

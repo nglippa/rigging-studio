@@ -1,0 +1,2161 @@
+{
+  "projectVersion": 1,
+  "id": "golden-void-ranger-v1",
+  "name": "Void Ranger",
+  "stage": "edit",
+  "originalUserPrompt": "Use case: stylized-concept\nAsset type: production-ready 2D game character sprite for skeletal rigging\nPrimary request: create one original pixel-art sci-fi void ranger character, full body, designed for idle, walk, run, and melee attack animation\nScene/backdrop: genuinely transparent background with no floor, shadow, frame, scenery, UI, or sprite-sheet grid\nSubject: a compact athletic humanoid ranger facing screen-right in a neutral ready stance; dark indigo armor, electric violet cloth accents, cyan visor and small cyan energy blade; head, torso, upper arms, forearms, hands, upper legs, lower legs, and feet must each have clean readable silhouettes; arms held slightly away from torso and legs slightly separated so joints can be cut and rigged; weapon compact and aligned with the forward hand without covering the body\nStyle/medium: polished 32-bit-era pixel art, crisp intentional pixel clusters, limited game-ready palette, strong silhouette, controlled highlights, no anti-aliased painterly edges\nComposition/framing: one character only, centered, complete body visible with generous transparent padding, consistent side-view platformer perspective\nLighting/mood: subtle cool rim light, energetic neon violet and cyan accents, readable at small gameplay scale\nColor palette: near-black navy, indigo, electric violet, cyan, small pale highlights\nConstraints: actual transparent alpha; one pose only; no animation frames; no text; no logo; no watermark; no cropped body parts; no detached floating parts; maintain clean joint boundaries and consistent pixel density\nAvoid: sprite sheet, multiple characters, background, ground shadow, photorealism, 3D render, smooth vector art, blurry pixels, excessive tiny detail, overlapping limbs, oversized weapon",
+  "generationPrompt": "Use case: stylized-concept\nAsset type: production-ready 2D game character sprite for skeletal rigging\nPrimary request: create one original pixel-art sci-fi void ranger character, full body, designed for idle, walk, run, and melee attack animation\nScene/backdrop: genuinely transparent background with no floor, shadow, frame, scenery, UI, or sprite-sheet grid\nSubject: a compact athletic humanoid ranger facing screen-right in a neutral ready stance; dark indigo armor, electric violet cloth accents, cyan visor and small cyan energy blade; head, torso, upper arms, forearms, hands, upper legs, lower legs, and feet must each have clean readable silhouettes; arms held slightly away from torso and legs slightly separated so joints can be cut and rigged; weapon compact and aligned with the forward hand without covering the body\nStyle/medium: polished 32-bit-era pixel art, crisp intentional pixel clusters, limited game-ready palette, strong silhouette, controlled highlights, no anti-aliased painterly edges\nComposition/framing: one character only, centered, complete body visible with generous transparent padding, consistent side-view platformer perspective\nLighting/mood: subtle cool rim light, energetic neon violet and cyan accents, readable at small gameplay scale\nColor palette: near-black navy, indigo, electric violet, cyan, small pale highlights\nConstraints: actual transparent alpha; one pose only; no animation frames; no text; no logo; no watermark; no cropped body parts; no detached floating parts; maintain clean joint boundaries and consistent pixel density\nAvoid: sprite sheet, multiple characters, background, ground shadow, photorealism, 3D render, smooth vector art, blurry pixels, excessive tiny detail, overlapping limbs, oversized weapon",
+  "generationMetadata": {
+    "provider": "imagegen",
+    "sourceSha256": "ba658d3b2190e3ed918eda91a27e14d581ebefad3cf5891f0f6f13b6e3509b18",
+    "durableRecreation": true
+  },
+  "generationHistory": [
+    {
+      "generationId": "void-ranger-source-imagegen-v1",
+      "image": "/public/assets/generated/void-ranger-sprite.png",
+      "width": 1024,
+      "height": 1536,
+      "generationPrompt": "Use case: stylized-concept\nAsset type: production-ready 2D game character sprite for skeletal rigging\nPrimary request: create one original pixel-art sci-fi void ranger character, full body, designed for idle, walk, run, and melee attack animation\nScene/backdrop: genuinely transparent background with no floor, shadow, frame, scenery, UI, or sprite-sheet grid\nSubject: a compact athletic humanoid ranger facing screen-right in a neutral ready stance; dark indigo armor, electric violet cloth accents, cyan visor and small cyan energy blade; head, torso, upper arms, forearms, hands, upper legs, lower legs, and feet must each have clean readable silhouettes; arms held slightly away from torso and legs slightly separated so joints can be cut and rigged; weapon compact and aligned with the forward hand without covering the body\nStyle/medium: polished 32-bit-era pixel art, crisp intentional pixel clusters, limited game-ready palette, strong silhouette, controlled highlights, no anti-aliased painterly edges\nComposition/framing: one character only, centered, complete body visible with generous transparent padding, consistent side-view platformer perspective\nLighting/mood: subtle cool rim light, energetic neon violet and cyan accents, readable at small gameplay scale\nColor palette: near-black navy, indigo, electric violet, cyan, small pale highlights\nConstraints: actual transparent alpha; one pose only; no animation frames; no text; no logo; no watermark; no cropped body parts; no detached floating parts; maintain clean joint boundaries and consistent pixel density\nAvoid: sprite sheet, multiple characters, background, ground shadow, photorealism, 3D render, smooth vector art, blurry pixels, excessive tiny detail, overlapping limbs, oversized weapon",
+      "generationSettings": {
+        "useCase": "stylized-concept",
+        "assetType": "2d-game-character",
+        "transparentBackground": true
+      },
+      "providerMetadata": {
+        "provider": "imagegen",
+        "sourceSha256": "ba658d3b2190e3ed918eda91a27e14d581ebefad3cf5891f0f6f13b6e3509b18",
+        "recoveredFrom": "public/assets/generated/void-ranger-sprite.png"
+      },
+      "warnings": [],
+      "generationMode": "imported_external",
+      "novelArtwork": true,
+      "provider": "imagegen",
+      "sourceArtifact": "public/assets/generated/void-ranger-sprite.png"
+    }
+  ],
+  "sourceImage": {
+    "generationId": "void-ranger-source-imagegen-v1",
+    "image": "/public/assets/generated/void-ranger-sprite.png",
+    "width": 1024,
+    "height": 1536,
+    "generationPrompt": "Use case: stylized-concept\nAsset type: production-ready 2D game character sprite for skeletal rigging\nPrimary request: create one original pixel-art sci-fi void ranger character, full body, designed for idle, walk, run, and melee attack animation\nScene/backdrop: genuinely transparent background with no floor, shadow, frame, scenery, UI, or sprite-sheet grid\nSubject: a compact athletic humanoid ranger facing screen-right in a neutral ready stance; dark indigo armor, electric violet cloth accents, cyan visor and small cyan energy blade; head, torso, upper arms, forearms, hands, upper legs, lower legs, and feet must each have clean readable silhouettes; arms held slightly away from torso and legs slightly separated so joints can be cut and rigged; weapon compact and aligned with the forward hand without covering the body\nStyle/medium: polished 32-bit-era pixel art, crisp intentional pixel clusters, limited game-ready palette, strong silhouette, controlled highlights, no anti-aliased painterly edges\nComposition/framing: one character only, centered, complete body visible with generous transparent padding, consistent side-view platformer perspective\nLighting/mood: subtle cool rim light, energetic neon violet and cyan accents, readable at small gameplay scale\nColor palette: near-black navy, indigo, electric violet, cyan, small pale highlights\nConstraints: actual transparent alpha; one pose only; no animation frames; no text; no logo; no watermark; no cropped body parts; no detached floating parts; maintain clean joint boundaries and consistent pixel density\nAvoid: sprite sheet, multiple characters, background, ground shadow, photorealism, 3D render, smooth vector art, blurry pixels, excessive tiny detail, overlapping limbs, oversized weapon",
+    "generationSettings": {
+      "useCase": "stylized-concept",
+      "assetType": "2d-game-character",
+      "transparentBackground": true
+    },
+    "providerMetadata": {
+      "provider": "imagegen",
+      "sourceSha256": "ba658d3b2190e3ed918eda91a27e14d581ebefad3cf5891f0f6f13b6e3509b18",
+      "recoveredFrom": "public/assets/generated/void-ranger-sprite.png"
+    },
+    "warnings": [],
+    "generationMode": "imported_external",
+    "novelArtwork": true,
+    "provider": "imagegen",
+    "sourceArtifact": "public/assets/generated/void-ranger-sprite.png"
+  },
+  "suitability": {
+    "usable": true,
+    "score": 0.94,
+    "summary": "Surviving source is transparent, full-body, and supports the proven 16-part manual cut.",
+    "issues": []
+  },
+  "segmentationData": {
+    "segmentationId": "cut-void-ranger-source-imagegen-v1",
+    "imageWidth": 1024,
+    "imageHeight": 1536,
+    "parts": [
+      {
+        "id": "cape",
+        "name": "Cape",
+        "semanticType": "cape",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "bounds": {
+          "x": 62,
+          "y": 300,
+          "width": 400,
+          "height": 570
+        },
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "sourceImageRegion": {
+          "x": 62,
+          "y": 300,
+          "width": 400,
+          "height": 570
+        },
+        "suggestedBoneId": "torso",
+        "suggestedSlotId": "cape-slot",
+        "suggestedZIndex": -30,
+        "pivotHint": {
+          "x": 405,
+          "y": 330
+        },
+        "warnings": [
+          "Manual source-aligned polygon mask; intentional joint overlap retained."
+        ],
+        "accepted": true,
+        "provenance": "manual",
+        "fixtureImagePath": "/public/assets/generated/void-ranger-sprite.png"
+      },
+      {
+        "id": "right-thigh",
+        "name": "Right Thigh",
+        "semanticType": "rightThigh",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "bounds": {
+          "x": 510,
+          "y": 620,
+          "width": 205,
+          "height": 365
+        },
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "sourceImageRegion": {
+          "x": 510,
+          "y": 620,
+          "width": 205,
+          "height": 365
+        },
+        "suggestedBoneId": "pelvis",
+        "suggestedSlotId": "right-thigh-slot",
+        "suggestedZIndex": -12,
+        "pivotHint": {
+          "x": 570,
+          "y": 675
+        },
+        "warnings": [
+          "Manual source-aligned polygon mask; intentional joint overlap retained."
+        ],
+        "accepted": true,
+        "provenance": "manual",
+        "fixtureImagePath": "/public/assets/generated/void-ranger-sprite.png"
+      },
+      {
+        "id": "right-lower-leg",
+        "name": "Right Lower Leg",
+        "semanticType": "rightLowerLeg",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "bounds": {
+          "x": 615,
+          "y": 905,
+          "width": 145,
+          "height": 390
+        },
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "sourceImageRegion": {
+          "x": 615,
+          "y": 905,
+          "width": 145,
+          "height": 390
+        },
+        "suggestedBoneId": "right-upper-leg",
+        "suggestedSlotId": "right-lower-leg-slot",
+        "suggestedZIndex": -11,
+        "pivotHint": {
+          "x": 672,
+          "y": 945
+        },
+        "warnings": [
+          "Manual source-aligned polygon mask; intentional joint overlap retained."
+        ],
+        "accepted": true,
+        "provenance": "manual",
+        "fixtureImagePath": "/public/assets/generated/void-ranger-sprite.png"
+      },
+      {
+        "id": "right-foot",
+        "name": "Right Foot",
+        "semanticType": "rightFoot",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "bounds": {
+          "x": 665,
+          "y": 1215,
+          "width": 200,
+          "height": 225
+        },
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "sourceImageRegion": {
+          "x": 665,
+          "y": 1215,
+          "width": 200,
+          "height": 225
+        },
+        "suggestedBoneId": "right-lower-leg",
+        "suggestedSlotId": "right-foot-slot",
+        "suggestedZIndex": -10,
+        "pivotHint": {
+          "x": 735,
+          "y": 1260
+        },
+        "warnings": [
+          "Manual source-aligned polygon mask; intentional joint overlap retained."
+        ],
+        "accepted": true,
+        "provenance": "manual",
+        "fixtureImagePath": "/public/assets/generated/void-ranger-sprite.png"
+      },
+      {
+        "id": "left-upper-arm",
+        "name": "Left Upper Arm",
+        "semanticType": "leftUpperArm",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "bounds": {
+          "x": 305,
+          "y": 305,
+          "width": 170,
+          "height": 240
+        },
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "sourceImageRegion": {
+          "x": 305,
+          "y": 305,
+          "width": 170,
+          "height": 240
+        },
+        "suggestedBoneId": "torso",
+        "suggestedSlotId": "left-upper-arm-slot",
+        "suggestedZIndex": -8,
+        "pivotHint": {
+          "x": 395,
+          "y": 360
+        },
+        "warnings": [
+          "Manual source-aligned polygon mask; intentional joint overlap retained."
+        ],
+        "accepted": true,
+        "provenance": "manual",
+        "fixtureImagePath": "/public/assets/generated/void-ranger-sprite.png"
+      },
+      {
+        "id": "left-forearm",
+        "name": "Left Forearm",
+        "semanticType": "leftForearm",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "bounds": {
+          "x": 260,
+          "y": 485,
+          "width": 150,
+          "height": 275
+        },
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "sourceImageRegion": {
+          "x": 260,
+          "y": 485,
+          "width": 150,
+          "height": 275
+        },
+        "suggestedBoneId": "left-upper-arm",
+        "suggestedSlotId": "left-forearm-slot",
+        "suggestedZIndex": -7,
+        "pivotHint": {
+          "x": 360,
+          "y": 515
+        },
+        "warnings": [
+          "Manual source-aligned polygon mask; intentional joint overlap retained."
+        ],
+        "accepted": true,
+        "provenance": "manual",
+        "fixtureImagePath": "/public/assets/generated/void-ranger-sprite.png"
+      },
+      {
+        "id": "left-hand",
+        "name": "Left Hand",
+        "semanticType": "leftHand",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "bounds": {
+          "x": 245,
+          "y": 690,
+          "width": 115,
+          "height": 175
+        },
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "sourceImageRegion": {
+          "x": 245,
+          "y": 690,
+          "width": 115,
+          "height": 175
+        },
+        "suggestedBoneId": "left-lower-arm",
+        "suggestedSlotId": "left-hand-slot",
+        "suggestedZIndex": -6,
+        "pivotHint": {
+          "x": 300,
+          "y": 720
+        },
+        "warnings": [
+          "Manual source-aligned polygon mask; intentional joint overlap retained."
+        ],
+        "accepted": true,
+        "provenance": "manual",
+        "fixtureImagePath": "/public/assets/generated/void-ranger-sprite.png"
+      },
+      {
+        "id": "torso",
+        "name": "Torso",
+        "semanticType": "torso",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "bounds": {
+          "x": 395,
+          "y": 295,
+          "width": 285,
+          "height": 420
+        },
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "sourceImageRegion": {
+          "x": 395,
+          "y": 295,
+          "width": 285,
+          "height": 420
+        },
+        "suggestedBoneId": "pelvis",
+        "suggestedSlotId": "torso-slot",
+        "suggestedZIndex": 0,
+        "pivotHint": {
+          "x": 535,
+          "y": 650
+        },
+        "warnings": [
+          "Manual source-aligned polygon mask; intentional joint overlap retained."
+        ],
+        "accepted": true,
+        "provenance": "manual",
+        "fixtureImagePath": "/public/assets/generated/void-ranger-sprite.png"
+      },
+      {
+        "id": "left-thigh",
+        "name": "Left Thigh",
+        "semanticType": "leftThigh",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "bounds": {
+          "x": 350,
+          "y": 620,
+          "width": 200,
+          "height": 370
+        },
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "sourceImageRegion": {
+          "x": 350,
+          "y": 620,
+          "width": 200,
+          "height": 370
+        },
+        "suggestedBoneId": "pelvis",
+        "suggestedSlotId": "left-thigh-slot",
+        "suggestedZIndex": 2,
+        "pivotHint": {
+          "x": 455,
+          "y": 675
+        },
+        "warnings": [
+          "Manual source-aligned polygon mask; intentional joint overlap retained."
+        ],
+        "accepted": true,
+        "provenance": "manual",
+        "fixtureImagePath": "/public/assets/generated/void-ranger-sprite.png"
+      },
+      {
+        "id": "left-lower-leg",
+        "name": "Left Lower Leg",
+        "semanticType": "leftLowerLeg",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "bounds": {
+          "x": 285,
+          "y": 915,
+          "width": 180,
+          "height": 385
+        },
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "sourceImageRegion": {
+          "x": 285,
+          "y": 915,
+          "width": 180,
+          "height": 385
+        },
+        "suggestedBoneId": "left-upper-leg",
+        "suggestedSlotId": "left-lower-leg-slot",
+        "suggestedZIndex": 3,
+        "pivotHint": {
+          "x": 410,
+          "y": 955
+        },
+        "warnings": [
+          "Manual source-aligned polygon mask; intentional joint overlap retained."
+        ],
+        "accepted": true,
+        "provenance": "manual",
+        "fixtureImagePath": "/public/assets/generated/void-ranger-sprite.png"
+      },
+      {
+        "id": "left-foot",
+        "name": "Left Foot",
+        "semanticType": "leftFoot",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "bounds": {
+          "x": 230,
+          "y": 1215,
+          "width": 185,
+          "height": 235
+        },
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "sourceImageRegion": {
+          "x": 230,
+          "y": 1215,
+          "width": 185,
+          "height": 235
+        },
+        "suggestedBoneId": "left-lower-leg",
+        "suggestedSlotId": "left-foot-slot",
+        "suggestedZIndex": 4,
+        "pivotHint": {
+          "x": 325,
+          "y": 1260
+        },
+        "warnings": [
+          "Manual source-aligned polygon mask; intentional joint overlap retained."
+        ],
+        "accepted": true,
+        "provenance": "manual",
+        "fixtureImagePath": "/public/assets/generated/void-ranger-sprite.png"
+      },
+      {
+        "id": "head",
+        "name": "Head",
+        "semanticType": "head",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "bounds": {
+          "x": 365,
+          "y": 70,
+          "width": 315,
+          "height": 365
+        },
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "sourceImageRegion": {
+          "x": 365,
+          "y": 70,
+          "width": 315,
+          "height": 365
+        },
+        "suggestedBoneId": "torso",
+        "suggestedSlotId": "head-slot",
+        "suggestedZIndex": 6,
+        "pivotHint": {
+          "x": 535,
+          "y": 350
+        },
+        "warnings": [
+          "Manual source-aligned polygon mask; intentional joint overlap retained."
+        ],
+        "accepted": true,
+        "provenance": "manual",
+        "fixtureImagePath": "/public/assets/generated/void-ranger-sprite.png"
+      },
+      {
+        "id": "right-upper-arm",
+        "name": "Right Upper Arm",
+        "semanticType": "rightUpperArm",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "bounds": {
+          "x": 600,
+          "y": 390,
+          "width": 130,
+          "height": 210
+        },
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "sourceImageRegion": {
+          "x": 600,
+          "y": 390,
+          "width": 130,
+          "height": 210
+        },
+        "suggestedBoneId": "torso",
+        "suggestedSlotId": "right-upper-arm-slot",
+        "suggestedZIndex": 8,
+        "pivotHint": {
+          "x": 640,
+          "y": 420
+        },
+        "warnings": [
+          "Manual source-aligned polygon mask; intentional joint overlap retained."
+        ],
+        "accepted": true,
+        "provenance": "manual",
+        "fixtureImagePath": "/public/assets/generated/void-ranger-sprite.png"
+      },
+      {
+        "id": "right-forearm",
+        "name": "Right Forearm",
+        "semanticType": "rightForearm",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "bounds": {
+          "x": 640,
+          "y": 535,
+          "width": 145,
+          "height": 200
+        },
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "sourceImageRegion": {
+          "x": 640,
+          "y": 535,
+          "width": 145,
+          "height": 200
+        },
+        "suggestedBoneId": "right-upper-arm",
+        "suggestedSlotId": "right-forearm-slot",
+        "suggestedZIndex": 9,
+        "pivotHint": {
+          "x": 675,
+          "y": 560
+        },
+        "warnings": [
+          "Manual source-aligned polygon mask; intentional joint overlap retained."
+        ],
+        "accepted": true,
+        "provenance": "manual",
+        "fixtureImagePath": "/public/assets/generated/void-ranger-sprite.png"
+      },
+      {
+        "id": "right-hand",
+        "name": "Right Hand",
+        "semanticType": "rightHand",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "bounds": {
+          "x": 720,
+          "y": 665,
+          "width": 145,
+          "height": 155
+        },
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "sourceImageRegion": {
+          "x": 720,
+          "y": 665,
+          "width": 145,
+          "height": 155
+        },
+        "suggestedBoneId": "right-lower-arm",
+        "suggestedSlotId": "right-hand-slot",
+        "suggestedZIndex": 10,
+        "pivotHint": {
+          "x": 750,
+          "y": 700
+        },
+        "warnings": [
+          "Manual source-aligned polygon mask; intentional joint overlap retained."
+        ],
+        "accepted": true,
+        "provenance": "manual",
+        "fixtureImagePath": "/public/assets/generated/void-ranger-sprite.png"
+      },
+      {
+        "id": "main-hand-energy-blade",
+        "name": "Energy Blade",
+        "semanticType": "mainHandEquipment",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "bounds": {
+          "x": 785,
+          "y": 700,
+          "width": 220,
+          "height": 185
+        },
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "sourceImageRegion": {
+          "x": 785,
+          "y": 700,
+          "width": 220,
+          "height": 185
+        },
+        "suggestedBoneId": "right-hand",
+        "suggestedSlotId": "main-hand-energy-blade-slot",
+        "suggestedZIndex": 12,
+        "pivotHint": {
+          "x": 815,
+          "y": 755
+        },
+        "warnings": [
+          "Manual source-aligned polygon mask; intentional joint overlap retained."
+        ],
+        "accepted": true,
+        "provenance": "manual",
+        "fixtureImagePath": "/public/assets/generated/void-ranger-sprite.png"
+      }
+    ],
+    "warnings": [],
+    "providerMetadata": {
+      "provider": "part-cutter",
+      "semantic": true
+    }
+  },
+  "partCutterState": {
+    "stateVersion": 1,
+    "sourceImageId": "void-ranger-source-imagegen-v1",
+    "sourceCanvasSize": {
+      "width": 1024,
+      "height": 1536
+    },
+    "mode": "manual",
+    "parts": [
+      {
+        "partId": "cape",
+        "label": "Cape",
+        "semanticType": "cape",
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "boundingBox": {
+          "x": 62,
+          "y": 300,
+          "width": 400,
+          "height": 570
+        },
+        "sourceBoundingBox": {
+          "x": 62,
+          "y": 300,
+          "width": 400,
+          "height": 570
+        },
+        "sourceCanvasSize": {
+          "width": 1024,
+          "height": 1536
+        },
+        "pivot": {
+          "x": 405,
+          "y": 330
+        },
+        "suggestedParent": "torso",
+        "suggestedSlot": "cape-slot",
+        "zOrder": -30,
+        "layer": "back",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "articulated": false,
+        "equipment": true,
+        "occlusionState": "complete",
+        "provenance": "manual",
+        "notes": [
+          "Golden semantic mask sentinel; production mask remains in the editable disk project."
+        ],
+        "accepted": true
+      },
+      {
+        "partId": "right-thigh",
+        "label": "Right Thigh",
+        "semanticType": "rightThigh",
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "boundingBox": {
+          "x": 510,
+          "y": 620,
+          "width": 205,
+          "height": 365
+        },
+        "sourceBoundingBox": {
+          "x": 510,
+          "y": 620,
+          "width": 205,
+          "height": 365
+        },
+        "sourceCanvasSize": {
+          "width": 1024,
+          "height": 1536
+        },
+        "pivot": {
+          "x": 570,
+          "y": 675
+        },
+        "suggestedParent": "pelvis",
+        "suggestedSlot": "right-thigh-slot",
+        "zOrder": -12,
+        "layer": "back",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "articulated": true,
+        "equipment": false,
+        "occlusionState": "complete",
+        "provenance": "manual",
+        "notes": [
+          "Golden semantic mask sentinel; production mask remains in the editable disk project."
+        ],
+        "accepted": true
+      },
+      {
+        "partId": "right-lower-leg",
+        "label": "Right Lower Leg",
+        "semanticType": "rightLowerLeg",
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "boundingBox": {
+          "x": 615,
+          "y": 905,
+          "width": 145,
+          "height": 390
+        },
+        "sourceBoundingBox": {
+          "x": 615,
+          "y": 905,
+          "width": 145,
+          "height": 390
+        },
+        "sourceCanvasSize": {
+          "width": 1024,
+          "height": 1536
+        },
+        "pivot": {
+          "x": 672,
+          "y": 945
+        },
+        "suggestedParent": "right-upper-leg",
+        "suggestedSlot": "right-lower-leg-slot",
+        "zOrder": -11,
+        "layer": "back",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "articulated": true,
+        "equipment": false,
+        "occlusionState": "complete",
+        "provenance": "manual",
+        "notes": [
+          "Golden semantic mask sentinel; production mask remains in the editable disk project."
+        ],
+        "accepted": true
+      },
+      {
+        "partId": "right-foot",
+        "label": "Right Foot",
+        "semanticType": "rightFoot",
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "boundingBox": {
+          "x": 665,
+          "y": 1215,
+          "width": 200,
+          "height": 225
+        },
+        "sourceBoundingBox": {
+          "x": 665,
+          "y": 1215,
+          "width": 200,
+          "height": 225
+        },
+        "sourceCanvasSize": {
+          "width": 1024,
+          "height": 1536
+        },
+        "pivot": {
+          "x": 735,
+          "y": 1260
+        },
+        "suggestedParent": "right-lower-leg",
+        "suggestedSlot": "right-foot-slot",
+        "zOrder": -10,
+        "layer": "back",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "articulated": true,
+        "equipment": false,
+        "occlusionState": "complete",
+        "provenance": "manual",
+        "notes": [
+          "Golden semantic mask sentinel; production mask remains in the editable disk project."
+        ],
+        "accepted": true
+      },
+      {
+        "partId": "left-upper-arm",
+        "label": "Left Upper Arm",
+        "semanticType": "leftUpperArm",
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "boundingBox": {
+          "x": 305,
+          "y": 305,
+          "width": 170,
+          "height": 240
+        },
+        "sourceBoundingBox": {
+          "x": 305,
+          "y": 305,
+          "width": 170,
+          "height": 240
+        },
+        "sourceCanvasSize": {
+          "width": 1024,
+          "height": 1536
+        },
+        "pivot": {
+          "x": 395,
+          "y": 360
+        },
+        "suggestedParent": "torso",
+        "suggestedSlot": "left-upper-arm-slot",
+        "zOrder": -8,
+        "layer": "back",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "articulated": true,
+        "equipment": false,
+        "occlusionState": "complete",
+        "provenance": "manual",
+        "notes": [
+          "Golden semantic mask sentinel; production mask remains in the editable disk project."
+        ],
+        "accepted": true
+      },
+      {
+        "partId": "left-forearm",
+        "label": "Left Forearm",
+        "semanticType": "leftForearm",
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "boundingBox": {
+          "x": 260,
+          "y": 485,
+          "width": 150,
+          "height": 275
+        },
+        "sourceBoundingBox": {
+          "x": 260,
+          "y": 485,
+          "width": 150,
+          "height": 275
+        },
+        "sourceCanvasSize": {
+          "width": 1024,
+          "height": 1536
+        },
+        "pivot": {
+          "x": 360,
+          "y": 515
+        },
+        "suggestedParent": "left-upper-arm",
+        "suggestedSlot": "left-forearm-slot",
+        "zOrder": -7,
+        "layer": "back",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "articulated": true,
+        "equipment": false,
+        "occlusionState": "complete",
+        "provenance": "manual",
+        "notes": [
+          "Golden semantic mask sentinel; production mask remains in the editable disk project."
+        ],
+        "accepted": true
+      },
+      {
+        "partId": "left-hand",
+        "label": "Left Hand",
+        "semanticType": "leftHand",
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "boundingBox": {
+          "x": 245,
+          "y": 690,
+          "width": 115,
+          "height": 175
+        },
+        "sourceBoundingBox": {
+          "x": 245,
+          "y": 690,
+          "width": 115,
+          "height": 175
+        },
+        "sourceCanvasSize": {
+          "width": 1024,
+          "height": 1536
+        },
+        "pivot": {
+          "x": 300,
+          "y": 720
+        },
+        "suggestedParent": "left-lower-arm",
+        "suggestedSlot": "left-hand-slot",
+        "zOrder": -6,
+        "layer": "back",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "articulated": true,
+        "equipment": false,
+        "occlusionState": "complete",
+        "provenance": "manual",
+        "notes": [
+          "Golden semantic mask sentinel; production mask remains in the editable disk project."
+        ],
+        "accepted": true
+      },
+      {
+        "partId": "torso",
+        "label": "Torso",
+        "semanticType": "torso",
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "boundingBox": {
+          "x": 395,
+          "y": 295,
+          "width": 285,
+          "height": 420
+        },
+        "sourceBoundingBox": {
+          "x": 395,
+          "y": 295,
+          "width": 285,
+          "height": 420
+        },
+        "sourceCanvasSize": {
+          "width": 1024,
+          "height": 1536
+        },
+        "pivot": {
+          "x": 535,
+          "y": 650
+        },
+        "suggestedParent": "pelvis",
+        "suggestedSlot": "torso-slot",
+        "zOrder": 0,
+        "layer": "body",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "articulated": true,
+        "equipment": false,
+        "occlusionState": "complete",
+        "provenance": "manual",
+        "notes": [
+          "Golden semantic mask sentinel; production mask remains in the editable disk project."
+        ],
+        "accepted": true
+      },
+      {
+        "partId": "left-thigh",
+        "label": "Left Thigh",
+        "semanticType": "leftThigh",
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "boundingBox": {
+          "x": 350,
+          "y": 620,
+          "width": 200,
+          "height": 370
+        },
+        "sourceBoundingBox": {
+          "x": 350,
+          "y": 620,
+          "width": 200,
+          "height": 370
+        },
+        "sourceCanvasSize": {
+          "width": 1024,
+          "height": 1536
+        },
+        "pivot": {
+          "x": 455,
+          "y": 675
+        },
+        "suggestedParent": "pelvis",
+        "suggestedSlot": "left-thigh-slot",
+        "zOrder": 2,
+        "layer": "body",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "articulated": true,
+        "equipment": false,
+        "occlusionState": "complete",
+        "provenance": "manual",
+        "notes": [
+          "Golden semantic mask sentinel; production mask remains in the editable disk project."
+        ],
+        "accepted": true
+      },
+      {
+        "partId": "left-lower-leg",
+        "label": "Left Lower Leg",
+        "semanticType": "leftLowerLeg",
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "boundingBox": {
+          "x": 285,
+          "y": 915,
+          "width": 180,
+          "height": 385
+        },
+        "sourceBoundingBox": {
+          "x": 285,
+          "y": 915,
+          "width": 180,
+          "height": 385
+        },
+        "sourceCanvasSize": {
+          "width": 1024,
+          "height": 1536
+        },
+        "pivot": {
+          "x": 410,
+          "y": 955
+        },
+        "suggestedParent": "left-upper-leg",
+        "suggestedSlot": "left-lower-leg-slot",
+        "zOrder": 3,
+        "layer": "body",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "articulated": true,
+        "equipment": false,
+        "occlusionState": "complete",
+        "provenance": "manual",
+        "notes": [
+          "Golden semantic mask sentinel; production mask remains in the editable disk project."
+        ],
+        "accepted": true
+      },
+      {
+        "partId": "left-foot",
+        "label": "Left Foot",
+        "semanticType": "leftFoot",
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "boundingBox": {
+          "x": 230,
+          "y": 1215,
+          "width": 185,
+          "height": 235
+        },
+        "sourceBoundingBox": {
+          "x": 230,
+          "y": 1215,
+          "width": 185,
+          "height": 235
+        },
+        "sourceCanvasSize": {
+          "width": 1024,
+          "height": 1536
+        },
+        "pivot": {
+          "x": 325,
+          "y": 1260
+        },
+        "suggestedParent": "left-lower-leg",
+        "suggestedSlot": "left-foot-slot",
+        "zOrder": 4,
+        "layer": "body",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "articulated": true,
+        "equipment": false,
+        "occlusionState": "complete",
+        "provenance": "manual",
+        "notes": [
+          "Golden semantic mask sentinel; production mask remains in the editable disk project."
+        ],
+        "accepted": true
+      },
+      {
+        "partId": "head",
+        "label": "Head",
+        "semanticType": "head",
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "boundingBox": {
+          "x": 365,
+          "y": 70,
+          "width": 315,
+          "height": 365
+        },
+        "sourceBoundingBox": {
+          "x": 365,
+          "y": 70,
+          "width": 315,
+          "height": 365
+        },
+        "sourceCanvasSize": {
+          "width": 1024,
+          "height": 1536
+        },
+        "pivot": {
+          "x": 535,
+          "y": 350
+        },
+        "suggestedParent": "torso",
+        "suggestedSlot": "head-slot",
+        "zOrder": 6,
+        "layer": "body",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "articulated": true,
+        "equipment": false,
+        "occlusionState": "complete",
+        "provenance": "manual",
+        "notes": [
+          "Golden semantic mask sentinel; production mask remains in the editable disk project."
+        ],
+        "accepted": true
+      },
+      {
+        "partId": "right-upper-arm",
+        "label": "Right Upper Arm",
+        "semanticType": "rightUpperArm",
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "boundingBox": {
+          "x": 600,
+          "y": 390,
+          "width": 130,
+          "height": 210
+        },
+        "sourceBoundingBox": {
+          "x": 600,
+          "y": 390,
+          "width": 130,
+          "height": 210
+        },
+        "sourceCanvasSize": {
+          "width": 1024,
+          "height": 1536
+        },
+        "pivot": {
+          "x": 640,
+          "y": 420
+        },
+        "suggestedParent": "torso",
+        "suggestedSlot": "right-upper-arm-slot",
+        "zOrder": 8,
+        "layer": "front",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "articulated": true,
+        "equipment": false,
+        "occlusionState": "complete",
+        "provenance": "manual",
+        "notes": [
+          "Golden semantic mask sentinel; production mask remains in the editable disk project."
+        ],
+        "accepted": true
+      },
+      {
+        "partId": "right-forearm",
+        "label": "Right Forearm",
+        "semanticType": "rightForearm",
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "boundingBox": {
+          "x": 640,
+          "y": 535,
+          "width": 145,
+          "height": 200
+        },
+        "sourceBoundingBox": {
+          "x": 640,
+          "y": 535,
+          "width": 145,
+          "height": 200
+        },
+        "sourceCanvasSize": {
+          "width": 1024,
+          "height": 1536
+        },
+        "pivot": {
+          "x": 675,
+          "y": 560
+        },
+        "suggestedParent": "right-upper-arm",
+        "suggestedSlot": "right-forearm-slot",
+        "zOrder": 9,
+        "layer": "front",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "articulated": true,
+        "equipment": false,
+        "occlusionState": "complete",
+        "provenance": "manual",
+        "notes": [
+          "Golden semantic mask sentinel; production mask remains in the editable disk project."
+        ],
+        "accepted": true
+      },
+      {
+        "partId": "right-hand",
+        "label": "Right Hand",
+        "semanticType": "rightHand",
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "boundingBox": {
+          "x": 720,
+          "y": 665,
+          "width": 145,
+          "height": 155
+        },
+        "sourceBoundingBox": {
+          "x": 720,
+          "y": 665,
+          "width": 145,
+          "height": 155
+        },
+        "sourceCanvasSize": {
+          "width": 1024,
+          "height": 1536
+        },
+        "pivot": {
+          "x": 750,
+          "y": 700
+        },
+        "suggestedParent": "right-lower-arm",
+        "suggestedSlot": "right-hand-slot",
+        "zOrder": 10,
+        "layer": "front",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "articulated": true,
+        "equipment": false,
+        "occlusionState": "complete",
+        "provenance": "manual",
+        "notes": [
+          "Golden semantic mask sentinel; production mask remains in the editable disk project."
+        ],
+        "accepted": true
+      },
+      {
+        "partId": "main-hand-energy-blade",
+        "label": "Energy Blade",
+        "semanticType": "mainHandEquipment",
+        "mask": {
+          "width": 1,
+          "height": 1,
+          "alpha": [
+            255
+          ]
+        },
+        "boundingBox": {
+          "x": 785,
+          "y": 700,
+          "width": 220,
+          "height": 185
+        },
+        "sourceBoundingBox": {
+          "x": 785,
+          "y": 700,
+          "width": 220,
+          "height": 185
+        },
+        "sourceCanvasSize": {
+          "width": 1024,
+          "height": 1536
+        },
+        "pivot": {
+          "x": 815,
+          "y": 755
+        },
+        "suggestedParent": "right-hand",
+        "suggestedSlot": "main-hand-energy-blade-slot",
+        "zOrder": 12,
+        "layer": "front",
+        "confidence": 1,
+        "confidenceSource": "heuristic",
+        "articulated": false,
+        "equipment": true,
+        "occlusionState": "complete",
+        "provenance": "manual",
+        "notes": [
+          "Golden semantic mask sentinel; production mask remains in the editable disk project."
+        ],
+        "accepted": true
+      }
+    ],
+    "proposals": [],
+    "ignoredRegions": [],
+    "finalized": true,
+    "updatedAt": "2026-08-22T12:00:00.000Z"
+  },
+  "imageProductionHistory": [],
+  "extractedParts": [],
+  "reconstructedParts": [],
+  "rigDefinition": {
+    "schemaVersion": 1,
+    "id": "rig-void-ranger",
+    "canvas": {
+      "width": 1024,
+      "height": 1536
+    },
+    "rootBoneId": "root",
+    "bones": [
+      {
+        "id": "root",
+        "parentId": null,
+        "x": 512,
+        "y": 921.5999999999999,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "length": 24,
+        "inheritRotation": true,
+        "inheritScale": true
+      },
+      {
+        "id": "pelvis",
+        "parentId": "root",
+        "x": 0,
+        "y": 0,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "length": 272.5721188969993,
+        "inheritRotation": true,
+        "inheritScale": true
+      },
+      {
+        "id": "torso",
+        "parentId": "pelvis",
+        "x": 23,
+        "y": -271.5999999999999,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "length": 300,
+        "inheritRotation": true,
+        "inheritScale": true
+      },
+      {
+        "id": "head",
+        "parentId": "torso",
+        "x": 0,
+        "y": -300,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "length": 34,
+        "inheritRotation": true,
+        "inheritScale": true
+      },
+      {
+        "id": "left-upper-arm",
+        "parentId": "torso",
+        "x": -140,
+        "y": -290,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "length": 158.90248582070703,
+        "inheritRotation": true,
+        "inheritScale": true
+      },
+      {
+        "id": "left-lower-arm",
+        "parentId": "left-upper-arm",
+        "x": -35,
+        "y": 155,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "length": 213.60009363293827,
+        "inheritRotation": true,
+        "inheritScale": true
+      },
+      {
+        "id": "left-hand",
+        "parentId": "left-lower-arm",
+        "x": -60,
+        "y": 205,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "length": 22,
+        "inheritRotation": true,
+        "inheritScale": true
+      },
+      {
+        "id": "right-upper-arm",
+        "parentId": "torso",
+        "x": 105,
+        "y": -230,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "length": 144.30869689661813,
+        "inheritRotation": true,
+        "inheritScale": true
+      },
+      {
+        "id": "right-lower-arm",
+        "parentId": "right-upper-arm",
+        "x": 35,
+        "y": 140,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "length": 158.8238017426859,
+        "inheritRotation": true,
+        "inheritScale": true
+      },
+      {
+        "id": "right-hand",
+        "parentId": "right-lower-arm",
+        "x": 75,
+        "y": 140,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "length": 22,
+        "inheritRotation": true,
+        "inheritScale": true
+      },
+      {
+        "id": "left-upper-leg",
+        "parentId": "pelvis",
+        "x": -57,
+        "y": -246.5999999999999,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "length": 283.5930182497446,
+        "inheritRotation": true,
+        "inheritScale": true
+      },
+      {
+        "id": "left-lower-leg",
+        "parentId": "left-upper-leg",
+        "x": -45,
+        "y": 280,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "length": 316.62280397975127,
+        "inheritRotation": true,
+        "inheritScale": true
+      },
+      {
+        "id": "left-foot",
+        "parentId": "left-lower-leg",
+        "x": -85,
+        "y": 305,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "length": 38,
+        "inheritRotation": true,
+        "inheritScale": true
+      },
+      {
+        "id": "right-upper-leg",
+        "parentId": "pelvis",
+        "x": 58,
+        "y": -246.5999999999999,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "length": 288.62432329933665,
+        "inheritRotation": true,
+        "inheritScale": true
+      },
+      {
+        "id": "right-lower-leg",
+        "parentId": "right-upper-leg",
+        "x": 102,
+        "y": 270,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "length": 321.23822935634547,
+        "inheritRotation": true,
+        "inheritScale": true
+      },
+      {
+        "id": "right-foot",
+        "parentId": "right-lower-leg",
+        "x": 63,
+        "y": 315,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "length": 38,
+        "inheritRotation": true,
+        "inheritScale": true
+      }
+    ],
+    "slots": [
+      {
+        "id": "cape-slot",
+        "boneId": "torso",
+        "attachmentId": "cape",
+        "zIndex": -30,
+        "visible": true,
+        "blendMode": "normal",
+        "tint": 16777215,
+        "pivotX": 343,
+        "pivotY": 30
+      },
+      {
+        "id": "right-thigh-slot",
+        "boneId": "pelvis",
+        "attachmentId": "right-thigh",
+        "zIndex": -12,
+        "visible": true,
+        "blendMode": "normal",
+        "tint": 16777215,
+        "pivotX": 59.99999999999999,
+        "pivotY": 55
+      },
+      {
+        "id": "right-lower-leg-slot",
+        "boneId": "right-upper-leg",
+        "attachmentId": "right-lower-leg",
+        "zIndex": -11,
+        "visible": true,
+        "blendMode": "normal",
+        "tint": 16777215,
+        "pivotX": 57,
+        "pivotY": 40
+      },
+      {
+        "id": "right-foot-slot",
+        "boneId": "right-lower-leg",
+        "attachmentId": "right-foot",
+        "zIndex": -10,
+        "visible": true,
+        "blendMode": "normal",
+        "tint": 16777215,
+        "pivotX": 70,
+        "pivotY": 45
+      },
+      {
+        "id": "left-upper-arm-slot",
+        "boneId": "torso",
+        "attachmentId": "left-upper-arm",
+        "zIndex": -8,
+        "visible": true,
+        "blendMode": "normal",
+        "tint": 16777215,
+        "pivotX": 90,
+        "pivotY": 55
+      },
+      {
+        "id": "left-forearm-slot",
+        "boneId": "left-upper-arm",
+        "attachmentId": "left-forearm",
+        "zIndex": -7,
+        "visible": true,
+        "blendMode": "normal",
+        "tint": 16777215,
+        "pivotX": 100,
+        "pivotY": 30
+      },
+      {
+        "id": "left-hand-slot",
+        "boneId": "left-lower-arm",
+        "attachmentId": "left-hand",
+        "zIndex": -6,
+        "visible": true,
+        "blendMode": "normal",
+        "tint": 16777215,
+        "pivotX": 55,
+        "pivotY": 30
+      },
+      {
+        "id": "torso-slot",
+        "boneId": "pelvis",
+        "attachmentId": "torso",
+        "zIndex": 0,
+        "visible": true,
+        "blendMode": "normal",
+        "tint": 16777215,
+        "pivotX": 140,
+        "pivotY": 355
+      },
+      {
+        "id": "left-thigh-slot",
+        "boneId": "pelvis",
+        "attachmentId": "left-thigh",
+        "zIndex": 2,
+        "visible": true,
+        "blendMode": "normal",
+        "tint": 16777215,
+        "pivotX": 105,
+        "pivotY": 55
+      },
+      {
+        "id": "left-lower-leg-slot",
+        "boneId": "left-upper-leg",
+        "attachmentId": "left-lower-leg",
+        "zIndex": 3,
+        "visible": true,
+        "blendMode": "normal",
+        "tint": 16777215,
+        "pivotX": 125,
+        "pivotY": 40
+      },
+      {
+        "id": "left-foot-slot",
+        "boneId": "left-lower-leg",
+        "attachmentId": "left-foot",
+        "zIndex": 4,
+        "visible": true,
+        "blendMode": "normal",
+        "tint": 16777215,
+        "pivotX": 95,
+        "pivotY": 45
+      },
+      {
+        "id": "head-slot",
+        "boneId": "torso",
+        "attachmentId": "head",
+        "zIndex": 6,
+        "visible": true,
+        "blendMode": "normal",
+        "tint": 16777215,
+        "pivotX": 170,
+        "pivotY": 280
+      },
+      {
+        "id": "right-upper-arm-slot",
+        "boneId": "torso",
+        "attachmentId": "right-upper-arm",
+        "zIndex": 8,
+        "visible": true,
+        "blendMode": "normal",
+        "tint": 16777215,
+        "pivotX": 40,
+        "pivotY": 30
+      },
+      {
+        "id": "right-forearm-slot",
+        "boneId": "right-upper-arm",
+        "attachmentId": "right-forearm",
+        "zIndex": 9,
+        "visible": true,
+        "blendMode": "normal",
+        "tint": 16777215,
+        "pivotX": 35,
+        "pivotY": 25
+      },
+      {
+        "id": "right-hand-slot",
+        "boneId": "right-lower-arm",
+        "attachmentId": "right-hand",
+        "zIndex": 10,
+        "visible": true,
+        "blendMode": "normal",
+        "tint": 16777215,
+        "pivotX": 30,
+        "pivotY": 35
+      },
+      {
+        "id": "main-hand-energy-blade-slot",
+        "boneId": "right-hand",
+        "attachmentId": "main-hand-energy-blade",
+        "zIndex": 12,
+        "visible": true,
+        "blendMode": "normal",
+        "tint": 16777215,
+        "pivotX": 29.999999999999996,
+        "pivotY": 55
+      }
+    ],
+    "attachments": [
+      {
+        "id": "cape",
+        "imagePath": "/public/assets/generated/void-ranger-sprite.png#cape",
+        "width": 400,
+        "height": 570,
+        "offsetX": 0,
+        "offsetY": 0,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "category": "equipment",
+        "tags": [
+          "cape",
+          "manual"
+        ]
+      },
+      {
+        "id": "right-thigh",
+        "imagePath": "/public/assets/generated/void-ranger-sprite.png#right-thigh",
+        "width": 205,
+        "height": 365,
+        "offsetX": 0,
+        "offsetY": 0,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "category": "body",
+        "tags": [
+          "rightThigh",
+          "manual"
+        ]
+      },
+      {
+        "id": "right-lower-leg",
+        "imagePath": "/public/assets/generated/void-ranger-sprite.png#right-lower-leg",
+        "width": 145,
+        "height": 390,
+        "offsetX": 0,
+        "offsetY": 0,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "category": "body",
+        "tags": [
+          "rightLowerLeg",
+          "manual"
+        ]
+      },
+      {
+        "id": "right-foot",
+        "imagePath": "/public/assets/generated/void-ranger-sprite.png#right-foot",
+        "width": 200,
+        "height": 225,
+        "offsetX": 0,
+        "offsetY": 0,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "category": "body",
+        "tags": [
+          "rightFoot",
+          "manual"
+        ]
+      },
+      {
+        "id": "left-upper-arm",
+        "imagePath": "/public/assets/generated/void-ranger-sprite.png#left-upper-arm",
+        "width": 170,
+        "height": 240,
+        "offsetX": 0,
+        "offsetY": 0,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "category": "body",
+        "tags": [
+          "leftUpperArm",
+          "manual"
+        ]
+      },
+      {
+        "id": "left-forearm",
+        "imagePath": "/public/assets/generated/void-ranger-sprite.png#left-forearm",
+        "width": 150,
+        "height": 275,
+        "offsetX": 0,
+        "offsetY": 0,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "category": "body",
+        "tags": [
+          "leftForearm",
+          "manual"
+        ]
+      },
+      {
+        "id": "left-hand",
+        "imagePath": "/public/assets/generated/void-ranger-sprite.png#left-hand",
+        "width": 115,
+        "height": 175,
+        "offsetX": 0,
+        "offsetY": 0,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "category": "body",
+        "tags": [
+          "leftHand",
+          "manual"
+        ]
+      },
+      {
+        "id": "torso",
+        "imagePath": "/public/assets/generated/void-ranger-sprite.png#torso",
+        "width": 285,
+        "height": 420,
+        "offsetX": 0,
+        "offsetY": 0,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "category": "body",
+        "tags": [
+          "torso",
+          "manual"
+        ]
+      },
+      {
+        "id": "left-thigh",
+        "imagePath": "/public/assets/generated/void-ranger-sprite.png#left-thigh",
+        "width": 200,
+        "height": 370,
+        "offsetX": 0,
+        "offsetY": 0,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "category": "body",
+        "tags": [
+          "leftThigh",
+          "manual"
+        ]
+      },
+      {
+        "id": "left-lower-leg",
+        "imagePath": "/public/assets/generated/void-ranger-sprite.png#left-lower-leg",
+        "width": 180,
+        "height": 385,
+        "offsetX": 0,
+        "offsetY": 0,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "category": "body",
+        "tags": [
+          "leftLowerLeg",
+          "manual"
+        ]
+      },
+      {
+        "id": "left-foot",
+        "imagePath": "/public/assets/generated/void-ranger-sprite.png#left-foot",
+        "width": 185,
+        "height": 235,
+        "offsetX": 0,
+        "offsetY": 0,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "category": "body",
+        "tags": [
+          "leftFoot",
+          "manual"
+        ]
+      },
+      {
+        "id": "head",
+        "imagePath": "/public/assets/generated/void-ranger-sprite.png#head",
+        "width": 315,
+        "height": 365,
+        "offsetX": 0,
+        "offsetY": 0,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "category": "body",
+        "tags": [
+          "head",
+          "manual"
+        ]
+      },
+      {
+        "id": "right-upper-arm",
+        "imagePath": "/public/assets/generated/void-ranger-sprite.png#right-upper-arm",
+        "width": 130,
+        "height": 210,
+        "offsetX": 0,
+        "offsetY": 0,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "category": "body",
+        "tags": [
+          "rightUpperArm",
+          "manual"
+        ]
+      },
+      {
+        "id": "right-forearm",
+        "imagePath": "/public/assets/generated/void-ranger-sprite.png#right-forearm",
+        "width": 145,
+        "height": 200,
+        "offsetX": 0,
+        "offsetY": 0,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "category": "body",
+        "tags": [
+          "rightForearm",
+          "manual"
+        ]
+      },
+      {
+        "id": "right-hand",
+        "imagePath": "/public/assets/generated/void-ranger-sprite.png#right-hand",
+        "width": 145,
+        "height": 155,
+        "offsetX": 0,
+        "offsetY": 0,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "category": "body",
+        "tags": [
+          "rightHand",
+          "manual"
+        ]
+      },
+      {
+        "id": "main-hand-energy-blade",
+        "imagePath": "/public/assets/generated/void-ranger-sprite.png#main-hand-energy-blade",
+        "width": 220,
+        "height": 185,
+        "offsetX": 0,
+        "offsetY": 0,
+        "rotation": 0,
+        "scaleX": 1,
+        "scaleY": 1,
+        "category": "equipment",
+        "tags": [
+          "mainHandEquipment",
+          "manual"
+        ]
+      }
+    ],
+    "skins": [
+      {
+        "id": "default",
+        "name": "Default",
+        "slotAttachments": {
+          "cape-slot": "cape",
+          "right-thigh-slot": "right-thigh",
+          "right-lower-leg-slot": "right-lower-leg",
+          "right-foot-slot": "right-foot",
+          "left-upper-arm-slot": "left-upper-arm",
+          "left-forearm-slot": "left-forearm",
+          "left-hand-slot": "left-hand",
+          "torso-slot": "torso",
+          "left-thigh-slot": "left-thigh",
+          "left-lower-leg-slot": "left-lower-leg",
+          "left-foot-slot": "left-foot",
+          "head-slot": "head",
+          "right-upper-arm-slot": "right-upper-arm",
+          "right-forearm-slot": "right-forearm",
+          "right-hand-slot": "right-hand",
+          "main-hand-energy-blade-slot": "main-hand-energy-blade"
+        }
+      }
+    ],
+    "defaultSkinId": "default",
+    "metadata": {
+      "name": "Void Ranger",
+      "authoringSource": "generated-character-pipeline",
+      "rotationUnit": "degrees",
+      "coordinateSystem": "x-right-y-down",
+      "generatedAt": "2026-08-22T12:00:00.000Z",
+      "anatomyProfile": "humanoid",
+      "sourceAlignedSetup": true,
+      "sourceSha256": "ba658d3b2190e3ed918eda91a27e14d581ebefad3cf5891f0f6f13b6e3509b18",
+      "manualJointOverlap": true,
+      "fixture": "void-ranger-v1"
+    }
+  },
+  "skins": [
+    {
+      "id": "default",
+      "name": "Default",
+      "slotAttachments": {
+        "cape-slot": "cape",
+        "right-thigh-slot": "right-thigh",
+        "right-lower-leg-slot": "right-lower-leg",
+        "right-foot-slot": "right-foot",
+        "left-upper-arm-slot": "left-upper-arm",
+        "left-forearm-slot": "left-forearm",
+        "left-hand-slot": "left-hand",
+        "torso-slot": "torso",
+        "left-thigh-slot": "left-thigh",
+        "left-lower-leg-slot": "left-lower-leg",
+        "left-foot-slot": "left-foot",
+        "head-slot": "head",
+        "right-upper-arm-slot": "right-upper-arm",
+        "right-forearm-slot": "right-forearm",
+        "right-hand-slot": "right-hand",
+        "main-hand-energy-blade-slot": "main-hand-energy-blade"
+      }
+    }
+  ],
+  "warnings": [
+    "Manual masks intentionally retain modest joint overlap for animation padding."
+  ],
+  "userCorrections": [],
+  "createdAt": "2026-08-22T12:00:00.000Z",
+  "updatedAt": "2026-08-22T12:00:00.000Z"
+}

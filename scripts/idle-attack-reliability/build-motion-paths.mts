@@ -1,0 +1,18 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+
+const ROOT = process.cwd(); const RUN_ID = "2026-08-23T10-43-00Z"; const OUT = path.join(ROOT, ".rigging-studio/diagnostics/idle-attack-reliability", RUN_ID); const TARGET = path.join(OUT, "motion-paths");
+type Point = { phase: number; x: number; y: number };
+const data = JSON.parse(await readFile(path.join(OUT, "run-results.json"), "utf8")) as { characters: Array<{ letter: string; name: string; clips: Array<{ kind: string; maxHeightDrift: number; gripError: { meanHeight: number; maxHeight: number }; weaponPath: { points: Point[]; arcLength: number; maximumSegment: number; teleportRatio: number } | null; plan: { type?: string; primaryEquipment?: { id: string; kind: string } | null; supportArmMode?: string } }> }> };
+const esc = (value: string): string => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+await mkdir(TARGET, { recursive: true }); const files = [];
+for (const character of data.characters) {
+  const clip = character.clips.find((item) => item.kind === "attack")!; const points = clip.weaponPath?.points ?? [];
+  const xs = points.map((point) => point.x); const ys = points.map((point) => point.y); const minX = Math.min(...xs); const maxX = Math.max(...xs); const minY = Math.min(...ys); const maxY = Math.max(...ys);
+  const scale = Math.min(700 / Math.max(1, maxX - minX), 250 / Math.max(1, maxY - minY)); const map = (point: Point): { x: number; y: number } => ({ x: 100 + (point.x - minX) * scale, y: 110 + (point.y - minY) * scale }); const mapped = points.map(map);
+  const labels = ["NEUTRAL", "ANTICIPATION", "ACTION", "FOLLOW", "RECOVERY"];
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="900" height="450" viewBox="0 0 900 450"><rect width="900" height="450" fill="#070a14"/><text x="28" y="38" fill="#f3f6ff" font-family="ui-monospace,monospace" font-size="22" font-weight="700">${esc(`${character.letter} · ${character.name} · ${(clip.plan.type ?? "attack").toUpperCase()} HAND/WEAPON PATH`)}</text><text x="28" y="67" fill="#9ba9c6" font-family="ui-monospace,monospace" font-size="14">${esc(`${clip.plan.primaryEquipment?.id ?? "unarmed lead hand"} · support ${clip.plan.supportArmMode ?? "free"} · support-foot drift ${(clip.maxHeightDrift * 100).toFixed(2)}% · grip max ${(clip.gripError.maxHeight * 100).toFixed(2)}%`)}</text><polyline points="${mapped.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ")}" fill="none" stroke="#72d9ff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>${mapped.map((point, index) => `<circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="7" fill="${index === 2 ? "#ff7a9d" : "#72d9ff"}"/><text x="${(point.x + 10).toFixed(1)}" y="${(point.y - 8).toFixed(1)}" fill="#d8e0f5" font-family="ui-monospace,monospace" font-size="12">${labels[index]}</text>`).join("")}<text x="28" y="420" fill="#7383a8" font-family="ui-monospace,monospace" font-size="13">arc ${clip.weaponPath?.arcLength.toFixed(1) ?? 0}px · largest segment ${clip.weaponPath?.maximumSegment.toFixed(1) ?? 0}px · segment/arc ${(clip.weaponPath?.teleportRatio ?? 0).toFixed(3)} · no teleport threshold &lt; 0.65</text></svg>`;
+  const file = path.join(TARGET, `${character.letter.toLowerCase()}-attack-hand-path.svg`); await writeFile(file, svg); files.push(path.relative(OUT, file));
+}
+await writeFile(path.join(OUT, "motion-paths.json"), `${JSON.stringify({ runId: RUN_ID, files }, null, 2)}\n`);
+process.stdout.write(`${JSON.stringify({ count: files.length, directory: path.relative(ROOT, TARGET) }, null, 2)}\n`);

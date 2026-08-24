@@ -177,7 +177,7 @@ export function VisualReviewPanel({ rig, currentAnimation, onPreview, onAccept, 
         <label className="ai-field stacked"><span>Constraints / style notes</span><textarea rows={2} value={styleNotes} onChange={(event) => setStyleNotes(event.target.value)} placeholder="Grounded, stylized, preserve impact timing…" /></label>
       </details>
 
-      <div className="ai-primary-actions"><button type="button" className="ai-generate" disabled={busy !== null} onClick={() => void renderCapture()}>{busy === "capture" ? "Rendering…" : capture ? "Render fresh contact sheet" : "Render contact sheet"}</button></div>
+      <div className="ai-primary-actions"><button type="button" className="ai-generate" aria-busy={busy === "capture"} disabled={busy !== null} onClick={() => void renderCapture()}>{busy === "capture" ? "Rendering…" : capture ? "Render fresh contact sheet" : "Render contact sheet"}</button></div>
 
       {error && <section className="ai-validation" role="alert"><strong>Visual review notice</strong><p>{error}</p></section>}
 
@@ -188,7 +188,7 @@ export function VisualReviewPanel({ rig, currentAnimation, onPreview, onAccept, 
         <img className="visual-contact-sheet" src={captureUrl} alt={`Diagnostic contact sheet for ${currentAnimation.name}`} />
         <div className="visual-data-manifest"><strong>Provider payload</strong><p>{capture.result.plan.frameCount} frames · {capture.result.plan.contactSheetWidth}×{capture.result.plan.contactSheetHeight}px contact sheet</p><p>Animation goal, bone hierarchy/setup pose, current animation JSON, ground/feet/contacts, constraints, overlays, and known warnings.</p>{passState.completedPasses > 0 && <p>Prior structured session reviews are included for this explicitly started refinement pass.</p>}<p>No editor UI, unrelated files, project source, or API secret is included.</p>{capture.result.individualFrames.length > 0 && <p>{capture.result.individualFrames.length} individual PNG frames are also included.</p>}</div>
         {captureIsStale && <p className="visual-stale-capture">The animation changed after this capture. Render a fresh contact sheet before review or export.</p>}
-        <div className="visual-send-actions"><button type="button" disabled={captureIsStale} onClick={() => void exportPackage()}>Export diagnostic ZIP</button><button type="button" className="confirm-send" disabled={busy !== null || captureIsStale || passState.completedPasses >= passState.maximumPasses} onClick={() => void requestReview()}>{busy === "review" ? "Reviewing…" : passState.completedPasses ? `Start review pass ${passState.completedPasses + 1}` : "Confirm and send for review"}</button></div>
+        <div className="visual-send-actions"><button type="button" disabled={captureIsStale} onClick={() => void exportPackage()}>Export diagnostic ZIP</button><button type="button" className="confirm-send" aria-busy={busy === "review"} disabled={busy !== null || captureIsStale || passState.completedPasses >= passState.maximumPasses} onClick={() => void requestReview()}>{busy === "review" ? "Reviewing…" : passState.completedPasses ? `Start review pass ${passState.completedPasses + 1}` : "Confirm and send for review"}</button></div>
         <p className="visual-cost-note">Each click makes at most one provider request. Pass {passState.completedPasses}/{passState.maximumPasses}; there are no automatic follow-ups or retries.</p>
       </section>}
 

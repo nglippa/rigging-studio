@@ -1,10 +1,12 @@
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import WebSocket from "ws";
 import { afterEach, describe, expect, it } from "vitest";
 import { BRIDGE_PROTOCOL_VERSION } from "../../src/agent-control/protocol/messages";
 import { StudioBridgeServer } from "../../mcp/transport/StudioBridgeServer";
+import { createGeneratedCharacterProject } from "../../src/character-generation/project/generatedCharacterProject";
+import { LOCAL_PROJECT_STORAGE_VERSION } from "../../src/project-storage/types";
 
 const bridges: StudioBridgeServer[] = [];
 const sockets: WebSocket[] = [];
@@ -29,6 +31,27 @@ const availablePort = async (bridge: StudioBridgeServer): Promise<number | null>
 };
 
 describe("localhost Studio bridge", () => {
+  it("restores a trusted custom storage-root selection across bridge startup", async () => {
+    if (process.env.RIGGING_STUDIO_PROJECTS_ROOT) return;
+    const cwd = mkdtempSync(path.join(tmpdir(), "rigging-studio-root-config-")); const customRoot = path.join(cwd, "chosen-projects");
+    mkdirSync(path.join(cwd, ".rigging-studio"), { recursive: true }); writeFileSync(path.join(cwd, ".rigging-studio/storage-config.json"), JSON.stringify({ storageVersion: 1, root: customRoot }));
+    const bridge = new StudioBridgeServer({ port: 0, cwd }); bridges.push(bridge); const port = await availablePort(bridge); if (port === null) return;
+    const response = await fetch(`http://127.0.0.1:${port}/project-storage/status`); expect(response.status).toBe(200); expect(await response.json()).toMatchObject({ root: customRoot, available: true, writable: true });
+  });
+
+  it("persists managed projects across bridge restarts without browser storage", async () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), "rigging-studio-durable-")); const project = createGeneratedCharacterProject("Restart proof", "disk");
+    const first = new StudioBridgeServer({ port: 0, cwd }); bridges.push(first); const firstPort = await availablePort(first); if (firstPort === null) return;
+    const saved = await fetch(`http://127.0.0.1:${firstPort}/project-storage/save`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ snapshot: { storageVersion: LOCAL_PROJECT_STORAGE_VERSION, project, rig: null, animations: null, selectedSkinId: null } }) });
+    expect(saved.status).toBe(200); const savedProject = await saved.json() as { readonly projectId: string }; await first.close(); bridges.splice(bridges.indexOf(first), 1);
+    const restarted = new StudioBridgeServer({ port: 0, cwd }); bridges.push(restarted); const secondPort = await availablePort(restarted); if (secondPort === null) return;
+    const listed = await fetch(`http://127.0.0.1:${secondPort}/project-storage/projects`); expect(listed.status).toBe(200);
+    expect((await listed.json() as { readonly projects: readonly { readonly projectId: string }[] }).projects.map((entry) => entry.projectId)).toContain(savedProject.projectId);
+    const loaded = await fetch(`http://127.0.0.1:${secondPort}/project-storage/load`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId: savedProject.projectId }) });
+    expect(loaded.status).toBe(200); expect(await loaded.json()).toMatchObject({ snapshot: { project: { name: "Restart proof" }, rig: null, animations: null } });
+    expect((await fetch(`http://127.0.0.1:${secondPort}/project-storage/assets/${savedProject.projectId}/..%2F..%2Fpackage.json`)).status).not.toBe(200);
+  });
+
   it("handles sequential calls, persists fixed-path previews, and reconnects", async () => {
     const cwd = mkdtempSync(path.join(tmpdir(), "rigging-studio-bridge-"));
     const bridge = new StudioBridgeServer({ port: 0, cwd, requestTimeoutMs: 2_000 }); bridges.push(bridge);

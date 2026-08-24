@@ -12,4 +12,12 @@ export const NEGATIVE_PROMPT_RULES = [
   "dramatic perspective",
   "strong foreshortening",
   "merged equipment",
+  "realistic adult proportions",
+  "photorealism",
+  "painted illustration",
+  "smooth vector art",
+  "3D render",
+  "anti-aliased edges",
+  "blurry or inconsistent pixels",
+  "sprite sheet or multiple animation frames",
 ] as const;

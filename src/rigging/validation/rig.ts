@@ -43,13 +43,20 @@ export function validateRigDefinition(rig: RigDefinition): ValidationIssue[] {
       leftlowerarm: ["leftforearm"], rightlowerarm: ["rightforearm"],
       leftupperleg: ["leftthigh"], rightupperleg: ["rightthigh"],
     };
+    const hiddenAnatomy = new Set(Array.isArray(rig.metadata.hiddenAnatomy)
+      ? rig.metadata.hiddenAnatomy.filter((value): value is string => typeof value === "string").map(normalized)
+      : []);
     requiredVisuals.forEach((semantic) => {
       const token = normalized(semantic);
       const tokens = [token, ...(visualAliases[token] ?? [])];
       const slotIndex = rig.slots.findIndex((slot) => tokens.some((candidate) => normalized(slot.id).includes(candidate)));
-      const attachmentIndex = rig.attachments.findIndex((attachment) => tokens.some((candidate) => normalized(attachment.id).includes(candidate) || attachment.tags.some((tag) => normalized(tag) === candidate)));
       if (slotIndex < 0) issues.push({ code: "missing_required_semantic_slot", path: ["slots"], message: `Missing required ${semantic} visual slot for the humanoid rig profile.`, severity: "error", objectId: semantic, mode: "prepare", suggestedAction: `Return to Prepare and create or relabel the ${semantic} part.` });
-      else if (attachmentIndex < 0) issues.push({ code: "missing_required_semantic_attachment", path: ["slots", slotIndex, "attachmentId"], message: `The ${semantic} slot has no matching visual attachment.`, severity: "error", objectId: rig.slots[slotIndex].id, mode: "prepare", suggestedAction: `Return to Prepare and assign artwork for ${semantic}.` });
+      else if (!hiddenAnatomy.has(token)) {
+        const attachmentId = rig.slots[slotIndex].attachmentId;
+        const attachment = attachmentId ? rig.attachments.find((candidate) => candidate.id === attachmentId) : undefined;
+        const matchesSemantic = attachment && tokens.some((candidate) => normalized(attachment.id).includes(candidate) || attachment.tags.some((tag) => normalized(tag) === candidate));
+        if (!matchesSemantic) issues.push({ code: "missing_required_semantic_attachment", path: ["slots", slotIndex, "attachmentId"], message: `The ${semantic} slot has no matching visual attachment.`, severity: "error", objectId: rig.slots[slotIndex].id, mode: "prepare", suggestedAction: `Return to Prepare and assign artwork for ${semantic}.` });
+      }
     });
   }
 

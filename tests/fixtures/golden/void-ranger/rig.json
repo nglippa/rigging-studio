@@ -1,0 +1,676 @@
+{
+  "schemaVersion": 1,
+  "id": "rig-void-ranger",
+  "canvas": {
+    "width": 1024,
+    "height": 1536
+  },
+  "rootBoneId": "root",
+  "bones": [
+    {
+      "id": "root",
+      "parentId": null,
+      "x": 512,
+      "y": 921.5999999999999,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "length": 24,
+      "inheritRotation": true,
+      "inheritScale": true
+    },
+    {
+      "id": "pelvis",
+      "parentId": "root",
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "length": 272.5721188969993,
+      "inheritRotation": true,
+      "inheritScale": true
+    },
+    {
+      "id": "torso",
+      "parentId": "pelvis",
+      "x": 23,
+      "y": -271.5999999999999,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "length": 300,
+      "inheritRotation": true,
+      "inheritScale": true
+    },
+    {
+      "id": "head",
+      "parentId": "torso",
+      "x": 0,
+      "y": -300,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "length": 34,
+      "inheritRotation": true,
+      "inheritScale": true
+    },
+    {
+      "id": "left-upper-arm",
+      "parentId": "torso",
+      "x": -140,
+      "y": -290,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "length": 158.90248582070703,
+      "inheritRotation": true,
+      "inheritScale": true
+    },
+    {
+      "id": "left-lower-arm",
+      "parentId": "left-upper-arm",
+      "x": -35,
+      "y": 155,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "length": 213.60009363293827,
+      "inheritRotation": true,
+      "inheritScale": true
+    },
+    {
+      "id": "left-hand",
+      "parentId": "left-lower-arm",
+      "x": -60,
+      "y": 205,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "length": 22,
+      "inheritRotation": true,
+      "inheritScale": true
+    },
+    {
+      "id": "right-upper-arm",
+      "parentId": "torso",
+      "x": 105,
+      "y": -230,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "length": 144.30869689661813,
+      "inheritRotation": true,
+      "inheritScale": true
+    },
+    {
+      "id": "right-lower-arm",
+      "parentId": "right-upper-arm",
+      "x": 35,
+      "y": 140,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "length": 158.8238017426859,
+      "inheritRotation": true,
+      "inheritScale": true
+    },
+    {
+      "id": "right-hand",
+      "parentId": "right-lower-arm",
+      "x": 75,
+      "y": 140,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "length": 22,
+      "inheritRotation": true,
+      "inheritScale": true
+    },
+    {
+      "id": "left-upper-leg",
+      "parentId": "pelvis",
+      "x": -57,
+      "y": -246.5999999999999,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "length": 283.5930182497446,
+      "inheritRotation": true,
+      "inheritScale": true
+    },
+    {
+      "id": "left-lower-leg",
+      "parentId": "left-upper-leg",
+      "x": -45,
+      "y": 280,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "length": 316.62280397975127,
+      "inheritRotation": true,
+      "inheritScale": true
+    },
+    {
+      "id": "left-foot",
+      "parentId": "left-lower-leg",
+      "x": -85,
+      "y": 305,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "length": 38,
+      "inheritRotation": true,
+      "inheritScale": true
+    },
+    {
+      "id": "right-upper-leg",
+      "parentId": "pelvis",
+      "x": 58,
+      "y": -246.5999999999999,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "length": 288.62432329933665,
+      "inheritRotation": true,
+      "inheritScale": true
+    },
+    {
+      "id": "right-lower-leg",
+      "parentId": "right-upper-leg",
+      "x": 102,
+      "y": 270,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "length": 321.23822935634547,
+      "inheritRotation": true,
+      "inheritScale": true
+    },
+    {
+      "id": "right-foot",
+      "parentId": "right-lower-leg",
+      "x": 63,
+      "y": 315,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "length": 38,
+      "inheritRotation": true,
+      "inheritScale": true
+    }
+  ],
+  "slots": [
+    {
+      "id": "cape-slot",
+      "boneId": "torso",
+      "attachmentId": "cape",
+      "zIndex": -30,
+      "visible": true,
+      "blendMode": "normal",
+      "tint": 16777215,
+      "pivotX": 343,
+      "pivotY": 30
+    },
+    {
+      "id": "right-thigh-slot",
+      "boneId": "pelvis",
+      "attachmentId": "right-thigh",
+      "zIndex": -12,
+      "visible": true,
+      "blendMode": "normal",
+      "tint": 16777215,
+      "pivotX": 59.99999999999999,
+      "pivotY": 55
+    },
+    {
+      "id": "right-lower-leg-slot",
+      "boneId": "right-upper-leg",
+      "attachmentId": "right-lower-leg",
+      "zIndex": -11,
+      "visible": true,
+      "blendMode": "normal",
+      "tint": 16777215,
+      "pivotX": 57,
+      "pivotY": 40
+    },
+    {
+      "id": "right-foot-slot",
+      "boneId": "right-lower-leg",
+      "attachmentId": "right-foot",
+      "zIndex": -10,
+      "visible": true,
+      "blendMode": "normal",
+      "tint": 16777215,
+      "pivotX": 70,
+      "pivotY": 45
+    },
+    {
+      "id": "left-upper-arm-slot",
+      "boneId": "torso",
+      "attachmentId": "left-upper-arm",
+      "zIndex": -8,
+      "visible": true,
+      "blendMode": "normal",
+      "tint": 16777215,
+      "pivotX": 90,
+      "pivotY": 55
+    },
+    {
+      "id": "left-forearm-slot",
+      "boneId": "left-upper-arm",
+      "attachmentId": "left-forearm",
+      "zIndex": -7,
+      "visible": true,
+      "blendMode": "normal",
+      "tint": 16777215,
+      "pivotX": 100,
+      "pivotY": 30
+    },
+    {
+      "id": "left-hand-slot",
+      "boneId": "left-lower-arm",
+      "attachmentId": "left-hand",
+      "zIndex": -6,
+      "visible": true,
+      "blendMode": "normal",
+      "tint": 16777215,
+      "pivotX": 55,
+      "pivotY": 30
+    },
+    {
+      "id": "torso-slot",
+      "boneId": "pelvis",
+      "attachmentId": "torso",
+      "zIndex": 0,
+      "visible": true,
+      "blendMode": "normal",
+      "tint": 16777215,
+      "pivotX": 140,
+      "pivotY": 355
+    },
+    {
+      "id": "left-thigh-slot",
+      "boneId": "pelvis",
+      "attachmentId": "left-thigh",
+      "zIndex": 2,
+      "visible": true,
+      "blendMode": "normal",
+      "tint": 16777215,
+      "pivotX": 105,
+      "pivotY": 55
+    },
+    {
+      "id": "left-lower-leg-slot",
+      "boneId": "left-upper-leg",
+      "attachmentId": "left-lower-leg",
+      "zIndex": 3,
+      "visible": true,
+      "blendMode": "normal",
+      "tint": 16777215,
+      "pivotX": 125,
+      "pivotY": 40
+    },
+    {
+      "id": "left-foot-slot",
+      "boneId": "left-lower-leg",
+      "attachmentId": "left-foot",
+      "zIndex": 4,
+      "visible": true,
+      "blendMode": "normal",
+      "tint": 16777215,
+      "pivotX": 95,
+      "pivotY": 45
+    },
+    {
+      "id": "head-slot",
+      "boneId": "torso",
+      "attachmentId": "head",
+      "zIndex": 6,
+      "visible": true,
+      "blendMode": "normal",
+      "tint": 16777215,
+      "pivotX": 170,
+      "pivotY": 280
+    },
+    {
+      "id": "right-upper-arm-slot",
+      "boneId": "torso",
+      "attachmentId": "right-upper-arm",
+      "zIndex": 8,
+      "visible": true,
+      "blendMode": "normal",
+      "tint": 16777215,
+      "pivotX": 40,
+      "pivotY": 30
+    },
+    {
+      "id": "right-forearm-slot",
+      "boneId": "right-upper-arm",
+      "attachmentId": "right-forearm",
+      "zIndex": 9,
+      "visible": true,
+      "blendMode": "normal",
+      "tint": 16777215,
+      "pivotX": 35,
+      "pivotY": 25
+    },
+    {
+      "id": "right-hand-slot",
+      "boneId": "right-lower-arm",
+      "attachmentId": "right-hand",
+      "zIndex": 10,
+      "visible": true,
+      "blendMode": "normal",
+      "tint": 16777215,
+      "pivotX": 30,
+      "pivotY": 35
+    },
+    {
+      "id": "main-hand-energy-blade-slot",
+      "boneId": "right-hand",
+      "attachmentId": "main-hand-energy-blade",
+      "zIndex": 12,
+      "visible": true,
+      "blendMode": "normal",
+      "tint": 16777215,
+      "pivotX": 29.999999999999996,
+      "pivotY": 55
+    }
+  ],
+  "attachments": [
+    {
+      "id": "cape",
+      "imagePath": "/public/assets/generated/void-ranger-sprite.png#cape",
+      "width": 400,
+      "height": 570,
+      "offsetX": 0,
+      "offsetY": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "category": "equipment",
+      "tags": [
+        "cape",
+        "manual"
+      ]
+    },
+    {
+      "id": "right-thigh",
+      "imagePath": "/public/assets/generated/void-ranger-sprite.png#right-thigh",
+      "width": 205,
+      "height": 365,
+      "offsetX": 0,
+      "offsetY": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "category": "body",
+      "tags": [
+        "rightThigh",
+        "manual"
+      ]
+    },
+    {
+      "id": "right-lower-leg",
+      "imagePath": "/public/assets/generated/void-ranger-sprite.png#right-lower-leg",
+      "width": 145,
+      "height": 390,
+      "offsetX": 0,
+      "offsetY": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "category": "body",
+      "tags": [
+        "rightLowerLeg",
+        "manual"
+      ]
+    },
+    {
+      "id": "right-foot",
+      "imagePath": "/public/assets/generated/void-ranger-sprite.png#right-foot",
+      "width": 200,
+      "height": 225,
+      "offsetX": 0,
+      "offsetY": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "category": "body",
+      "tags": [
+        "rightFoot",
+        "manual"
+      ]
+    },
+    {
+      "id": "left-upper-arm",
+      "imagePath": "/public/assets/generated/void-ranger-sprite.png#left-upper-arm",
+      "width": 170,
+      "height": 240,
+      "offsetX": 0,
+      "offsetY": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "category": "body",
+      "tags": [
+        "leftUpperArm",
+        "manual"
+      ]
+    },
+    {
+      "id": "left-forearm",
+      "imagePath": "/public/assets/generated/void-ranger-sprite.png#left-forearm",
+      "width": 150,
+      "height": 275,
+      "offsetX": 0,
+      "offsetY": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "category": "body",
+      "tags": [
+        "leftForearm",
+        "manual"
+      ]
+    },
+    {
+      "id": "left-hand",
+      "imagePath": "/public/assets/generated/void-ranger-sprite.png#left-hand",
+      "width": 115,
+      "height": 175,
+      "offsetX": 0,
+      "offsetY": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "category": "body",
+      "tags": [
+        "leftHand",
+        "manual"
+      ]
+    },
+    {
+      "id": "torso",
+      "imagePath": "/public/assets/generated/void-ranger-sprite.png#torso",
+      "width": 285,
+      "height": 420,
+      "offsetX": 0,
+      "offsetY": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "category": "body",
+      "tags": [
+        "torso",
+        "manual"
+      ]
+    },
+    {
+      "id": "left-thigh",
+      "imagePath": "/public/assets/generated/void-ranger-sprite.png#left-thigh",
+      "width": 200,
+      "height": 370,
+      "offsetX": 0,
+      "offsetY": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "category": "body",
+      "tags": [
+        "leftThigh",
+        "manual"
+      ]
+    },
+    {
+      "id": "left-lower-leg",
+      "imagePath": "/public/assets/generated/void-ranger-sprite.png#left-lower-leg",
+      "width": 180,
+      "height": 385,
+      "offsetX": 0,
+      "offsetY": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "category": "body",
+      "tags": [
+        "leftLowerLeg",
+        "manual"
+      ]
+    },
+    {
+      "id": "left-foot",
+      "imagePath": "/public/assets/generated/void-ranger-sprite.png#left-foot",
+      "width": 185,
+      "height": 235,
+      "offsetX": 0,
+      "offsetY": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "category": "body",
+      "tags": [
+        "leftFoot",
+        "manual"
+      ]
+    },
+    {
+      "id": "head",
+      "imagePath": "/public/assets/generated/void-ranger-sprite.png#head",
+      "width": 315,
+      "height": 365,
+      "offsetX": 0,
+      "offsetY": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "category": "body",
+      "tags": [
+        "head",
+        "manual"
+      ]
+    },
+    {
+      "id": "right-upper-arm",
+      "imagePath": "/public/assets/generated/void-ranger-sprite.png#right-upper-arm",
+      "width": 130,
+      "height": 210,
+      "offsetX": 0,
+      "offsetY": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "category": "body",
+      "tags": [
+        "rightUpperArm",
+        "manual"
+      ]
+    },
+    {
+      "id": "right-forearm",
+      "imagePath": "/public/assets/generated/void-ranger-sprite.png#right-forearm",
+      "width": 145,
+      "height": 200,
+      "offsetX": 0,
+      "offsetY": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "category": "body",
+      "tags": [
+        "rightForearm",
+        "manual"
+      ]
+    },
+    {
+      "id": "right-hand",
+      "imagePath": "/public/assets/generated/void-ranger-sprite.png#right-hand",
+      "width": 145,
+      "height": 155,
+      "offsetX": 0,
+      "offsetY": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "category": "body",
+      "tags": [
+        "rightHand",
+        "manual"
+      ]
+    },
+    {
+      "id": "main-hand-energy-blade",
+      "imagePath": "/public/assets/generated/void-ranger-sprite.png#main-hand-energy-blade",
+      "width": 220,
+      "height": 185,
+      "offsetX": 0,
+      "offsetY": 0,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1,
+      "category": "equipment",
+      "tags": [
+        "mainHandEquipment",
+        "manual"
+      ]
+    }
+  ],
+  "skins": [
+    {
+      "id": "default",
+      "name": "Default",
+      "slotAttachments": {
+        "cape-slot": "cape",
+        "right-thigh-slot": "right-thigh",
+        "right-lower-leg-slot": "right-lower-leg",
+        "right-foot-slot": "right-foot",
+        "left-upper-arm-slot": "left-upper-arm",
+        "left-forearm-slot": "left-forearm",
+        "left-hand-slot": "left-hand",
+        "torso-slot": "torso",
+        "left-thigh-slot": "left-thigh",
+        "left-lower-leg-slot": "left-lower-leg",
+        "left-foot-slot": "left-foot",
+        "head-slot": "head",
+        "right-upper-arm-slot": "right-upper-arm",
+        "right-forearm-slot": "right-forearm",
+        "right-hand-slot": "right-hand",
+        "main-hand-energy-blade-slot": "main-hand-energy-blade"
+      }
+    }
+  ],
+  "defaultSkinId": "default",
+  "metadata": {
+    "name": "Void Ranger",
+    "authoringSource": "generated-character-pipeline",
+    "rotationUnit": "degrees",
+    "coordinateSystem": "x-right-y-down",
+    "generatedAt": "2026-08-22T12:00:00.000Z",
+    "anatomyProfile": "humanoid",
+    "sourceAlignedSetup": true,
+    "sourceSha256": "ba658d3b2190e3ed918eda91a27e14d581ebefad3cf5891f0f6f13b6e3509b18",
+    "manualJointOverlap": true,
+    "fixture": "void-ranger-v1"
+  }
+}

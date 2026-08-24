@@ -1,11 +1,12 @@
 import { z } from "zod";
-import type { RigDefinition } from "../../rigging/schema/types";
+import type { JsonValue, RigDefinition } from "../../rigging/schema/types";
+import { jsonValueSchema } from "../../rigging/schema/schemas";
 import type { CharacterPromptControls } from "../prompt/generationPreset";
 import { characterSegmentationResponseSchema, type CharacterSegmentationResponse, type ProposedCharacterPart } from "../segmentation/segmentationSchema";
 import type { CharacterConsistencyContext } from "../context/characterConsistencyContext";
 import type { CharacterSegmentationRequest } from "../segmentation/segmentationProvider";
 
-export type ProviderMetadata = Readonly<Record<string, string | number | boolean | null>>;
+export type ProviderMetadata = Readonly<Record<string, JsonValue>>;
 export const GENERATION_MODES = ["fixture", "provider_generated", "imported_external"] as const;
 export type GenerationMode = (typeof GENERATION_MODES)[number];
 export type CharacterGenerationRequest = {
@@ -13,7 +14,7 @@ export type CharacterGenerationRequest = {
   readonly generationPrompt: string;
   readonly negativePrompt: string;
   readonly controls: CharacterPromptControls;
-  readonly seed?: number;
+  readonly seed?: number | null;
   readonly sourceGenerationId?: string;
 };
 export type CharacterImageGenerationResult = {
@@ -23,7 +24,7 @@ export type CharacterImageGenerationResult = {
   readonly height: number;
   readonly generationPrompt: string;
   readonly generationSettings: ProviderMetadata;
-  readonly seed?: number;
+  readonly seed?: number | null;
   readonly providerMetadata: ProviderMetadata;
   readonly warnings: readonly string[];
   readonly generationMode: GenerationMode;
@@ -96,10 +97,10 @@ export type CharacterMaskRefinementRequest = {
   readonly consistencyContext?: CharacterConsistencyContext;
 };
 
-const metadataSchema = z.record(z.string(), z.union([z.string(), z.number().finite(), z.boolean(), z.null()]));
+const metadataSchema = z.record(z.string(), jsonValueSchema);
 export const characterImageGenerationResultSchema: z.ZodType<CharacterImageGenerationResult> = z.object({
   generationId: z.string().min(1), image: z.string().min(1), width: z.number().int().positive(), height: z.number().int().positive(),
-  generationPrompt: z.string().min(1), generationSettings: metadataSchema, seed: z.number().int().optional(), providerMetadata: metadataSchema, warnings: z.array(z.string()),
+  generationPrompt: z.string().min(1), generationSettings: metadataSchema, seed: z.number().int().nullable().optional(), providerMetadata: metadataSchema, warnings: z.array(z.string()),
   generationMode: z.enum(GENERATION_MODES), novelArtwork: z.boolean(), provider: z.string().min(1), sourceArtifact: z.string().min(1),
 }).strict();
 export const suitabilityReviewSchema: z.ZodType<SuitabilityReview> = z.object({

@@ -2,6 +2,8 @@ import type { AnimatedProperty, AnimationDefinition, AnimationTrack, Easing } fr
 import type { AnimationGenerationContext } from "./animationContextBuilder";
 import type { AnimationGenerationInput, AnimationGenerationProvider } from "./animationGenerationProvider";
 import type { AnimationProposal } from "./animationProposalSchema";
+import { buildIdleAttackAnimation, type IdleAttackKind } from "./idleAttackEngine";
+import { buildLocomotionAnimation, type GaitKind } from "./locomotionEngine";
 
 const setupValue = (context: AnimationGenerationContext, boneId: string, property: AnimatedProperty): number => {
   const bone = context.bones.find((candidate) => candidate.id === boneId);
@@ -41,6 +43,40 @@ const buildTemplate = (context: AnimationGenerationContext): AnimationDefinition
   let animation: AnimationDefinition = current
     ? { ...structuredClone(current), duration, loop: context.loop, tracks: context.mode === "reviseSelectedBones" ? current.tracks.filter((track) => context.selectedBoneIds.includes(track.boneId)) : [...current.tracks] }
     : { schemaVersion: 1, id: normalizedId(context.motionDescription), name: mockAnimationName(context.motionDescription), duration, loop: context.loop, tracks: [] };
+
+  const gait: GaitKind | null = request.includes("run") ? "run" : request.includes("walk") ? "walk" : null;
+  const locomotion = gait ? buildLocomotionAnimation(context, gait) : null;
+  if (locomotion) {
+    const generated = locomotion.animation;
+    if (!current) return generated;
+    const allowed = new Set(generated.tracks.filter((track) => context.mode !== "reviseSelectedBones" || context.selectedBoneIds.includes(track.boneId)).map((track) => `${track.boneId}:${track.property}`));
+    return seamless({
+      ...current,
+      duration: context.constraints.preserveTiming ? duration : generated.duration,
+      loop: true,
+      tracks: [
+        ...current.tracks.filter((track) => !allowed.has(`${track.boneId}:${track.property}`)),
+        ...generated.tracks.filter((track) => allowed.has(`${track.boneId}:${track.property}`)),
+      ],
+    });
+  }
+
+  const targetedKind: IdleAttackKind | null = request.includes("idle") ? "idle" : request.includes("attack") || request.includes("melee") ? "attack" : null;
+  const targeted = targetedKind ? buildIdleAttackAnimation(context, targetedKind) : null;
+  if (targeted) {
+    const generated = targeted.animation;
+    if (!current) return generated;
+    const allowed = new Set(generated.tracks.filter((track) => context.mode !== "reviseSelectedBones" || context.selectedBoneIds.includes(track.boneId)).map((track) => `${track.boneId}:${track.property}`));
+    return {
+      ...current,
+      duration: context.constraints.preserveTiming ? duration : generated.duration,
+      loop: generated.loop,
+      tracks: [
+        ...current.tracks.filter((track) => !allowed.has(`${track.boneId}:${track.property}`)),
+        ...generated.tracks.filter((track) => allowed.has(`${track.boneId}:${track.property}`)),
+      ],
+    };
+  }
 
   const torso = allowedBone(context, findBone(context, "torso"));
   const head = allowedBone(context, findBone(context, "head"));
@@ -116,15 +152,33 @@ export class MockAnimationGenerationProvider implements AnimationGenerationProvi
     const animation = buildTemplate(input.context);
     const affectedBones = [...new Set(animation.tracks.map((track) => track.boneId))];
     const request = input.context.motionDescription.toLowerCase();
-    const warnings = request.includes("foot sliding") ? ["Foot stabilization is approximate. Review the contact diagnostics before acceptance."] : [];
+    const gait: GaitKind | null = request.includes("run") ? "run" : request.includes("walk") ? "walk" : null;
+    const locomotion = gait ? buildLocomotionAnimation(input.context, gait) : null;
+    const targetedKind: IdleAttackKind | null = gait ? null : request.includes("idle") ? "idle" : request.includes("attack") || request.includes("melee") ? "attack" : null;
+    const targeted = targetedKind ? buildIdleAttackAnimation(input.context, targetedKind) : null;
+    const warnings = locomotion?.plan.targetClampCount ? [`${locomotion.plan.targetClampCount} unreachable foot targets were clamped to the leg chain's safe reach.`] : request.includes("foot sliding") ? ["Foot stabilization is approximate. Review the contact diagnostics before acceptance."] : [];
     const proposal: AnimationProposal = {
       proposalVersion: 1,
       summary: `Mock proposal for: ${input.context.motionDescription}${input.refinement ? ` (${input.refinement})` : ""}`,
       animation,
       warnings,
-      assumptions: ["Bone roles were inferred from bone names.", "The mock provider uses reusable motion templates rather than a remote model."],
+      assumptions: locomotion ? [
+        `Locomotion convention: ${locomotion.plan.convention}; the root remains fixed and the game controller owns world translation.`,
+        `Topology ${locomotion.plan.topology}; archetype ${locomotion.plan.archetype}; ${locomotion.plan.gait} cadence ${locomotion.plan.cadenceHz.toFixed(3)}Hz.`,
+        `Contact phases: ${locomotion.plan.phases.map((phase) => `${phase.phase}:${phase.left}/${phase.right}`).join(", ")}.`,
+        ...(locomotion.plan.hockTracks.length ? [`Digitigrade hocks are first-class targets: ${locomotion.plan.hockTracks.join(", ")}.`] : []),
+        ...(locomotion.plan.equipmentConstraints.length ? locomotion.plan.equipmentConstraints : ["No gait-specific equipment restraint was required."]),
+      ] : targeted?.plan.kind === "idle" ? [
+        `Structured idle: neutral → inhale/weight shift → settle → opposite exhale → exact loop return; adaptive duration ${targeted.plan.duration.toFixed(3)}s.`,
+        `Topology ${targeted.plan.topology}; archetype ${targeted.plan.archetype}; both feet remain continuous contacts.`,
+        ...(targeted.plan.equipmentConstraints.length ? targeted.plan.equipmentConstraints : ["No equipment-specific idle restraint was required."]),
+      ] : targeted?.plan.kind === "attack" ? [
+        `Attack profile ${targeted.plan.type}: anticipation → action → follow-through → recovery; adaptive duration ${targeted.plan.duration.toFixed(3)}s.`,
+        `Topology ${targeted.plan.topology}; archetype ${targeted.plan.archetype}; support mode ${targeted.plan.supportArmMode}.`,
+        ...(targeted.plan.equipmentConstraints.length ? targeted.plan.equipmentConstraints : ["Topology-safe unarmed profile; no equipment was invented."]),
+      ] : ["Bone roles were inferred from bone names.", "The mock provider uses reusable motion templates rather than a remote model."],
       affectedBones,
-      confidenceNotes: [affectedBones.length ? "High confidence in schema validity; artistic quality requires preview." : "No matching bones were available for the requested template."],
+      confidenceNotes: [affectedBones.length ? locomotion ? "Deterministic topology-aware gait plan; verify normalized contact drift and silhouette in Animate." : "High confidence in schema validity; artistic quality requires preview." : "No matching bones were available for the requested template."],
       recommendedRigChanges: [],
     };
     return proposal;

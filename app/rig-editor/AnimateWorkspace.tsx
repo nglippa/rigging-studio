@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { sampleTrack } from "@/src/rigging/animation/evaluate";
 import { applyAnimationProposal } from "@/src/rigging/ai/animationProposalApplier";
 import type { AnimationGenerationMode, LeftRightMapping } from "@/src/rigging/ai/animationContextBuilder";
@@ -32,6 +32,13 @@ import { StudioDialog } from "@/app/studio-ui/StudioDialog";
 
 const editableTarget = (target: EventTarget | null): boolean => target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
 type AnimationHistoryUi = { readonly canUndo: boolean; readonly canRedo: boolean; readonly undoLabel: string | null; readonly redoLabel: string | null };
+const timelineBounds = (): { min: number; max: number; compact: boolean } => {
+  const compact = typeof window !== "undefined" && window.innerWidth <= 900;
+  const min = compact ? 120 : 160;
+  const viewportMax = typeof window === "undefined" ? 440 : Math.floor(window.innerHeight * .44);
+  return { min, max: Math.max(min, Math.min(440, viewportMax)), compact };
+};
+const clampTimelineHeight = (height: number): number => { const { min, max } = timelineBounds(); return Math.max(min, Math.min(max, height)); };
 const readAnimationHistoryUi = (history: AnimationCommandHistory): AnimationHistoryUi => ({ canUndo: history.canUndo, canRedo: history.canRedo, undoLabel: history.getUndoLabel(), redoLabel: history.getRedoLabel() });
 const animationValue = (animation: AnimationDefinition, rig: RigDefinition, boneId: string, property: AnimatedProperty, time: number): number => {
   const track = animation.tracks.find((candidate) => candidate.boneId === boneId && candidate.property === property);
@@ -85,6 +92,8 @@ export function AnimateWorkspace({ rig, activeSkinId, showGrid, showBones, showB
   const [deleteAnimationId, setDeleteAnimationId] = useState<string | null>(null);
   const [timingOpen, setTimingOpen] = useState(false);
   const [timingFactor, setTimingFactor] = useState("1.25");
+  const [timelineHeight, setTimelineHeight] = useState(220);
+  const [compactBonesOpen, setCompactBonesOpen] = useState(false);
   const [historyUi, setHistoryUi] = useState<AnimationHistoryUi>({ canUndo: false, canRedo: false, undoLabel: null, redoLabel: null });
   const historyRef = useRef<AnimationCommandHistory | null>(null);
   const timelineRef = useRef<DopeSheetHandle>(null);
@@ -93,6 +102,10 @@ export function AnimateWorkspace({ rig, activeSkinId, showGrid, showBones, showB
   const clipboardRef = useRef<KeyframeClipboard | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const timeOutputRef = useRef<HTMLOutputElement>(null);
+  const timelineInitializedRef = useRef(false);
+
+  useEffect(() => { const timer = window.setTimeout(() => { const compact = window.innerWidth <= 900; const key = compact ? "rigging-studio-timeline-height-compact" : "rigging-studio-timeline-height"; const stored = Number(window.localStorage.getItem(key)); timelineInitializedRef.current = true; setTimelineHeight(clampTimelineHeight(Number.isFinite(stored) && stored >= 120 ? stored : compact ? 132 : 220)); }, 0); const resize = (): void => setTimelineHeight((current) => clampTimelineHeight(current)); window.addEventListener("resize", resize); return () => { window.clearTimeout(timer); window.removeEventListener("resize", resize); }; }, []);
+  useEffect(() => { if (!timelineInitializedRef.current) return; const key = window.innerWidth <= 900 ? "rigging-studio-timeline-height-compact" : "rigging-studio-timeline-height"; window.localStorage.setItem(key, String(timelineHeight)); }, [timelineHeight]);
 
   useEffect(() => {
     let cancelled = false;
@@ -106,17 +119,22 @@ export function AnimateWorkspace({ rig, activeSkinId, showGrid, showBones, showB
         });
         if (!valid.length) throw new Error("No sample animations passed validation");
         let initial = createAnimationLibrary(rig.id, valid);
-        const draft = loadAnimationDraft(window.localStorage, rig);
+        let restoredFromDisk = false;
+        try {
+          const durable = commandService.getDurableSnapshot();
+          if (durable.localProjectId && durable.rig?.id === rig.id && durable.animations) { initial = durable.animations; restoredFromDisk = true; }
+        } catch { /* no disk-backed project is active */ }
+        const draft = restoredFromDisk ? null : loadAnimationDraft(window.localStorage, rig);
         if (draft?.success) initial = draft.data;
         if (cancelled) return;
         historyRef.current = new AnimationCommandHistory(initial);
         setLibrary(historyRef.current.present); setActiveId(initial.animations[0].id); setTime(0); timeRef.current = 0;
         setHistoryUi(readAnimationHistoryUi(historyRef.current));
-        onMessage(draft?.success ? "Animation draft restored" : "Animation workspace ready");
+        onMessage(restoredFromDisk ? "Disk animations restored" : draft?.success ? "Animation draft restored" : "Animation workspace ready");
       } catch (reason: unknown) { onError(reason instanceof Error ? reason.message : "Animations could not be loaded"); }
     })();
     return () => { cancelled = true; };
-  }, [onError, onMessage, rig]);
+  }, [commandService, onError, onMessage, rig]);
 
   useEffect(() => {
     if (library.animations[0]?.id === "loading") return;
@@ -130,6 +148,29 @@ export function AnimateWorkspace({ rig, activeSkinId, showGrid, showBones, showB
   useEffect(() => {
     commandService.syncBoneSelectionFromUi(selectedBones.at(-1) ?? null);
   }, [commandService, selectedBones]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const boneIds = new Set(rig.bones.map((bone) => bone.id));
+      setSelectedBones((current) => {
+        const valid = current.filter((id) => boneIds.has(id));
+        return valid.length ? valid : [rig.rootBoneId];
+      });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [rig]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const existing = new Set(library.animations.map((candidate) => candidate.id));
+      if (!existing.has(activeId)) {
+        const fallback = library.animations[0]?.id ?? "";
+        setActiveId(fallback); commandService.syncAnimationSelectionFromUi(fallback || null); setSelectedKeys([]);
+        return;
+      }
+      const active = animationById(library, activeId);
+      setSelectedKeys((current) => current.filter((selection) => active?.tracks.some((track) => track.boneId === selection.boneId && track.property === selection.property && track.keyframes.some((frame) => frame.time === selection.time))));
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [activeId, commandService, library]);
   const selectionSet = useMemo(() => new Set(selectedBones), [selectedBones]);
   const setCurrentTime = useCallback((next: number): void => {
     const value = Math.max(0, Math.min(animation.duration, next));
@@ -163,6 +204,9 @@ export function AnimateWorkspace({ rig, activeSkinId, showGrid, showBones, showB
     return commandService.attachAnimationEditor({
       getLibrary: () => historyRef.current?.present ?? library,
       getActiveAnimationId: () => activeId,
+      replace: (next) => {
+        const history = new AnimationCommandHistory(next); historyRef.current = history; setLibrary(next); setDirty(false); setVisualIssueMarkers([]); setSelectedKeys([]); setActiveId(next.animations[0]?.id ?? ""); setHistoryUi(readAnimationHistoryUi(history)); onError(null); onMessage("Opened disk animations"); return next;
+      },
       execute: (label, transform) => {
         const history = historyRef.current; if (!history) throw new Error("Animation history is unavailable");
         const next = history.execute(label, transform); sync(next, label); return next;
@@ -172,7 +216,7 @@ export function AnimateWorkspace({ rig, activeSkinId, showGrid, showBones, showB
         if (action === "play") play(); else if (action === "pause") pause(); else if (action === "stop") stop(); else setCurrentTime(seekTime ?? 0);
       },
     });
-  }, [activeId, animation.id, chooseAnimation, commandService, library, pause, play, setCurrentTime, stop, sync]);
+  }, [activeId, animation.id, chooseAnimation, commandService, library, onError, onMessage, pause, play, setCurrentTime, stop, sync]);
 
   const addKeys = useCallback((): void => {
     if (!selectedBones.length) return;
@@ -274,45 +318,38 @@ export function AnimateWorkspace({ rig, activeSkinId, showGrid, showBones, showB
     });
     setActiveId(acceptedId); setAiPreview(null); setSelectedKeys([]); setCurrentTime(0); onMessage("AI proposal accepted as one undoable command");
   };
+  const beginTimelineResize = (event: ReactPointerEvent<HTMLButtonElement>): void => {
+    event.preventDefault(); const startY = event.clientY; const startHeight = timelineHeight;
+    const move = (pointerEvent: PointerEvent): void => setTimelineHeight(clampTimelineHeight(startHeight + startY - pointerEvent.clientY));
+    const stop = (): void => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", stop); };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", stop, { once: true });
+  };
+  const toggleTimelineHeight = (): void => setTimelineHeight((current) => { const bounds = timelineBounds(); return bounds.compact ? current <= 150 ? Math.min(bounds.max, 300) : 132 : current <= 220 ? Math.min(bounds.max, 360) : 220; });
 
   return <><div className="animate-workspace">
     <input ref={importRef} hidden type="file" accept="application/json,.json" onChange={(event) => void importAnimations(event)} />
-    <div className="animation-toolbar">
-      <div className="animation-toolbar-row">
-        <label>Animation<select value={animation.id} onChange={(event) => chooseAnimation(event.target.value)}>{library.animations.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-        <button type="button" onClick={() => { const result = addAnimation(library); run("New animation", () => result.library); setActiveId(result.animationId); }}>New</button>
-        <button type="button" onClick={() => { const result = duplicateAnimation(library, animation.id); run("Duplicate animation", () => result.library); setActiveId(result.animationId); }}>Duplicate</button>
-        <button type="button" onClick={() => { setRenameValue(animation.name); setRenameOpen(true); }}>Rename</button>
-        <button type="button" disabled={library.animations.length <= 1} onClick={() => setDeleteAnimationId(animation.id)}>Delete</button>
-        <label className="compact-number">Duration<input type="number" min={.01} step={.1} value={animation.duration} onChange={(event) => { const duration = Math.max(.01, Number(event.target.value)); updateActive("Change duration", (current) => setAnimationDuration(current, duration)); }} /></label>
-        <label className="check-label"><input type="checkbox" checked={animation.loop} onChange={(event) => updateActive("Toggle loop", (current) => ({ ...current, loop: event.target.checked }))} />Loop</label>
-        <label className="compact-number">Speed<select value={speed} onChange={(event) => setSpeed(Number(event.target.value))}>{[.25,.5,1,1.5,2].map((value) => <option key={value} value={value}>{value}×</option>)}</select></label>
+    <div className="animation-toolbar"><div className="animation-command-row">
+        <label className="animation-picker">Animation<select value={animation.id} onChange={(event) => chooseAnimation(event.target.value)}>{library.animations.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+        <button type="button" className="new-animation-action" data-ux-role="secondary-action" onClick={() => { const result = addAnimation(library); run("New animation", () => result.library); setActiveId(result.animationId); }}>+ New</button>
+        <details className="animation-manage" data-dismissible-menu><summary>Manage⌄</summary><div><button type="button" onClick={() => { const result = duplicateAnimation(library, animation.id); run("Duplicate animation", () => result.library); setActiveId(result.animationId); }}>Duplicate</button><button type="button" onClick={() => { setRenameValue(animation.name); setRenameOpen(true); }}>Rename</button><button type="button" disabled={library.animations.length <= 1} onClick={() => setDeleteAnimationId(animation.id)}>Delete</button><label>Duration<input type="number" min={.01} step={.1} value={animation.duration} onChange={(event) => { const duration = Math.max(.01, Number(event.target.value)); updateActive("Change duration", (current) => setAnimationDuration(current, duration)); }} /></label><label><input type="checkbox" checked={animation.loop} onChange={(event) => updateActive("Toggle loop", (current) => ({ ...current, loop: event.target.checked }))} /> Loop</label><button type="button" onClick={() => importRef.current?.click()}>Load library</button><button type="button" onClick={exportAnimations}>Save library</button></div></details>
         <span className="toolbar-spacer" />
-        <button type="button" onClick={() => importRef.current?.click()}>Load animations</button><button type="button" onClick={exportAnimations}>Save animations</button>
-      </div>
-      <div className="animation-toolbar-row transport-row">
-        <button type="button" onClick={undo} disabled={!historyUi.canUndo} title={historyUi.undoLabel ?? "Nothing to undo"}>Undo</button><button type="button" onClick={redo} disabled={!historyUi.canRedo} title={historyUi.redoLabel ?? "Nothing to redo"}>Redo</button>
-        <button type="button" onClick={play} disabled={playing}>▶ Play</button><button type="button" onClick={pause} disabled={!playing}>Ⅱ Pause</button><button type="button" onClick={stop}>■ Stop</button><button type="button" onClick={() => { setCurrentTime(0); play(); }}>↺ Restart</button>
-        <button type="button" onClick={() => previousNext("previous")} title="Previous keyframe">◀|</button><button type="button" onClick={() => previousNext("next")} title="Next keyframe">|▶</button>
-        <button type="button" onClick={addKeys}>◆ Add key</button><button type="button" onClick={deleteKeys} disabled={!selectedKeys.length}>Delete key</button>
+        <button type="button" className={`compact-track-toggle ${compactBonesOpen ? "is-active" : ""}`} data-ux-role="navigation" aria-expanded={compactBonesOpen} aria-controls="animate-track-browser" onClick={() => setCompactBonesOpen((value) => !value)}>Tracks</button>
+        <button type="button" className="transport-icon" onClick={undo} disabled={!historyUi.canUndo} title={historyUi.undoLabel ?? "Nothing to undo"} aria-label="Undo animation change">↶</button><button type="button" className="transport-icon" onClick={redo} disabled={!historyUi.canRedo} title={historyUi.redoLabel ?? "Nothing to redo"} aria-label="Redo animation change">↷</button>
+        <button type="button" className="play-action" data-ux-role="tool" onClick={playing ? pause : play}>{playing ? "Ⅱ Pause" : "▶ Play"}</button>
+        <button type="button" className="add-key-action" data-ux-role="secondary-action" onClick={addKeys}>◆ Key</button>
         <output ref={timeOutputRef} className="transport-time">{time.toFixed(3)}s</output>
-        <Toggle label="Auto-Key" active={autoKey} onClick={() => setAutoKey((value) => !value)} />
+        <Toggle label="Auto" active={autoKey} onClick={() => setAutoKey((value) => !value)} />
         {pendingEdit && <button type="button" className="create-key-action" onClick={commitPending}>Create keyframe</button>}
-        <Toggle label="Prev ghost" active={onionPrevious} onClick={() => setOnionPrevious((value) => !value)} />
-        <Toggle label="Next ghost" active={onionNext} onClick={() => setOnionNext((value) => !value)} />
-      </div>
-    </div>
-    <div className={`animate-main ${inspectorTab !== "key" ? "has-ai-panel" : ""}`}>
-      <aside className="animate-bones">
-        <div className="outliner-search"><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search animation bones" /><button type="button" onClick={() => setSearch("")}>×</button></div>
-        <div className="animate-bone-list">{filteredBones.map((bone) => <button type="button" key={bone.id} data-group={semanticGroup(bone.id)} title={bone.id} className={selectionSet.has(bone.id) ? "selected" : ""} style={{ paddingLeft: bone.parentId ? 24 : 10 }} onClick={(event) => setSelectedBones((current) => event.shiftKey ? current.includes(bone.id) ? current.filter((id) => id !== bone.id) : [...current, bone.id] : [bone.id])}><span className="tree-joint" />{humanizeTechnicalId(bone.id)}</button>)}</div>
-        <div className="timeline-settings">
-          <label>FPS<input type="number" min={1} max={120} value={fps} onChange={(event) => setFps(Math.max(1, Number(event.target.value)))} /></label>
-          <Toggle label="Frames" active={showFrames} onClick={() => setShowFrames((value) => !value)} /><Toggle label="Snap" active={snap} onClick={() => setSnap((value) => !value)} />
-          <label>Overflow<select value={durationPolicy} onChange={(event) => setDurationPolicy(event.target.value as DurationPolicy)}><option value="clamp">Clamp</option><option value="expand">Expand duration</option></select></label>
-          <label>Timeline zoom<input type="range" min={45} max={360} value={pixelsPerSecond} onChange={(event) => setPixelsPerSecond(Number(event.target.value))} /></label>
-        </div>
-        <div className="utility-stack"><strong>Utilities</strong>
+        <label className="speed-control" title="Playback speed"><select value={speed} onChange={(event) => setSpeed(Number(event.target.value))}>{[.25,.5,1,1.5,2].map((value) => <option key={value} value={value}>{value}×</option>)}</select></label>
+        <details className="animation-ghosts" data-dismissible-menu><summary data-ux-role="tool">More⌄</summary><div><button type="button" onClick={stop}>Stop</button><button type="button" onClick={() => { setCurrentTime(0); play(); }}>Restart</button><button type="button" onClick={() => previousNext("previous")}>Previous keyframe</button><button type="button" onClick={() => previousNext("next")}>Next keyframe</button><Toggle label="Previous ghost" active={onionPrevious} onClick={() => setOnionPrevious((value) => !value)} /><Toggle label="Next ghost" active={onionNext} onClick={() => setOnionNext((value) => !value)} /><button type="button" onClick={deleteKeys} disabled={!selectedKeys.length}>Delete selected keys</button></div></details>
+      </div></div>
+    <div className={`animate-main ${inspectorTab !== "key" ? "has-ai-panel" : ""} ${inspectorTab === "key" && selectedKeys.length === 0 ? "animate-context-idle" : ""}`}>
+      <aside id="animate-track-browser" className={`animate-bones ${compactBonesOpen ? "is-compact-open" : ""}`}>
+        <header className="animation-library-heading"><span>Animations</span><button type="button" onClick={() => { const result = addAnimation(library); run("New animation", () => result.library); setActiveId(result.animationId); }} aria-label="New animation">+</button></header>
+        <div className="animation-library-list">{library.animations.map((item) => <button type="button" key={item.id} className={item.id === animation.id ? "is-active" : ""} onClick={() => chooseAnimation(item.id)}><i /><span>{item.name}</span><small>{item.duration.toFixed(1)}s</small></button>)}</div>
+        <details className="animation-tracks" open><summary>Animated body <small>{selectedBones.length}</small></summary><div className="outliner-search"><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Find body part" /><button type="button" onClick={() => setSearch("")}>×</button></div><div className="animate-bone-list">{filteredBones.map((bone) => <button type="button" key={bone.id} data-group={semanticGroup(bone.id)} title={bone.id} className={selectionSet.has(bone.id) ? "selected" : ""} style={{ paddingLeft: bone.parentId ? 24 : 10 }} onClick={(event) => setSelectedBones((current) => event.shiftKey ? current.includes(bone.id) ? current.filter((id) => id !== bone.id) : [...current, bone.id] : [bone.id])}><span className="tree-joint" />{humanizeTechnicalId(bone.id)}</button>)}</div></details>
+        <details className="timeline-settings"><summary>Timeline settings</summary><div><label>FPS<input type="number" min={1} max={120} value={fps} onChange={(event) => setFps(Math.max(1, Number(event.target.value)))} /></label><Toggle label="Frames" active={showFrames} onClick={() => setShowFrames((value) => !value)} /><Toggle label="Snap" active={snap} onClick={() => setSnap((value) => !value)} /><label>Overflow<select value={durationPolicy} onChange={(event) => setDurationPolicy(event.target.value as DurationPolicy)}><option value="clamp">Clamp</option><option value="expand">Expand duration</option></select></label><label>Timeline zoom<input type="range" min={45} max={360} value={pixelsPerSecond} onChange={(event) => setPixelsPerSecond(Number(event.target.value))} /></label></div></details>
+        <details className="utility-stack"><summary>Advanced utilities</summary><div>
           <button type="button" onClick={() => updateActive("Match first pose at end", matchFirstPoseAtEnd)}>Match first pose at end</button>
           <button type="button" onClick={() => updateActive("Remove redundant keys", (current) => removeRedundantKeys(current))}>Remove redundant keys</button>
           <button type="button" onClick={() => updateActive("Mirror pose", (current) => mirrorPose(current, rig, timeRef.current, mirrorPairs))}>Mirror pose L/R</button>
@@ -320,18 +357,18 @@ export function AnimateWorkspace({ rig, activeSkinId, showGrid, showBones, showB
           <button type="button" onClick={() => updateActive("Reverse animation", reverseAnimation)}>Reverse animation</button>
           <button type="button" onClick={() => { setTimingFactor("1.25"); setTimingOpen(true); }}>Scale timing…</button>
           <button type="button" onClick={() => { discardAnimationDraft(window.localStorage, rig.id); onMessage("Local animation draft discarded"); }}>Discard animation draft</button>
-        </div>
+        </div></details>
       </aside>
-      <section className="animate-center">
+      <section className="animate-center" style={{ "--timeline-height": `${timelineHeight}px` } as CSSProperties}>
         <div className="animate-viewport-wrap">
           <EditorViewport ref={viewportRef} rig={rig} animation={viewportAnimation} previewMode={false} authoringMode animationTime={time} animationPlaying={playing} playbackSpeed={speed} showPreviousGhost={onionPrevious} showNextGhost={onionNext} activeSkinId={activeSkinId} selections={selectedBones.map((id) => ({ type: "bone", id }) as EditorSelection)} hiddenBoneIds={new Set()} lockedBoneIds={aiPreview ? new Set(rig.bones.map((bone) => bone.id)) : new Set()} showGrid={showGrid} showBones={showBones} showBounds={showBounds} snapToGrid={false} wholePixelSnap rotationSnap onSelect={(selection, additive) => { if (selection?.type !== "bone") return; setSelectedBones((current) => additive ? current.includes(selection.id) ? current.filter((id) => id !== selection.id) : [...current, selection.id] : [selection.id]); }} onCursor={onCursor} onZoom={onZoom} onBoneDragStart={() => setPendingEdit(null)} onBoneDragPreview={() => undefined} onBoneDragCommit={commitViewportEdit} onAnimationTime={onRuntimeTime} onWarning={(message) => onError(message)} />
           {aiPreview && <div className="ai-preview-notice">AI PROPOSAL PREVIEW · source document unchanged</div>}
           <div className="onion-indicator">{onionPrevious ? "PREV GHOST " : ""}{onionNext ? "NEXT GHOST" : ""}</div>
         </div>
-        <div className="timeline-toolbar"><span>Dope sheet</span><span>{animation.tracks.length} tracks</span><span>{animation.tracks.reduce((count, track) => count + track.keyframes.length, 0)} keys</span><span>{dirty ? "Draft modified" : "Exported"}</span></div>
+        <div className="timeline-toolbar"><button type="button" className="timeline-resize-handle" onPointerDown={beginTimelineResize} onDoubleClick={toggleTimelineHeight} aria-label="Resize timeline" title="Drag to resize · double-click to toggle compact timeline" /><strong>Timeline</strong><span>{animation.tracks.length} tracks</span><span>{animation.tracks.reduce((count, track) => count + track.keyframes.length, 0)} keys</span><span>{dirty ? "Draft modified" : "Browser cache current"}</span></div>
         <DopeSheet ref={timelineRef} rig={rig} animation={animation} time={time} pixelsPerSecond={pixelsPerSecond} fps={fps} showFrames={showFrames} snap={snap} selections={selectedKeys} selectedBoneIds={selectionSet} issueMarkers={visualIssueMarkers} onIssueSelect={(marker) => { pause(); setCurrentTime((marker.start + marker.end) / 2); if (marker.affectedBones.length) setSelectedBones([...marker.affectedBones]); setInspectorTab("vision"); }} onTime={(value) => { pause(); setCurrentTime(value); }} onSelect={(items) => { setSelectedKeys([...items]); const boneId = items.at(-1)?.boneId; if (boneId) setSelectedBones([boneId]); }} onMoveSelected={moveSelected} onSelectBone={(boneId) => setSelectedBones([boneId])} />
       </section>
-      <aside className="editor-right-panel animate-inspector">
+      <aside className={`editor-right-panel animate-inspector ${inspectorTab === "key" && selectedKeys.length === 0 ? "is-context-idle" : ""}`}>
         <div className="inspector-mode-tabs"><button type="button" className={inspectorTab === "key" ? "is-active" : ""} data-tab="key" onClick={() => setInspectorTab("key")}>Key</button><button type="button" className={inspectorTab === "ai" ? "is-active" : ""} data-tab="ai" onClick={() => setInspectorTab("ai")}>AI Animate</button><button type="button" className={inspectorTab === "vision" ? "is-active" : ""} data-tab="vision" onClick={() => setInspectorTab("vision")}>Visual Review</button></div>
         <div className="inspector-tab-content" hidden={inspectorTab !== "key"}><AnimationInspector animation={animation} selections={selectedKeys} onChange={changeKey} /></div>
         <div className="inspector-tab-content" hidden={inspectorTab !== "ai"}><AIAnimationPanel key={`ai-${animation.id}`} rig={rig} currentAnimation={animation} referenceAnimations={library.animations} selectedBoneIds={selectedBones} leftRightMappings={aiMappings} onPreview={(next) => { pause(); setAiPreview(next); setCurrentTime(0); }} onAccept={acceptAiProposal} onMessage={onMessage} /></div>

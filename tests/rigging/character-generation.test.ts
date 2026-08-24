@@ -18,8 +18,8 @@ import { runRigSmokeTest } from "../../src/character-generation/testing/rigSmoke
 
 const prompt = "Small fantasy knight in polished silver armor with a blue tabard, brown hair, simple iron sword, and round blue shield.";
 const makeRequest = (): CharacterGenerationRequest => {
-  const built = buildCharacterGenerationPrompt({ description: prompt, controls: { style: "stylized-game", viewDirection: "right", background: "transparent" } });
-  return { userPrompt: prompt, generationPrompt: built.prompt, negativePrompt: built.negativePrompt, controls: { style: "stylized-game", viewDirection: "right", background: "transparent" } };
+  const built = buildCharacterGenerationPrompt({ description: prompt, controls: { style: "chibi-pixel-art", viewDirection: "right", background: "transparent" } });
+  return { userPrompt: prompt, generationPrompt: built.prompt, negativePrompt: built.negativePrompt, controls: { style: "chibi-pixel-art", viewDirection: "right", background: "transparent" } };
 };
 
 async function mockPipeline() {
@@ -36,7 +36,15 @@ describe("prompt-to-rig character pipeline", () => {
     expect(request.generationPrompt).toContain("skeletal cutout animation");
     expect(request.generationPrompt).toContain("View direction: right");
     expect(request.negativePrompt).toContain("duplicated limbs");
-    expect(request.controls.style).toBe("stylized-game");
+    expect(request.controls.style).toBe("chibi-pixel-art");
+    expect(request.generationPrompt).toContain("chibi pixel art only");
+    expect(request.generationPrompt).toContain("game-production-ready");
+    expect(request.negativePrompt).toContain("painted illustration");
+    expect(request.generationPrompt).toContain("Body proportions: oversized head, compact torso, short separated limbs");
+    expect(request.generationPrompt).toContain("Background: transparent");
+    const overrideAttempt = buildCharacterGenerationPrompt({ description: prompt, controls: { style: "chibi-pixel-art", bodyProportions: "realistic adult proportions", background: "flat-contrast" } });
+    expect(overrideAttempt.prompt).not.toContain("realistic adult proportions");
+    expect(overrideAttempt.prompt).not.toContain("Background: flat-contrast");
   });
 
   it("validates provider segmentation and reports duplicate or missing parts", async () => {
@@ -88,6 +96,15 @@ describe("prompt-to-rig character pipeline", () => {
     const { segmentation } = await mockPipeline(); const hierarchy = buildProposedHierarchy(segmentation.parts, segmentation.imageWidth, segmentation.imageHeight);
     expect(hierarchy.bones[0]).toMatchObject({ id: "root", parentId: null });
     expect(wouldCreateHierarchyCycle(hierarchy.bones, "root", "head")).toBe(true);
+    const leftUpperArm = hierarchy.worldJoints["left-upper-arm"];
+    const leftLowerArm = hierarchy.worldJoints["left-lower-arm"];
+    expect(hierarchy.bones.find((bone) => bone.id === "left-upper-arm")?.rotation).toBe(0);
+    expect(hierarchy.bones.find((bone) => bone.id === "left-lower-arm")).toMatchObject({
+      x: leftLowerArm.x - leftUpperArm.x,
+      y: leftLowerArm.y - leftUpperArm.y,
+      rotation: 0,
+    });
+    expect(hierarchy.bones.filter((bone) => /(?:arm|hand|leg|foot)$/.test(bone.id)).every((bone) => bone.rotation === 0)).toBe(true);
     segmentation.parts.forEach((part) => { const pivot = estimatePartPivot(part).point; expect(pivot.x).toBeGreaterThanOrEqual(part.bounds.x); expect(pivot.x).toBeLessThanOrEqual(part.bounds.x + part.bounds.width); });
     const pivots = Object.fromEntries(segmentation.parts.map((part) => [part.id, { x: part.bounds.width / 2, y: part.bounds.height / 2 }]));
     const slots = assignSlots(segmentation.parts, pivots); expect(slots).toHaveLength(segmentation.parts.length);

@@ -101,12 +101,14 @@ Use `/mcp` in an interactive Codex session to inspect the connection. Codex supp
 9. Do not manually edit generated project files or raw JSON unless the user explicitly asks for import/export.
 10. Never attempt to bypass the Studio validators or call unrelated shell/filesystem tools as a substitute for this application API.
 
+Part cutting is landmark-guided. Rig Studio owns a persistent skeleton, hierarchical anatomical zone IDs, pivots, parent relationships, and zone envelopes before any model runs. `parts_auto_cut`, `character_ai_cut`, `parts_install_ai_proposal`, and `parts_prompt_cut` may refine mask pixels only inside matching predetermined zones. Provider-invented regions, duplicate zones, semantic renames, hierarchy changes, pivot changes, and pixels outside the allowed envelope are ignored or rejected and reported for review.
+
 ## Tool surface
 
 The initial server exposes:
 
 - Session: `studio_get_status`.
-- Projects: `project_create`, `project_open`, `project_save`, `project_export`.
+- Projects: `project_create`, `project_storage_status`, `project_list`, `project_open`, `project_save`, `project_save_as`, `project_import`, `project_export`, `project_export_snapshot`, `project_reveal`, `project_archive`.
 - Character generation: `character_set_prompt`, `character_generate_image`, `character_get_generation`, `character_accept_generation`, `character_run_suitability_check`, `character_create_from_prompt`.
 - Parts: `character_segment`, `character_get_parts`, `character_update_part`, `character_repair_occlusion`.
 - Rig: `rig_create_proposal`, `rig_accept_proposal`, `rig_get_summary`, `rig_move_bone`, `rig_rotate_bone`, `rig_set_pivot`, `rig_set_parent`, `rig_set_slot_attachment`, `rig_set_slot_z_index`.
@@ -156,6 +158,8 @@ preview_render (each animation)
 validation_get
 project_save
 ```
+
+`project_save` commits the active browser working state to the managed disk project. `project_open` with a managed project ID restores from disk; `project_export_snapshot` writes a portable Project ZIP plus `rig.json` and `animations.json`. Storage tools accept managed project IDs and snapshots only, never arbitrary filesystem paths.
 
 The agent must describe what it created, surface all remaining warnings, and say where source art, segmentation, joints, pivots, or motion still deserve human review.
 

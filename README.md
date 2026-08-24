@@ -1,5 +1,7 @@
 # Rigging Studio
 
+Local image-provider setup: [ComfyUI](docs/comfyui-integration.md) · [Draw Things](docs/draw-things-integration.md) · [Durable project storage](docs/project-storage.md)
+
 A browser-based modular 2D skeletal rigging, animation, character-generation, and agent-assisted authoring studio built with React, TypeScript, Vinext, and PixiJS.
 
 ## Prerequisites
@@ -14,7 +16,7 @@ npm run dev
 npm run build
 ```
 
-The local site opens directly to the full Rig Editor at `/`. Start live MCP agent control with:
+The local site opens directly to the full Rig Editor at `/`. Start the trusted local bridge for durable repository project storage and live MCP agent control with:
 
 ```bash
 npm run dev:agent

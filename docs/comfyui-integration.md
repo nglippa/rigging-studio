@@ -1,5 +1,15 @@
 # ComfyUI image-production integration
 
+## Image-production roles
+
+```text
+                         ┌─ Draw Things ─ character creation / variants
+ImageProductionService ─┤
+                         └─ ComfyUI ─ segmentation / repair / reconstruction
+```
+
+Both creation providers feed the same `ImageProposal` inspection and approval boundary. Draw Things does not replace or emulate the trusted ComfyUI workflows documented below.
+
 ## Implementation plan
 
 Rigging Studio keeps image generation proposal-driven. A server-side, provider-neutral image-production service owns trusted workflow discovery, ComfyUI communication, managed proposal assets, inspection evidence, and approval policy. ComfyUI API-format graphs remain private implementation details behind manifest bindings. A candidate reaches the existing `GeneratedCharacterProject` pipeline only after an explicit approval routes it through the established managed-generation ingress.

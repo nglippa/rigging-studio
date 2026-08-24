@@ -29,6 +29,9 @@ import { getRiggingCommandService } from "@/src/agent-control";
 import { useAgentBridge } from "@/src/agent-control/protocol/useAgentBridge";
 import { StudioDialog } from "@/app/studio-ui/StudioDialog";
 import { presentAgentStatus } from "@/app/studio-ui/agentStatus";
+import { ProjectStorageMenu } from "@/app/studio-ui/ProjectStorageMenu";
+import { LOCAL_PROJECT_STORAGE_VERSION } from "@/src/project-storage/types";
+import { blockingRigProjectProblems, validateRigProject } from "@/src/rigging/validation/project";
 
 const TEST_PROMPT = "Small fantasy knight in polished silver armor with a blue tabard, brown hair, simple iron sword, and round blue shield. Charming stylized 2D game character, clean side view, readable silhouette, modular body parts, neutral stance.";
 const STAGES: readonly { readonly id: CharacterProjectStage; readonly label: string }[] = [
@@ -36,16 +39,30 @@ const STAGES: readonly { readonly id: CharacterProjectStage; readonly label: str
   { id: "rig", label: "Rig" }, { id: "test", label: "Test" }, { id: "edit", label: "Edit" },
 ];
 const now = (): string => new Date().toISOString();
+const BRIDGE_URL = process.env.NEXT_PUBLIC_RIGGING_STUDIO_BRIDGE_URL ?? "http://127.0.0.1:47831";
+type GeneratorId = "draw_things" | "comfyui" | "studio_fixture";
+type GeneratorStatus = { readonly provider: string; readonly label: string; readonly connected: boolean; readonly mode: string; readonly characterGeneration: { readonly available: boolean; readonly reason?: string }; readonly message: string };
+type GenerationCandidate = { readonly candidateId: string; readonly imageUrl: string; readonly width: number; readonly height: number; readonly seed: number | null; readonly status: string; readonly providerMetadata?: Readonly<Record<string, unknown>> };
+type GenerationProposalReview = { readonly proposalId: string; readonly provider: string; readonly status: string; readonly sourcePrompt: string; readonly progress: { readonly message: string }; readonly candidates: readonly GenerationCandidate[] };
 const updateProject = (project: GeneratedCharacterProject, patch: Partial<GeneratedCharacterProject>): GeneratedCharacterProject => ({ ...project, ...patch, updatedAt: now() });
 const normalizeProjectWarnings = (project: GeneratedCharacterProject): GeneratedCharacterProject => ({ ...project, warnings: [...new Set(project.warnings)], segmentationData: project.segmentationData ? { ...project.segmentationData, warnings: [...new Set(project.segmentationData.warnings)], parts: project.segmentationData.parts.map((part) => ({ ...part, warnings: [...new Set(part.warnings)] })) } : undefined });
 const downloadBlob = (blob: Blob, name: string): void => { const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = name; anchor.click(); window.setTimeout(() => URL.revokeObjectURL(url), 0); };
+const pollGenerationJob = async (jobId: string): Promise<{ readonly status: string; readonly proposalId?: string; readonly error?: string }> => {
+  for (let attempt = 0; attempt < 900; attempt += 1) {
+    const response = await fetch(`${BRIDGE_URL}/image-generation/jobs/${encodeURIComponent(jobId)}`, { cache: "no-store" });
+    const job = await response.json() as { readonly status: string; readonly proposalId?: string; readonly error?: string };
+    if (!response.ok || job.status === "failed" || job.status === "cancelled" || job.status === "completed") return job;
+    await new Promise((resolve) => window.setTimeout(resolve, 750));
+  }
+  return { status: "failed", error: "Local image generation timed out" };
+};
 
 export function CreateCharacterWorkspace() {
   const commandService = useMemo(() => getRiggingCommandService(), []);
   const agentSession = useAgentBridge(commandService);
   const characterStorage = useMemo(() => getGeneratedCharacterStorage(), []);
   const [project, setProject] = useState<GeneratedCharacterProject>(() => createGeneratedCharacterProject("Fantasy Knight", TEST_PROMPT));
-  const [controls, setControls] = useState<CharacterPromptControls>({ style: "stylized-game", bodyProportions: "small body, oversized readable armor", viewDirection: "right", mainHandEquipment: "simple iron sword", offHandEquipment: "round blue shield", hair: "short brown hair", headwear: "polished silver helmet", characterScale: "small", artResolution: "512", background: "transparent" });
+  const [controls, setControls] = useState<CharacterPromptControls>({ style: "chibi-pixel-art", bodyProportions: "oversized head, compact torso, short separated limbs", viewDirection: "right", mainHandEquipment: "simple iron sword", offHandEquipment: "round blue shield", hair: "short brown hair", headwear: "polished silver helmet", characterScale: "small", artResolution: "512", background: "transparent" });
   const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
   const [selectedBoneId, setSelectedBoneId] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -55,6 +72,9 @@ export function CreateCharacterWorkspace() {
   const [confirmStartOver, setConfirmStartOver] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showPromptDebug, setShowPromptDebug] = useState(false);
+  const [generator, setGenerator] = useState<GeneratorId>("draw_things");
+  const [generatorStatuses, setGeneratorStatuses] = useState<readonly GeneratorStatus[]>([]);
+  const [generationReview, setGenerationReview] = useState<GenerationProposalReview | null>(null);
   const [brushMode, setBrushMode] = useState<"add" | "remove">("add");
   const [brushDown, setBrushDown] = useState(false);
   const [rotationCheck, setRotationCheck] = useState(0);
@@ -64,6 +84,20 @@ export function CreateCharacterWorkspace() {
   const provider = useMemo<CharacterPipelineProvider>(() => {
     const endpoint = process.env.NEXT_PUBLIC_CHARACTER_PIPELINE_ENDPOINT;
     return endpoint ? new HttpCharacterPipelineProvider(endpoint) : new MockCharacterPipelineProvider();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = async (): Promise<void> => {
+      try {
+        const response = await fetch(`${BRIDGE_URL}/image-production/status`, { cache: "no-store" });
+        if (!response.ok) return;
+        const payload = await response.json() as { readonly providers?: readonly GeneratorStatus[] };
+        if (!cancelled) setGeneratorStatuses(payload.providers ?? []);
+      } catch { /* the existing fixture/import flow remains available while the local bridge is offline */ }
+    };
+    void refresh(); const timer = window.setInterval(() => void refresh(), 5_000);
+    return () => { cancelled = true; window.clearInterval(timer); };
   }, []);
 
   useEffect(() => {
@@ -98,9 +132,28 @@ export function CreateCharacterWorkspace() {
   }, []);
 
   const generate = (mode: "generate" | "regenerate" | "variant"): Promise<void> => run(mode === "variant" ? "Variant ready for review" : "Source image ready for review", async () => {
+    const operation = commandService.captureProjectOperation(`create-character-${mode}`);
     const built = buildCharacterGenerationPrompt({ description: project.originalUserPrompt, controls });
+    if (generator === "draw_things" || generator === "comfyui") {
+      const readiness = generatorStatuses.find((item) => item.provider === generator);
+      if (!readiness?.characterGeneration.available) throw new Error(readiness?.characterGeneration.reason ?? readiness?.message ?? `${generator} is not ready`);
+      setGenerationReview(null);
+      setProject((current) => updateProject(current, { stage: "generate", generationPrompt: built.prompt }));
+      const response = await fetch(`${BRIDGE_URL}/image-generation/jobs`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ projectId: project.id, provider: generator, prompt: built.prompt, negativePrompt: built.negativePrompt, width: Number(controls.artResolution ?? 768), height: Number(controls.artResolution ?? 768), candidateCount: 3, generationIntent: mode === "variant" ? "character_variant" : "character", stylePreset: "chibi-pixel-art" }) });
+      const started = await response.json() as { readonly jobId?: string; readonly error?: string };
+      if (!response.ok || !started.jobId) throw new Error(started.error ?? "Local generation job could not start");
+      const completed = await pollGenerationJob(started.jobId);
+      if (completed.status !== "completed" || !completed.proposalId) throw new Error(completed.error ?? "Local generation failed");
+      const proposalResponse = await fetch(`${BRIDGE_URL}/image-production/proposals/${encodeURIComponent(completed.proposalId)}/candidates`, { cache: "no-store" });
+      const proposalPayload = await proposalResponse.json() as { readonly proposal?: Omit<GenerationProposalReview, "candidates">; readonly candidates?: readonly GenerationCandidate[]; readonly error?: string };
+      if (!proposalResponse.ok || !proposalPayload.proposal) throw new Error(proposalPayload.error ?? "Generation proposal could not be loaded");
+      commandService.assertProjectOperationCurrent(operation, "create-character-job");
+      setGenerationReview({ ...proposalPayload.proposal, candidates: proposalPayload.candidates ?? [] });
+      return;
+    }
     const request = { userPrompt: project.originalUserPrompt, generationPrompt: built.prompt, negativePrompt: built.negativePrompt, controls, sourceGenerationId: project.sourceImage?.generationId };
     const result = mode === "generate" ? await provider.generateCharacter(request) : mode === "regenerate" ? await provider.regenerateCharacter(request) : await provider.generateVariant(request);
+    commandService.assertProjectOperationCurrent(operation, "create-character-provider");
     setProject((current) => updateProject(current, {
       stage: "generate", generationPrompt: built.prompt,
       generationMetadata: { provider: result.provider, preset: built.preset, negativePrompt: built.negativePrompt, generationMode: result.generationMode, novelArtwork: result.novelArtwork, sourceArtifact: result.sourceArtifact },
@@ -109,9 +162,22 @@ export function CreateCharacterWorkspace() {
     }));
   });
 
+  const decideGeneration = (candidateId: string, action: "approve" | "reject"): Promise<void> => run(action === "approve" ? "Approved source opened in Prepare" : "Candidate rejected", async () => {
+    if (!generationReview) throw new Error("No generation proposal is awaiting review");
+    const operation = commandService.captureProjectOperation(`generation-${action}`);
+    const response = await fetch(`${BRIDGE_URL}/image-production/proposals/${encodeURIComponent(generationReview.proposalId)}/${action}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ candidateId, confirm: true, ...(action === "reject" ? { reason: "Rejected in Create Character visual review" } : {}) }) });
+    const result = await response.json() as { readonly error?: string };
+    if (!response.ok) throw new Error(result.error ?? `${action} failed`);
+    commandService.assertProjectOperationCurrent(operation, "create-character-job");
+    if (action === "approve") setGenerationReview(null);
+    else setGenerationReview((current) => current ? { ...current, candidates: current.candidates.map((candidate) => candidate.candidateId === candidateId ? { ...candidate, status: "rejected" } : candidate) } : null);
+  });
+
   const checkSuitability = (): Promise<void> => run("Rig suitability check complete", async () => {
     if (!project.sourceImage) throw new Error("Generate an image first");
+    const operation = commandService.captureProjectOperation("create-character-suitability");
     const suitability = await provider.checkSuitability({ image: project.sourceImage.image, width: project.sourceImage.width, height: project.sourceImage.height, userPrompt: project.originalUserPrompt });
+    commandService.assertProjectOperationCurrent(operation, "create-character-provider");
     setProject((current) => updateProject(current, { suitability, warnings: [...current.warnings, ...suitability.issues.map((issue) => issue.message)] }));
   });
 
@@ -120,8 +186,10 @@ export function CreateCharacterWorkspace() {
     if (!provider.capabilities.segmentation.available || !provider.capabilities.segmentation.imageConditioned) {
       throw new Error("Automatic image-conditioned cutting is unavailable. Open Part Cutter and use the manual Smart Select, Lasso, Polygon, or Brush tools.");
     }
+    const operation = commandService.captureProjectOperation("create-character-segmentation");
     const suitability = project.suitability ?? await provider.checkSuitability({ image: project.sourceImage.image, width: project.sourceImage.width, height: project.sourceImage.height, userPrompt: project.originalUserPrompt });
     const response = await provider.segmentCharacter({ generationId: project.sourceImage.generationId, image: project.sourceImage.image, width: project.sourceImage.width, height: project.sourceImage.height, expectedEquipment: [controls.mainHandEquipment ?? "", controls.offHandEquipment ?? ""].filter(Boolean) });
+    commandService.assertProjectOperationCurrent(operation, "create-character-provider");
     const validation = validateSegmentationResponse(response); if (!validation.success || !validation.data) throw new Error([...validation.errors, ...validation.warnings].join("; "));
     const reviews = detectOcclusionReviews(validation.data.parts);
     setProject((current) => updateProject(current, { stage: "prepare", suitability, segmentationData: validation.data, reconstructedParts: reviews, warnings: [...current.warnings, ...validation.warnings] }));
@@ -167,24 +235,32 @@ export function CreateCharacterWorkspace() {
   const setOcclusionDecision = (partId: string, decision: OcclusionDecision): void => setProject((current) => updateProject(current, { reconstructedParts: current.reconstructedParts.map((review) => review.partId === partId ? { ...review, decision } : review), userCorrections: [...current.userCorrections, { stage: "prepare", description: `${partId}: ${decision}`, timestamp: now() }] }));
   const reconstruct = (partId: string): Promise<void> => run(`Reconstruction ready for ${partId} · accept or reject it`, async () => {
     const part = project.segmentationData?.parts.find((candidate) => candidate.id === partId); if (!part || !project.sourceImage) throw new Error("The selected part is unavailable");
+    const operation = commandService.captureProjectOperation("create-character-reconstruction");
     const result = await provider.reconstructPart({ generationId: project.sourceImage.generationId, image: project.sourceImage.image, part, stylePrompt: project.generationPrompt });
+    commandService.assertProjectOperationCurrent(operation, "create-character-provider");
     setProject((current) => updateProject(current, { reconstructedParts: current.reconstructedParts.map((review) => review.partId === partId ? { ...review, decision: "reconstruct", reconstructedImage: result.image, reconstructionAccepted: false } : review) }));
   });
 
   const prepareRig = (): Promise<void> => run("Rig proposal generated · inspect joints and pivots", async () => {
+    if (project.rigDefinition && !window.confirm("Rebuild from Prepare? This replaces the current rig. Choose Cancel to keep the current rig.")) { setMessage("Kept current rig"); return; }
     if (!project.segmentationData || !project.sourceImage) throw new Error("Prepare character parts first");
     const accepted = project.segmentationData.parts.filter((part) => part.accepted); if (!accepted.length) throw new Error("Accept at least one part");
+    const operation = commandService.captureProjectOperation("create-character-rig-preparation");
     const extracted = await Promise.all(accepted.map(async (part) => {
       const repair = project.reconstructedParts.find((review) => review.partId === part.id && review.reconstructionAccepted);
       const image = repair?.reconstructedImage ?? part.fixtureImagePath ?? await extractPartToDataUrl(project.sourceImage!.image, part.bounds, part.mask, 4);
       return { partId: part.id, image, width: part.bounds.width + 8, height: part.bounds.height + 8, padding: 4, status: repair ? "reconstructed" as const : part.provenance };
     }));
+    commandService.assertProjectOperationCurrent(operation, "create-character-extraction");
     const resolvedImages = Object.fromEntries(extracted.map((part) => [part.partId, part.image]));
-    const proposal = buildRigProposal({ name: project.name, parts: accepted, imageWidth: project.sourceImage.width, imageHeight: project.sourceImage.height, resolvedImages });
+    const proposal = buildRigProposal({ name: project.name, parts: accepted, imageWidth: project.sourceImage.width, imageHeight: project.sourceImage.height, resolvedImages, partCutterState: project.partCutterState });
     const unresolved = project.reconstructedParts.filter((review) => review.decision === "unreviewed").map((review) => review.partId);
     const rig = { ...proposal.rig, metadata: { ...proposal.rig.metadata, occlusionWarnings: unresolved } };
     const validated = validateRigProposal({ ...proposal, rig }); if (!validated.success) throw new Error(validated.message);
-    setProject((current) => updateProject(current, { stage: "rig", extractedParts: extracted, rigDefinition: rig, skins: rig.skins, warnings: [...current.warnings, ...proposal.warnings] })); setSelectedBoneId(rig.rootBoneId);
+    const candidate = updateProject(project, { stage: "rig", extractedParts: extracted, rigDefinition: rig, skins: rig.skins, warnings: [...project.warnings, ...proposal.warnings] });
+    const candidateProblems = blockingRigProjectProblems(validateRigProject({ storageVersion: LOCAL_PROJECT_STORAGE_VERSION, project: candidate, rig, animations: null, selectedSkinId: rig.defaultSkinId }));
+    if (candidateProblems.length) throw new Error(`Auto-rig candidate rejected before commit: ${candidateProblems.map((problem) => problem.message).join("; ")}`);
+    setProject(candidate); setSelectedBoneId(rig.rootBoneId);
   });
 
   const patchRig = (transform: (rig: RigDefinition) => RigDefinition, correction: string): void => setProject((current) => current.rigDefinition ? updateProject(current, { rigDefinition: transform(current.rigDefinition), userCorrections: [...current.userCorrections, { stage: "rig", description: correction, timestamp: now() }] }) : current);
@@ -215,30 +291,34 @@ export function CreateCharacterWorkspace() {
   const segmentationAvailable = provider.capabilities.segmentation.available && provider.capabilities.segmentation.imageConditioned;
   return <main className="character-workspace">
     <input ref={importRef} hidden type="file" accept="application/json,.json,.zip,application/zip" onChange={(event) => void importProject(event)} />
-    <header className="character-topbar"><Link href="/" className="character-mark">RS</Link><div><strong>Create Character</strong><span>{project.name}</span></div><nav>{STAGES.map((stage, index) => <button key={stage.id} type="button" className={project.stage === stage.id ? "active" : index < stageIndex ? "complete" : ""} disabled={index > stageIndex + 1 || (stage.id === "rig" && !project.segmentationData) || (stage.id === "test" && !project.rigDefinition)} onClick={() => setProject((current) => updateProject(current, { stage: stage.id }))}><b>{index + 1}</b>{stage.label}</button>)}</nav><span className={`character-agent-state ${agentStatus.ready ? "connected" : agentStatus.state}`}>{agentStatus.label}</span><div className="character-file-tools"><button type="button" onClick={startOver}>New</button><button type="button" onClick={() => importRef.current?.click()}>Import</button><Link href="/part-cutter">Part cutter</Link><button type="button" onClick={exportJson}>Project JSON</button><button type="button" onClick={() => void exportProject()} disabled={Boolean(busy)}>Project ZIP</button><Link href="/">Rig editor</Link></div></header>
+    <header className="character-topbar"><Link href="/" className="character-mark">RS</Link><div><strong>Create Character</strong><span>{project.name}</span></div><nav>{STAGES.map((stage, index) => <button key={stage.id} type="button" className={project.stage === stage.id ? "active" : index < stageIndex ? "complete" : ""} disabled={index > stageIndex + 1 || (stage.id === "rig" && !project.segmentationData) || (stage.id === "test" && !project.rigDefinition)} onClick={() => setProject((current) => updateProject(current, { stage: stage.id }))}><b>{index + 1}</b>{stage.label}</button>)}</nav><span className={`character-agent-state ${agentStatus.ready ? "connected" : agentStatus.state}`}>{agentStatus.label}</span><div className="character-file-tools"><ProjectStorageMenu /><button type="button" onClick={startOver}>New</button><button type="button" onClick={() => importRef.current?.click()}>Import</button><Link href="/part-cutter">Part cutter</Link><button type="button" onClick={exportJson}>Project JSON</button><button type="button" onClick={() => void exportProject()} disabled={Boolean(busy)}>Project ZIP</button><Link href="/">Rig editor</Link></div></header>
     {persistenceWarning && <div className="character-storage-warning" role="status"><strong>Draft storage needs attention</strong><span>{persistenceWarning}</span><button type="button" onClick={() => { void characterStorage.save(projectRef.current).then((result) => setPersistenceWarning(result.success ? null : `Retry failed in ${result.layer}: ${result.message}`)); }}>Retry save</button></div>}
     <section className="character-stage">
-      {project.stage === "describe" && <DescribeStage project={project} controls={controls} showAdvanced={showAdvanced} showDebug={showPromptDebug} onPrompt={(value) => setProject((current) => updateProject(current, { originalUserPrompt: value }))} onName={(value) => setProject((current) => updateProject(current, { name: value }))} onControls={setControls} onAdvanced={() => setShowAdvanced((value) => !value)} onDebug={() => setShowPromptDebug((value) => !value)} onGenerate={() => void generate("generate")} busy={busy} />}
-      {project.stage === "generate" && <GenerateStage project={project} providerName={provider.name} segmentationAvailable={segmentationAvailable} onRegenerate={() => void generate("regenerate")} onVariant={() => void generate("variant")} onSuitability={() => void checkSuitability()} onAccept={() => void acceptImage()} onEdit={() => setProject((current) => updateProject(current, { stage: "describe" }))} busy={busy} />}
+      {project.stage === "describe" && <DescribeStage project={project} controls={controls} generator={generator} generatorStatuses={generatorStatuses} showAdvanced={showAdvanced} showDebug={showPromptDebug} onGenerator={setGenerator} onPrompt={(value) => setProject((current) => updateProject(current, { originalUserPrompt: value }))} onName={(value) => setProject((current) => updateProject(current, { name: value }))} onControls={setControls} onAdvanced={() => setShowAdvanced((value) => !value)} onDebug={() => setShowPromptDebug((value) => !value)} onGenerate={() => void generate("generate")} busy={busy} />}
+      {project.stage === "generate" && <GenerateStage project={project} generationReview={generationReview} providerName={provider.name} segmentationAvailable={segmentationAvailable} onDecision={(candidateId, action) => void decideGeneration(candidateId, action)} onRegenerate={() => void generate("regenerate")} onVariant={() => void generate("variant")} onSuitability={() => void checkSuitability()} onAccept={() => void acceptImage()} onEdit={() => setProject((current) => updateProject(current, { stage: "describe" }))} busy={busy} />}
       {project.stage === "prepare" && <PrepareStage project={project} selectedPart={selectedPart} brushMode={brushMode} onSelect={setSelectedPartId} onPartPatch={patchPart} onRemove={() => { if (selectedPart) setProject((current) => current.segmentationData ? updateProject(current, { segmentationData: { ...current.segmentationData, parts: current.segmentationData.parts.filter((part) => part.id !== selectedPart.id) } }) : current); }} onAdd={addMissingPart} onSplit={splitPart} onMerge={mergePart} onBrushMode={setBrushMode} onResetMask={() => patchPart({ mask: undefined }, selectedPart ? `Reset ${selectedPart.id} mask` : undefined)} onBrushStart={(event) => { setBrushDown(true); applyMaskBrush(event); }} onBrushMove={applyMaskBrush} onBrushEnd={() => setBrushDown(false)} onOcclusion={setOcclusionDecision} onReconstruct={(partId) => void reconstruct(partId)} onAcceptReconstruction={(partId, image) => setProject((current) => updateProject(current, { reconstructedParts: current.reconstructedParts.map((review) => review.partId === partId ? acceptReconstruction(review, image) : review) }))} onRejectReconstruction={(partId) => setProject((current) => updateProject(current, { reconstructedParts: current.reconstructedParts.map((review) => review.partId === partId ? rejectReconstruction(review) : review) }))} onContinue={() => void prepareRig()} busy={busy} />}
       {project.stage === "rig" && project.rigDefinition && <RigStage project={project} selectedBoneId={selectedBoneId} rotationCheck={rotationCheck} onSelectBone={setSelectedBoneId} onMoveBone={moveBoneWorld} onRotationCheck={setRotationCheck} onBonePatch={(id, patch) => patchRig((rig) => ({ ...rig, bones: rig.bones.map((bone) => bone.id === id ? { ...bone, ...patch } : bone) }), `Adjusted bone ${id}`)} onSlotPatch={(id, zIndex) => patchRig((rig) => ({ ...rig, slots: rig.slots.map((slot) => slot.id === id ? { ...slot, zIndex } : slot) }), `Adjusted slot ${id}`)} onTest={runSmoke} />}
       {project.stage === "test" && project.rigDefinition && <TestStage project={project} smoke={smoke ?? runRigSmokeTest(project.rigDefinition)} onRun={runSmoke} onBack={() => setProject((current) => updateProject(current, { stage: "rig" }))} onOpen={openEditor} />}
       {project.stage === "edit" && <EditStage onOpen={openEditor} onExport={() => void exportProject()} />}
     </section>
-    <footer className="character-status"><span>{busy ? `Working · ${busy}` : "Ready"}</span><span>Provider · {provider.name}</span><span>{project.segmentationData ? `${project.segmentationData.parts.filter((part) => part.accepted).length} accepted parts` : "No prepared parts"}</span><span>{project.rigDefinition ? `${project.rigDefinition.bones.length} bones · ${project.rigDefinition.slots.length} slots` : "Rig not generated"}</span><span className={error ? "error" : ""}>{error ?? message}</span></footer>
+    <footer className="character-status"><span>{busy ? `Working · ${busy}` : "Ready"}</span><span>Generator · {generatorStatuses.find((item) => item.provider === generator)?.label ?? (generator === "studio_fixture" ? provider.name : generator)}</span><span>{project.segmentationData ? `${project.segmentationData.parts.filter((part) => part.accepted).length} accepted parts` : "No prepared parts"}</span><span>{project.rigDefinition ? `${project.rigDefinition.bones.length} bones · ${project.rigDefinition.slots.length} slots` : "Rig not generated"}</span><span className={error ? "error" : ""}>{error ?? message}</span></footer>
     <StudioDialog open={confirmStartOver} title="Start a new character?" description="The current local character draft and its stored assets will be discarded. Export it first if you may need it later." confirmLabel="Start over" danger onCancel={() => setConfirmStartOver(false)} onConfirm={confirmStartOverProject} />
   </main>;
 }
 
-type DescribeProps = { readonly project: GeneratedCharacterProject; readonly controls: CharacterPromptControls; readonly showAdvanced: boolean; readonly showDebug: boolean; readonly onPrompt: (value: string) => void; readonly onName: (value: string) => void; readonly onControls: (value: CharacterPromptControls) => void; readonly onAdvanced: () => void; readonly onDebug: () => void; readonly onGenerate: () => void; readonly busy: string | null };
+type DescribeProps = { readonly project: GeneratedCharacterProject; readonly controls: CharacterPromptControls; readonly generator: GeneratorId; readonly generatorStatuses: readonly GeneratorStatus[]; readonly showAdvanced: boolean; readonly showDebug: boolean; readonly onGenerator: (value: GeneratorId) => void; readonly onPrompt: (value: string) => void; readonly onName: (value: string) => void; readonly onControls: (value: CharacterPromptControls) => void; readonly onAdvanced: () => void; readonly onDebug: () => void; readonly onGenerate: () => void; readonly busy: string | null };
 function DescribeStage(props: DescribeProps) {
   const built = useMemo(() => { try { return buildCharacterGenerationPrompt({ description: props.project.originalUserPrompt, controls: props.controls }); } catch { return null; } }, [props.controls, props.project.originalUserPrompt]);
   const patch = (key: keyof CharacterPromptControls, value: string): void => props.onControls({ ...props.controls, [key]: value || undefined });
-  return <div className="describe-layout"><section className="description-main"><div className="stage-kicker">Character description</div><h1>Describe the source art you need to rig.</h1><label className="field"><span>Project name</span><input value={props.project.name} onChange={(event) => props.onName(event.target.value)} /></label><label className="prompt-field"><span>Natural-language prompt</span><textarea value={props.project.originalUserPrompt} onChange={(event) => props.onPrompt(event.target.value)} rows={8} /><small>Ask for a neutral, readable side view. The pipeline adds modular-art constraints automatically.</small></label><div className="action-row"><button type="button" className="primary" onClick={props.onGenerate} disabled={Boolean(props.busy) || !props.project.originalUserPrompt.trim()}>Generate character</button><button type="button" onClick={props.onAdvanced}>{props.showAdvanced ? "Hide controls" : "Optional controls"}</button><button type="button" onClick={props.onDebug}>{props.showDebug ? "Hide generated prompt" : "Prompt debug"}</button></div>{props.showDebug && <pre className="prompt-debug">{built ? `${built.prompt}\n\nAVOID\n${built.negativePrompt}` : "Enter a description"}</pre>}</section><aside className={`structured-controls ${props.showAdvanced ? "open" : ""}`}><div className="panel-title"><span>Generation controls</span><small>Optional</small></div><Control label="Style" value={props.controls.style} options={["stylized-game", "pixel-art", "painted-2d", "flat-cartoon"]} onChange={(value) => patch("style", value)} /><Control label="Direction" value={props.controls.viewDirection} options={["right", "left"]} onChange={(value) => patch("viewDirection", value)} /><TextControl label="Proportions" value={props.controls.bodyProportions} onChange={(value) => patch("bodyProportions", value)} /><TextControl label="Species" value={props.controls.species} onChange={(value) => patch("species", value)} /><TextControl label="Armor / clothing" value={props.controls.clothingStyle} onChange={(value) => patch("clothingStyle", value)} /><TextControl label="Main hand" value={props.controls.mainHandEquipment} onChange={(value) => patch("mainHandEquipment", value)} /><TextControl label="Off hand" value={props.controls.offHandEquipment} onChange={(value) => patch("offHandEquipment", value)} /><TextControl label="Hair" value={props.controls.hair} onChange={(value) => patch("hair", value)} /><TextControl label="Headwear" value={props.controls.headwear} onChange={(value) => patch("headwear", value)} /><TextControl label="Cape" value={props.controls.cape} onChange={(value) => patch("cape", value)} /><TextControl label="Tail" value={props.controls.tail} onChange={(value) => patch("tail", value)} /><Control label="Resolution" value={props.controls.artResolution} options={["256", "512", "1024"]} onChange={(value) => patch("artResolution", value)} /><Control label="Background" value={props.controls.background} options={["transparent", "flat-contrast"]} onChange={(value) => patch("background", value)} /></aside></div>;
+  const selectedStatus = props.generatorStatuses.find((item) => item.provider === props.generator);
+  const ready = props.generator === "studio_fixture" || selectedStatus?.characterGeneration.available === true;
+  return <div className="describe-layout"><section className="description-main"><div className="stage-kicker">Character description</div><h1>Describe the chibi sprite you need to rig.</h1><div className="generator-picker"><label><span>Generator</span><select value={props.generator} onChange={(event) => props.onGenerator(event.target.value as GeneratorId)}><option value="draw_things">Draw Things — {props.generatorStatuses.find((item) => item.provider === "draw_things")?.characterGeneration.available ? "Local · Ready" : "Setup required"}</option><option value="comfyui">ComfyUI — {props.generatorStatuses.find((item) => item.provider === "comfyui")?.characterGeneration.available ? "Local · Ready" : "Unavailable"}</option><option value="studio_fixture">Development fixture</option><option disabled>Import Existing Art — use Import above</option></select></label><p data-ready={ready}>{ready ? selectedStatus?.message ?? "Deterministic development fixture" : selectedStatus?.characterGeneration.reason ?? selectedStatus?.message ?? "Start the local bridge and configure this provider"}</p></div><label className="field"><span>Project name</span><input value={props.project.name} onChange={(event) => props.onName(event.target.value)} /></label><label className="field"><span>Natural-language prompt</span><textarea value={props.project.originalUserPrompt} onChange={(event) => props.onPrompt(event.target.value)} rows={8} /><small>Rig Studio locks every generated character to production-ready chibi pixel art with a transparent background, crisp pixel clusters, one full-body pose, and separable joints.</small></label><div className="action-row"><button type="button" className="primary" aria-busy={Boolean(props.busy)} onClick={props.onGenerate} disabled={Boolean(props.busy) || !props.project.originalUserPrompt.trim() || !ready}>{props.busy ? "Generating…" : "Generate chibi sprite"}</button><button type="button" onClick={props.onAdvanced}>{props.showAdvanced ? "Hide controls" : "Optional controls"}</button><button type="button" onClick={props.onDebug}>{props.showDebug ? "Hide generated prompt" : "Prompt debug"}</button></div>{props.showDebug && <pre className="prompt-debug">{built ? `${built.prompt}\n\nAVOID\n${built.negativePrompt}` : "Enter a description"}</pre>}</section><aside className={`structured-controls ${props.showAdvanced ? "open" : ""}`}><div className="panel-title"><span>Generation controls</span><small>Chibi pixel art locked</small></div><Control label="Style" value="chibi-pixel-art" options={["chibi-pixel-art"]} allowAuto={false} onChange={() => undefined} /><Control label="Direction" value={props.controls.viewDirection} options={["right", "left"]} onChange={(value) => patch("viewDirection", value)} /><label><span>Proportions</span><input value="oversized head, compact torso, short separated limbs" readOnly /></label><TextControl label="Species" value={props.controls.species} onChange={(value) => patch("species", value)} /><TextControl label="Armor / clothing" value={props.controls.clothingStyle} onChange={(value) => patch("clothingStyle", value)} /><TextControl label="Main hand" value={props.controls.mainHandEquipment} onChange={(value) => patch("mainHandEquipment", value)} /><TextControl label="Off hand" value={props.controls.offHandEquipment} onChange={(value) => patch("offHandEquipment", value)} /><TextControl label="Hair" value={props.controls.hair} onChange={(value) => patch("hair", value)} /><TextControl label="Headwear" value={props.controls.headwear} onChange={(value) => patch("headwear", value)} /><TextControl label="Cape" value={props.controls.cape} onChange={(value) => patch("cape", value)} /><TextControl label="Tail" value={props.controls.tail} onChange={(value) => patch("tail", value)} /><Control label="Resolution" value={props.controls.artResolution} options={["256", "512", "1024"]} onChange={(value) => patch("artResolution", value)} /><Control label="Background" value="transparent" options={["transparent"]} allowAuto={false} onChange={() => undefined} /></aside></div>;
 }
 
-function GenerateStage({ project, providerName, segmentationAvailable, onRegenerate, onVariant, onSuitability, onAccept, onEdit, busy }: { readonly project: GeneratedCharacterProject; readonly providerName: string; readonly segmentationAvailable: boolean; readonly onRegenerate: () => void; readonly onVariant: () => void; readonly onSuitability: () => void; readonly onAccept: () => void; readonly onEdit: () => void; readonly busy: string | null }) {
-  const image = project.sourceImage; if (!image) return <div className="stage-empty">No source image. Return to Describe and generate one.</div>;
+function GenerateStage({ project, generationReview, providerName, segmentationAvailable, onDecision, onRegenerate, onVariant, onSuitability, onAccept, onEdit, busy }: { readonly project: GeneratedCharacterProject; readonly generationReview: GenerationProposalReview | null; readonly providerName: string; readonly segmentationAvailable: boolean; readonly onDecision: (candidateId: string, action: "approve" | "reject") => void; readonly onRegenerate: () => void; readonly onVariant: () => void; readonly onSuitability: () => void; readonly onAccept: () => void; readonly onEdit: () => void; readonly busy: string | null }) {
+  const image = project.sourceImage;
+  if (!image && generationReview) return <div className="proposal-review-stage"><header><div><span className="stage-kicker">Generated-image proposal</span><h2>Choose the source art that moves forward.</h2></div><p>{generationReview.provider.replaceAll("_", " ")} · {generationReview.progress.message}</p></header><div className="proposal-candidate-grid">{generationReview.candidates.map((candidate, index) => <article key={candidate.candidateId} data-status={candidate.status}><img src={candidate.imageUrl} alt={`Draw Things candidate ${index + 1}`} /><div><strong>Candidate {index + 1}</strong><span>{candidate.width} × {candidate.height}</span><span>{candidate.seed === null ? "Seed unavailable" : `Seed ${candidate.seed}`}</span><small>{String(candidate.providerMetadata?.model ?? "Model unavailable")}</small></div><footer><button type="button" className="primary" disabled={Boolean(busy) || candidate.status === "rejected"} onClick={() => onDecision(candidate.candidateId, "approve")}>Approve & open Prepare</button><button type="button" disabled={Boolean(busy) || candidate.status === "rejected"} onClick={() => onDecision(candidate.candidateId, "reject")}>Reject</button></footer></article>)}</div><div className="proposal-review-actions"><button type="button" onClick={onRegenerate} disabled={Boolean(busy)}>Generate again</button><button type="button" onClick={onVariant} disabled={Boolean(busy)}>Generate variant</button><button type="button" onClick={onEdit}>Edit prompt</button></div></div>;
+  if (!image) return <div className="stage-empty"><p>{busy ? "Local generation is running without blocking the editor." : "No source image. Return to Describe and generate one."}</p><button type="button" onClick={onEdit}>Back to Describe</button></div>;
   const sourceLabel = image.generationMode === "imported_external" ? "Novel external generation" : image.generationMode === "fixture" ? "Development fixture · not novel" : "Provider-generated artwork";
   return <div className="review-layout"><section className="image-review"><div className="checkerboard"><img src={image.image} alt="Generated character source" /></div><div className="image-meta"><span>{image.width} × {image.height}</span><span>{sourceLabel}</span><span>{image.provider || providerName}</span></div></section><aside className="review-panel"><div className="stage-kicker">Generated-image review</div><h2>Confirm this source can become movable parts.</h2><p>{sourceLabel} · {image.generationId}</p>{!segmentationAvailable && <p className="warning">Automatic image-conditioned cutting is unavailable. Use the manual tools in Part Cutter; the local fixture will not be presented as AI analysis.</p>}<div className="action-stack"><button className="primary" type="button" onClick={onAccept} disabled={Boolean(busy) || !segmentationAvailable}>{segmentationAvailable ? "Accept & detect parts" : "Segmentation unavailable"}</button><button type="button" onClick={onSuitability} disabled={Boolean(busy)}>Run rig suitability check</button><div><button type="button" onClick={onRegenerate} disabled={Boolean(busy)}>Regenerate</button><button type="button" onClick={onVariant} disabled={Boolean(busy)}>Generate variant</button></div><button type="button" onClick={onEdit}>Edit prompt</button></div>{project.suitability && <div className="suitability"><div><strong>{Math.round(project.suitability.score * 100)}%</strong><span>{project.suitability.usable ? "Usable with review" : "Regeneration recommended"}</span></div><p>{project.suitability.summary}</p>{project.suitability.issues.map((issue) => <article key={`${issue.type}-${issue.message}`} data-severity={issue.severity}><b>{issue.type.replaceAll("-", " ")}</b><span>{issue.message}</span><small>{Math.round(issue.confidence * 100)}% confidence</small></article>)}</div>}<details><summary>Data sent to provider</summary><p>The character prompt, generation constraints, and this source image only. No editor files or API credentials are sent.</p></details></aside></div>;
 }
@@ -267,7 +347,7 @@ function TestStage({ project, smoke, onRun, onBack, onOpen }: { readonly project
 }
 function EditStage({ onOpen, onExport }: { readonly onOpen: () => void; readonly onExport: () => void }) { return <div className="stage-empty"><h2>Character is ready.</h2><p>Continue in the full Rig Editor or export the portable project.</p><div className="action-row"><button className="primary" onClick={onOpen}>Open Rig Editor</button><button onClick={onExport}>Export project ZIP</button></div></div>; }
 
-function Control({ label, value, options, onChange }: { readonly label: string; readonly value?: string; readonly options: readonly string[]; readonly onChange: (value: string) => void }) { return <label><span>{label}</span><select value={value ?? ""} onChange={(event) => onChange(event.target.value)}><option value="">Auto</option>{options.map((option) => <option key={option}>{option}</option>)}</select></label>; }
+function Control({ label, value, options, allowAuto = true, onChange }: { readonly label: string; readonly value?: string; readonly options: readonly string[]; readonly allowAuto?: boolean; readonly onChange: (value: string) => void }) { return <label><span>{label}</span><select value={value ?? ""} onChange={(event) => onChange(event.target.value)}>{allowAuto && <option value="">Auto</option>}{options.map((option) => <option key={option}>{option}</option>)}</select></label>; }
 function TextControl({ label, value, onChange }: { readonly label: string; readonly value?: string; readonly onChange: (value: string) => void }) { return <label><span>{label}</span><input value={value ?? ""} onChange={(event) => onChange(event.target.value)} /></label>; }
 function NumberField({ label, value, onChange }: { readonly label: string; readonly value: number; readonly onChange: (value: number) => void }) { return <label><span>{label}</span><input type="number" value={Number.isFinite(value) ? Number(value.toFixed(2)) : 0} onChange={(event) => { if (Number.isFinite(event.target.valueAsNumber)) onChange(event.target.valueAsNumber); }} /></label>; }
 function hierarchyDepth(rig: RigDefinition, id: string): number { let depth = 0; let cursor = rig.bones.find((bone) => bone.id === id)?.parentId ?? null; const seen = new Set<string>(); while (cursor && !seen.has(cursor)) { seen.add(cursor); depth += 1; cursor = rig.bones.find((bone) => bone.id === cursor)?.parentId ?? null; } return depth; }

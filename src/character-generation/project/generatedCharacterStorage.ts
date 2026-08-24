@@ -24,6 +24,8 @@ export type GeneratedCharacterStorageSuccess = {
   readonly success: true;
   readonly projectId: string;
   readonly approximateBytes: number;
+  readonly uniqueAssetBytes: number;
+  readonly metadataBytes: number;
   readonly assetCount: number;
   readonly migrated?: boolean;
 };
@@ -163,6 +165,16 @@ const dehydrateProject = (project: GeneratedCharacterProject): { readonly projec
   return { project: visit(project), assets: [...assets.values()], approximateBytes };
 };
 
+export const measureGeneratedCharacterProjectStorage = (project: GeneratedCharacterProject): { readonly logicalBytes: number; readonly uniqueAssetBytes: number; readonly metadataBytes: number; readonly assetCount: number } => {
+  const dehydrated = dehydrateProject(project);
+  return {
+    logicalBytes: dehydrated.approximateBytes,
+    uniqueAssetBytes: dehydrated.assets.reduce((total, asset) => total + asset.byteLength, 0),
+    metadataBytes: approximateStringBytes(JSON.stringify(dehydrated.project)),
+    assetCount: dehydrated.assets.length,
+  };
+};
+
 const hydrateProject = async (value: unknown, store: GeneratedCharacterObjectStore): Promise<unknown> => {
   const visit = async (entry: unknown): Promise<unknown> => {
     if (isAssetReference(entry)) {
@@ -193,14 +205,18 @@ export class GeneratedCharacterStorage {
     const parsed = parseGeneratedCharacterProject(project);
     if (!parsed.success) return { success: false, layer: "indexeddb", message: parsed.message, retryable: true, approximateBytes: 0 };
     const dehydrated = dehydrateProject(parsed.data);
+    const measurement = measureGeneratedCharacterProjectStorage(parsed.data);
     const savedAt = new Date().toISOString();
+    let priorAssets: readonly string[] = [];
     try {
+      priorAssets = await this.objects.listAssetIds(project.id);
       for (const asset of dehydrated.assets) await this.objects.putAsset(asset);
       const activeAssets = new Set(dehydrated.assets.map((asset) => asset.id));
-      const priorAssets = await this.objects.listAssetIds(project.id);
       await this.objects.putProject({ storageVersion: 2, projectId: project.id, savedAt, project: dehydrated.project, assetIds: [...activeAssets], approximateBytes: dehydrated.approximateBytes });
       await Promise.all(priorAssets.filter((id) => !activeAssets.has(id)).map((id) => this.objects.deleteAsset(id)));
     } catch (reason: unknown) {
+      const prior = new Set(priorAssets);
+      await Promise.all(dehydrated.assets.filter((asset) => !prior.has(asset.id)).map((asset) => this.objects.deleteAsset(asset.id).catch(() => undefined)));
       return { success: false, layer: "indexeddb", message: storageMessage(reason), retryable: true, approximateBytes: dehydrated.approximateBytes };
     }
     const pointer: DraftPointer = { storageVersion: 2, projectId: project.id, projectVersion: project.projectVersion, currentStage: project.stage, savedAt, approximateBytes: dehydrated.approximateBytes };
@@ -209,7 +225,7 @@ export class GeneratedCharacterStorage {
     } catch (reason: unknown) {
       return { success: false, layer: "localstorage-pointer", message: storageMessage(reason), retryable: true, approximateBytes: dehydrated.approximateBytes };
     }
-    return { success: true, projectId: project.id, approximateBytes: dehydrated.approximateBytes, assetCount: dehydrated.assets.length };
+    return { success: true, projectId: project.id, approximateBytes: dehydrated.approximateBytes, uniqueAssetBytes: measurement.uniqueAssetBytes, metadataBytes: measurement.metadataBytes, assetCount: dehydrated.assets.length };
   }
 
   async load(): Promise<ReturnType<typeof parseGeneratedCharacterProject> | null> {

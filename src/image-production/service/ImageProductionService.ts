@@ -3,13 +3,15 @@ import type { CharacterPromptControls } from "../../character-generation/prompt/
 import type { SuitabilityReview } from "../../character-generation/providers/characterPipelineProvider";
 import { ImageProposalStorage } from "../assets/imageProposalStorage";
 import { ComfyUIAdapter } from "../comfy/ComfyUIAdapter";
-import { imageProposalReviewInputSchema, type ImageApprovalPolicy, type ImageCandidate, type ImageProductionCapability, type ImageProductionJson, type ImageProposal, type ImageProposalReviewInput } from "../proposals/imageProposal";
+import { DrawThingsProvider } from "../draw-things/DrawThingsProvider";
+import { imageProposalReviewInputSchema, type ImageApprovalPolicy, type ImageCandidate, type ImageProductionCapability, type ImageProductionJson, type ImageProposal, type ImageProposalProvider, type ImageProposalReviewInput } from "../proposals/imageProposal";
+import type { ImageGenerationProvider } from "../providers/imageGenerationProvider";
 import type { ImageProductionProvider, ImageProviderProgress } from "../providers/imageProductionProvider";
 import { TrustedWorkflowRegistry } from "../workflows/registry";
 import { bindTrustedWorkflow } from "../workflows/workflowManifest";
 
 const DEFAULT_CONTROLS: CharacterPromptControls = {
-  style: "stylized-game", bodyProportions: "compact readable game proportions", viewDirection: "right",
+  style: "chibi-pixel-art", bodyProportions: "oversized head, compact torso, short separated limbs", viewDirection: "right",
   mainHandEquipment: "separable weapon", offHandEquipment: "separable shield", hair: "readable modular hair", headwear: "optional modular headwear",
   characterScale: "medium", artResolution: "1024", background: "flat-contrast",
 };
@@ -22,6 +24,7 @@ const OPERATION_CAPABILITY: Readonly<Record<string, ImageProductionCapability>> 
 
 export type GenerateImageCandidatesRequest = {
   readonly projectId: string;
+  readonly provider?: ImageProposalProvider;
   readonly operation: keyof typeof OPERATION_CAPABILITY;
   readonly prompt: string;
   readonly candidateCount?: number;
@@ -33,12 +36,18 @@ export type GenerateImageCandidatesRequest = {
   readonly steps?: number;
   readonly guidance?: number;
   readonly stylePreset?: string;
+  readonly model?: string;
+  readonly styleReferenceAssetId?: string;
+  readonly poseReferenceAssetId?: string;
+  readonly metadata?: Readonly<Record<string, ImageProductionJson>>;
+  readonly onProposalCreated?: (proposalId: string) => void;
   readonly targetPartId?: string;
   readonly parentProposalId?: string;
 };
 
 export type ImageProductionServiceOptions = {
   readonly provider?: ImageProductionProvider;
+  readonly generationProviders?: readonly ImageGenerationProvider[];
   readonly registry?: TrustedWorkflowRegistry;
   readonly storage?: ImageProposalStorage;
   readonly now?: () => Date;
@@ -62,9 +71,13 @@ export class ImageProductionService {
   private readonly resolveRepairAssets?: ImageProductionServiceOptions["resolveRepairAssets"];
   private readonly policies = new Map<string, ImageApprovalPolicy>();
   private readonly activePromptIds = new Map<string, string>();
+  private readonly activeGenerationControllers = new Map<string, AbortController>();
+  private readonly generationProviders: ReadonlyMap<string, ImageGenerationProvider>;
 
   constructor(options: ImageProductionServiceOptions = {}) {
     this.provider = options.provider ?? new ComfyUIAdapter();
+    const generationProviders = options.generationProviders ?? [new DrawThingsProvider({ cwd: process.cwd() })];
+    this.generationProviders = new Map(generationProviders.map((provider) => [provider.id, provider]));
     this.registry = options.registry ?? new TrustedWorkflowRegistry();
     this.storage = options.storage ?? new ImageProposalStorage();
     this.now = options.now ?? (() => new Date());
@@ -75,7 +88,10 @@ export class ImageProductionService {
   }
 
   async status(refreshWorkflows = false) {
-    const [provider, capabilities] = await Promise.all([this.provider.status(), this.registry.listCapabilities(refreshWorkflows)]);
+    const [provider, capabilities, generationProviders] = await Promise.all([
+      this.provider.status(), this.registry.listCapabilities(refreshWorkflows),
+      Promise.all([...this.generationProviders.values()].map((item) => item.getCapabilities())),
+    ]);
     const checked = await Promise.all(capabilities.map(async (capability) => {
       if (!provider.reachable) return { ...capability, capabilityAvailable: false, reason: `ComfyUI offline at ${provider.url}: ${provider.message}` };
       if (!capability.capabilityAvailable) return capability;
@@ -85,12 +101,20 @@ export class ImageProductionService {
         return dependencies.available ? capability : { ...capability, capabilityAvailable: false, reason: formatDependencyFailure(dependencies) };
       } catch (error: unknown) { return { ...capability, capabilityAvailable: false, reason: error instanceof Error ? error.message : "Dependency inspection failed" }; }
     }));
-    return { provider, capabilities: checked, conservativeDefaults: { candidateCount: 3, maximumCandidateCount: 4, candidateConcurrency: 1, maximumProposalRounds: 2 } };
+    return {
+      provider, capabilities: checked,
+      providers: [
+        { provider: "comfyui", label: "ComfyUI — Local", local: true, connected: provider.reachable, mode: provider.reachable ? "direct" : "unavailable", characterGeneration: { available: checked.some((item) => item.capability === "CHARACTER_GENERATION" && item.capabilityAvailable), reason: provider.reachable ? undefined : provider.message }, characterVariant: { available: checked.some((item) => item.capability === "CHARACTER_VARIANT" && item.capabilityAvailable) }, metadataCapture: { available: provider.reachable, level: provider.reachable ? "full" : "unavailable" }, watchedFolder: { available: false, reason: "ComfyUI uses its trusted workflow API" }, models: [], message: provider.message },
+        ...generationProviders,
+      ],
+      conservativeDefaults: { candidateCount: 3, maximumCandidateCount: 4, candidateConcurrency: 1, maximumProposalRounds: 2 },
+    };
   }
 
   async generateCandidates(request: GenerateImageCandidatesRequest): Promise<ImageProposal> {
     const capability = OPERATION_CAPABILITY[request.operation];
     if (!capability) throw new Error(`Unsupported trusted image operation ${request.operation}`);
+    if (request.provider && request.provider !== "comfyui") return this.generateWithCharacterProvider(request, capability);
     const workflow = await this.registry.require(capability);
     const providerStatus = await this.provider.status();
     if (!providerStatus.reachable) throw new Error(`ComfyUI is offline at ${providerStatus.url}: ${providerStatus.message}`);
@@ -128,13 +152,14 @@ export class ImageProductionService {
       sourcePrompt: prompt, negativePrompt,
       generationParameters: {
         candidateCount, preset: request.preset ?? "MODULAR_2D_RIG_CHARACTER", width: request.width ?? 768, height: request.height ?? 768,
-        steps: request.steps ?? 24, guidance: request.guidance ?? 7, stylePreset: request.stylePreset ?? "stylized-game", candidateConcurrency: 1,
+        steps: request.steps ?? 24, guidance: request.guidance ?? 7, stylePreset: "chibi-pixel-art", candidateConcurrency: 1,
       },
       ...(request.targetPartId ? { targetPartId: request.targetPartId } : {}), ...(request.parentProposalId ? { parentProposalId: request.parentProposalId } : {}),
       proposalRound: (parent?.proposalRound ?? 0) + 1, candidateIds: [], candidates: [], warnings: [], errors: [], inspectionEvidence: [],
       progress: { phase: "queued", candidateIndex: 0, candidateCount, message: `ComfyUI · queued 0 of ${candidateCount}` },
     };
     await this.storage.create(proposal);
+    request.onProposalCreated?.(proposalId);
 
     const candidates: ImageCandidate[] = [];
     const errors: string[] = [];
@@ -192,6 +217,73 @@ export class ImageProductionService {
     };
     await this.storage.writeProposal(proposal);
     return proposal;
+  }
+
+  private async generateWithCharacterProvider(request: GenerateImageCandidatesRequest, capability: ImageProductionCapability): Promise<ImageProposal> {
+    if (capability !== "CHARACTER_GENERATION" && capability !== "CHARACTER_VARIANT" && capability !== "EQUIPMENT_VARIANT") throw new Error(`${request.provider} is a character-creation provider; ${capability} remains a trusted ComfyUI workflow`);
+    const provider = this.generationProviders.get(request.provider!);
+    if (!provider) throw new Error(`Image provider ${request.provider} is not registered`);
+    const capabilities = await provider.getCapabilities();
+    const variant = capability === "CHARACTER_VARIANT" || capability === "EQUIPMENT_VARIANT";
+    const readiness = variant ? capabilities.characterVariant : capabilities.characterGeneration;
+    if (!readiness.available) throw new Error(`${capabilities.label} is unavailable: ${readiness.reason ?? capabilities.message}`);
+    const candidateCount = request.candidateCount ?? 1;
+    if (!Number.isInteger(candidateCount) || candidateCount < 1 || candidateCount > 4) throw new Error("Candidate count must be between 1 and 4");
+    const parent = request.parentProposalId ? await this.storage.readProposal(request.parentProposalId) : undefined;
+    if (parent && parent.projectId !== request.projectId) throw new Error("Parent proposal belongs to another project");
+    if (parent && parent.proposalRound >= 2) throw new Error("The maximum of 2 image proposal rounds has been reached");
+    const built = buildCharacterGenerationPrompt({ description: request.prompt, controls: DEFAULT_CONTROLS });
+    const prompt = built.prompt;
+    const negativePrompt = request.negativePrompt ?? built.negativePrompt;
+    const proposalId = `proposal-${crypto.randomUUID()}`;
+    const timestamp = this.now().toISOString();
+    const approvalPolicy = this.policies.get(request.projectId) ?? await this.storage.readApprovalPolicy(request.projectId);
+    this.policies.set(request.projectId, approvalPolicy);
+    let proposal: ImageProposal = {
+      proposalVersion: 1, proposalId, projectId: request.projectId, operationType: capability, provider: provider.id,
+      workflowId: capabilities.mode === "direct" ? "draw-things-http-v1" : "draw-things-watched-folder-v1",
+      status: "generating", approvalPolicy, createdAt: timestamp, updatedAt: timestamp, sourcePrompt: prompt, negativePrompt,
+      generationParameters: {
+        candidateCount, preset: request.preset ?? "MODULAR_2D_RIG_CHARACTER", rigFriendlyCharacter: true,
+        width: request.width ?? 768, height: request.height ?? 768, steps: request.steps ?? 24, guidance: request.guidance ?? 7,
+        model: request.model ?? null, styleReferenceAssetId: request.styleReferenceAssetId ?? null, poseReferenceAssetId: request.poseReferenceAssetId ?? null,
+        providerMode: capabilities.mode, generationIntent: capability === "EQUIPMENT_VARIANT" ? "equipment_variant" : variant ? "character_variant" : "character",
+        ...(request.metadata ?? {}),
+      },
+      ...(request.parentProposalId ? { parentProposalId: request.parentProposalId } : {}), proposalRound: (parent?.proposalRound ?? 0) + 1,
+      candidateIds: [], candidates: [], warnings: [], errors: [], inspectionEvidence: [],
+      progress: { phase: "queued", candidateIndex: 0, candidateCount, message: `${capabilities.label} · ${capabilities.mode === "direct" ? "queued" : "waiting for stable exports"}` },
+    };
+    await this.storage.create(proposal);
+    request.onProposalCreated?.(proposalId);
+    const controller = new AbortController(); this.activeGenerationControllers.set(proposalId, controller);
+    try {
+      proposal = await this.progress(proposal, { phase: "sampling", candidateIndex: 0, candidateCount, message: capabilities.mode === "direct" ? "Draw Things is generating locally" : `Export ${candidateCount} new image${candidateCount === 1 ? "" : "s"} from Draw Things` });
+      const input = {
+        projectId: request.projectId, prompt, negativePrompt, width: request.width ?? 768, height: request.height ?? 768,
+        model: request.model, seed: request.seed ?? null, steps: request.steps ?? 24, guidance: request.guidance ?? 7, candidateCount,
+        styleReferenceAssetId: request.styleReferenceAssetId, poseReferenceAssetId: request.poseReferenceAssetId,
+        generationIntent: capability === "EQUIPMENT_VARIANT" ? "equipment_variant" as const : variant ? "character_variant" as const : "character" as const,
+        metadata: request.metadata,
+      };
+      const outputs = variant && provider.generateVariant ? await provider.generateVariant(input, controller.signal) : await provider.generateCharacter(input, controller.signal);
+      const candidates: ImageCandidate[] = [];
+      for (const [index, output] of outputs.slice(0, candidateCount).entries()) {
+        const candidateId = `candidate-${String(index + 1).padStart(2, "0")}`;
+        const asset = await this.storage.writeCandidate(proposalId, candidateId, output.bytes, output.mimeType);
+        const candidate: ImageCandidate = { candidateId, imageAssetId: asset.imageAssetId, imageFileName: asset.imageFileName, width: asset.width, height: asset.height, seed: output.seed, providerMetadata: output.metadata, diagnostics: { warnings: [] }, status: "generated" };
+        candidates.push(candidate);
+        if (provider instanceof DrawThingsProvider && typeof output.metadata.contentHash === "string" && output.sourcePath) await provider.recordImport(output.metadata.contentHash, output.sourcePath, proposalId);
+        proposal = { ...proposal, candidates: [...candidates], candidateIds: candidates.map((item) => item.candidateId), updatedAt: this.now().toISOString(), progress: { phase: "collecting", candidateIndex: candidates.length, candidateCount, percent: Math.round(candidates.length / candidateCount * 100), message: `Collected candidate ${candidates.length} of ${candidateCount}` } };
+        await this.storage.writeProposal(proposal);
+      }
+      proposal = { ...proposal, status: candidates.length ? "awaiting_review" : "failed", candidates, candidateIds: candidates.map((item) => item.candidateId), updatedAt: this.now().toISOString(), progress: candidates.length ? { phase: "ready", candidateIndex: candidates.length, candidateCount, percent: 100, message: `${candidates.length} Draw Things candidate${candidates.length === 1 ? "" : "s"} ready for review` } : { phase: "failed", candidateIndex: 0, candidateCount, message: "Draw Things produced no usable candidates" } };
+      await this.storage.writeProposal(proposal); return proposal;
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Draw Things generation failed";
+      proposal = { ...proposal, status: "failed", errors: [...proposal.errors, errorMessage], updatedAt: this.now().toISOString(), progress: { phase: "failed", candidateIndex: proposal.candidates.length, candidateCount, message: errorMessage } };
+      await this.storage.writeProposal(proposal); return proposal;
+    } finally { this.activeGenerationControllers.delete(proposalId); }
   }
 
   async getProposal(proposalId: string): Promise<ImageProposal> { return this.storage.readProposal(proposalId); }
@@ -279,9 +371,9 @@ export class ImageProductionService {
     const parent = await this.storage.readProposal(proposalId);
     if (parent.proposalRound >= 2) throw new Error("The maximum of 2 image proposal rounds has been reached");
     return this.generateCandidates({
-      projectId: parent.projectId, operation: operationName(parent.operationType), prompt: amendedPrompt ?? parent.sourcePrompt,
+      projectId: parent.projectId, provider: parent.provider, operation: operationName(parent.operationType), prompt: amendedPrompt ?? parent.sourcePrompt,
       candidateCount: numberParameter(parent, "candidateCount", 3), width: numberParameter(parent, "width", 768), height: numberParameter(parent, "height", 768),
-      steps: numberParameter(parent, "steps", 24), guidance: numberParameter(parent, "guidance", 7), targetPartId: parent.targetPartId, parentProposalId: parent.proposalId,
+      steps: numberParameter(parent, "steps", 24), guidance: numberParameter(parent, "guidance", 7), model: stringParameter(parent, "model"), targetPartId: parent.targetPartId, parentProposalId: parent.proposalId,
     });
   }
 
@@ -300,6 +392,8 @@ export class ImageProductionService {
   }
 
   async cancel(proposalId: string): Promise<boolean> {
+    const controller = this.activeGenerationControllers.get(proposalId);
+    if (controller) { controller.abort(new Error("Draw Things generation was cancelled")); return true; }
     const promptId = this.activePromptIds.get(proposalId); if (!promptId || !this.provider.cancel) return false;
     return this.provider.cancel(promptId);
   }
@@ -338,3 +432,4 @@ function operationName(capability: ImageProductionCapability): keyof typeof OPER
   return entry[0] as keyof typeof OPERATION_CAPABILITY;
 }
 function numberParameter(proposal: ImageProposal, key: string, fallback: number): number { const value = proposal.generationParameters[key]; return typeof value === "number" ? value : fallback; }
+function stringParameter(proposal: ImageProposal, key: string): string | undefined { const value = proposal.generationParameters[key]; return typeof value === "string" ? value : undefined; }
