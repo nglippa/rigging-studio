@@ -149,6 +149,19 @@ export type AnatomicalPartitionGuide = {
   readonly createdAt: string;
   readonly updatedAt: string;
 };
+export const GUIDED_MANUAL_PHASES = ["body", "equipment", "review"] as const;
+export type GuidedManualPhase = (typeof GUIDED_MANUAL_PHASES)[number];
+export const GUIDED_MANUAL_INTENTS = ["replace", "add", "remove"] as const;
+export type GuidedManualIntent = (typeof GUIDED_MANUAL_INTENTS)[number];
+export type GuidedManualProgress = {
+  readonly guidedManualVersion: 1;
+  readonly phase: GuidedManualPhase;
+  readonly currentSemantic: PartSemanticType;
+  readonly completedSemantics: readonly PartSemanticType[];
+  readonly skippedSemantics: readonly PartSemanticType[];
+  readonly intent: GuidedManualIntent;
+  readonly updatedAt: string;
+};
 export type PartCutterState = {
   readonly stateVersion: 1;
   readonly sourceImageId: string;
@@ -160,6 +173,7 @@ export type PartCutterState = {
   readonly ignoredRegions: readonly IgnoredRegion[];
   readonly ownership?: OwnershipPartition;
   readonly anatomicalGuide?: AnatomicalPartitionGuide;
+  readonly guidedManual?: GuidedManualProgress;
   readonly finalized: boolean;
   readonly updatedAt: string;
 };
@@ -197,6 +211,11 @@ export const partCutterStateSchema: z.ZodType<PartCutterState> = z.object({
     zones: z.array(z.object({ zoneId: z.string().min(1), semanticType: semanticSchema, label: z.string().min(1), parentZoneId: z.string().nullable(), anchorLandmarkIds: z.array(landmarkIdSchema).min(1).max(4), bounds: rectSchema, mask: maskSchema.optional(), geometry: z.object({ kind: z.enum(["silhouette-region", "centerline-corridor", "terminal-mass"]), centerline: z.array(pointSchema).min(1).max(64), polygon: z.array(pointSchema).min(3).max(128) }).strict().optional(), optional: z.boolean(), refinementMargin: z.number().int().min(0).max(256) }).strict()).max(100),
     adaptiveMetadata: z.object({ initializationMethod: z.literal("alpha-silhouette-adaptive-v1"), topology: z.enum(["humanoid", "digitigrade", "custom"]), topologyNeedsReview: z.boolean(), proportionDescriptor: z.object({ foregroundBounds: rectSchema, headBounds: rectSchema, centerOfMass: pointSchema, bodyCenterX: z.number().finite(), headHeightRatio: z.number().finite().min(0).max(1), headWidthRatio: z.number().finite().min(0).max(1), torsoHeightRatio: z.number().finite().min(0).max(1), legLengthRatio: z.number().finite().min(0).max(1), armLengthRatio: z.number().finite().min(0).max(2), overallCompactness: z.number().finite().min(0).max(2), archetype: z.enum(["standard_chibi", "broad_chibi", "tall_chibi", "tiny_limbs", "large_head_extreme", "digitigrade", "custom"]) }).strict(), foregroundPixelCount: z.number().int().nonnegative(), inferredLandmarkIds: z.array(landmarkIdSchema), needsReviewLandmarkIds: z.array(landmarkIdSchema), runtimeMs: z.number().finite().nonnegative() }).strict().optional(),
     status: z.enum(["seeded", "ai-refined", "reviewed"]), createdAt: z.string(), updatedAt: z.string(),
+  }).strict().optional(),
+  guidedManual: z.object({
+    guidedManualVersion: z.literal(1), phase: z.enum(GUIDED_MANUAL_PHASES), currentSemantic: semanticSchema,
+    completedSemantics: z.array(semanticSchema).max(100), skippedSemantics: z.array(semanticSchema).max(100),
+    intent: z.enum(GUIDED_MANUAL_INTENTS), updatedAt: z.string(),
   }).strict().optional(),
   finalized: z.boolean(), updatedAt: z.string(),
 }).strict();

@@ -86,6 +86,11 @@ const descriptions: Readonly<Partial<Record<StudioToolName, string>>> = {
   character_create_from_prompt: "Start the prompt-to-character workflow and stop at an explicit human review boundary.",
   diagnostics_export_report: "Export JSON and optional Markdown diagnostics only under the managed Studio diagnostics directory.",
   diagnostics_export_torture_test: "Export canonical or revisioned torture-test results under the managed Studio diagnostics directory.",
+  rigging_review_provider_status: "Discover truthful local vision-review capabilities without exposing credentials or invoking a review.",
+  rigging_review_list_pending: "List pending contained visual-review jobs from the managed local queue.",
+  rigging_review_open_job: "Open one managed visual-review request, prompt, hashes, and artifact resource links without arbitrary file access.",
+  rigging_review_submit_result: "Submit one strict validated semantic visual-review verdict for a managed queued job.",
+  rigging_review_request_rerender: "Record a bounded rerender request for a managed review job without bypassing its attempt limit.",
   image_provider_status: "Check provider-neutral image-production availability without exposing sensitive environment details.",
   image_provider_list_capabilities: "List trusted image workflow capabilities and honest workflow/model availability.",
   comfy_get_status: "Check the configured localhost ComfyUI endpoint, queue, and trusted capability readiness.",
@@ -132,4 +137,5 @@ export const READ_ONLY_TOOLS = new Set<StudioToolName>([
   "image_analyze_candidate_suitability",
   "image_prepare_repair_context",
   "segmentation_status", "part_get_reconstruction_proposal", "intelligence_provider_list", "ollama_status", "ollama_models", "assistant_propose", "region_semantic_suggest",
+  "rigging_review_provider_status", "rigging_review_list_pending", "rigging_review_open_job",
 ]);

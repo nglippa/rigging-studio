@@ -38,4 +38,8 @@ export const registerStudioResources = (server: McpServer, bridge: StudioBridgeS
     const result = await bridge.imageProduction.getContactSheet(String(variables.proposalId));
     return { contents: [{ uri: uri.href, mimeType: "image/png", blob: Buffer.from(result.bytes).toString("base64") }] };
   });
+  server.registerResource("vision-review-artifact", new ResourceTemplate("rigging://review-queue/{jobId}/artifacts/{artifactName}", { list: undefined }), { mimeType: "application/octet-stream", description: "One explicitly attached artifact from a contained visual-review job" }, async (uri, variables) => {
+    const result = await bridge.visionReview.queue.readArtifact(String(variables.jobId), String(variables.artifactName));
+    return { contents: [{ uri: uri.href, mimeType: result.artifact.mimeType, blob: Buffer.from(result.bytes).toString("base64") }] };
+  });
 };

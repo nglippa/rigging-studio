@@ -7,6 +7,8 @@ export * from "./validation";
 export * from "./coordinates";
 export * from "./ownership";
 export * from "./anatomicalGuide";
+export * from "./guidedManual";
+export * from "./guidedManualBenchmark";
 export * from "./adaptiveGuide";
 export * from "./refinementEvaluation";
 export * from "./prepareWorkflow";

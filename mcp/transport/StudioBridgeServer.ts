@@ -18,10 +18,11 @@ import type { ImageApprovalPolicy, ImageProposalReviewInput } from "../../src/im
 import { ImageProposalStorage } from "../../src/image-production/assets/imageProposalStorage";
 import { LocalProjectStore } from "../storage/localProjectStore";
 import type { LocalProjectSnapshot } from "../../src/project-storage/types";
+import { VisionReviewQueue, VisionReviewService } from "../vision-review";
 
 type PendingRequest = { readonly resolve: (value: unknown) => void; readonly reject: (error: Error) => void; readonly timer: ReturnType<typeof setTimeout> };
 
-export type StudioBridgeOptions = { readonly port?: number; readonly host?: string; readonly requestTimeoutMs?: number; readonly cwd?: string; readonly imageProductionService?: ImageProductionService };
+export type StudioBridgeOptions = { readonly port?: number; readonly host?: string; readonly requestTimeoutMs?: number; readonly cwd?: string; readonly imageProductionService?: ImageProductionService; readonly visionReviewService?: VisionReviewService };
 
 export class StudioBridgeServer {
   private readonly httpServer;
@@ -42,6 +43,7 @@ export class StudioBridgeServer {
   readonly imageProduction: ImageProductionService;
   readonly imageGenerationJobs: ImageGenerationJobService;
   readonly characterPipeline: ComfyCharacterPipelineService;
+  readonly visionReview: VisionReviewService;
 
   constructor(options: StudioBridgeOptions = {}) {
     this.requestTimeoutMs = options.requestTimeoutMs ?? 30_000;
@@ -74,6 +76,7 @@ export class StudioBridgeServer {
       },
     });
     this.characterPipeline = new ComfyCharacterPipelineService(this.imageProduction);
+    this.visionReview = options.visionReviewService ?? new VisionReviewService({ queue: new VisionReviewQueue({ cwd: this.cwd }) });
     this.imageGenerationJobs = new ImageGenerationJobService(this.imageProduction);
     this.httpServer = createServer((request, response) => { void this.onHttpRequest(request, response); });
     this.server = new WebSocketServer({ server: this.httpServer });
@@ -235,6 +238,14 @@ export class StudioBridgeServer {
     response.setHeader("Access-Control-Allow-Headers", "content-type");
     response.setHeader("Cache-Control", "no-store");
     if (request.method === "OPTIONS") { response.writeHead(204).end(); return; }
+    if (request.method === "GET" && request.url?.split("?")[0] === "/vision-review/status") {
+      try {
+        response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ policy: this.visionReview.policy, providers: await this.visionReview.capabilities() }));
+      } catch (error: unknown) {
+        response.writeHead(503, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error instanceof Error ? error.message : "Vision review status failed" }));
+      }
+      return;
+    }
     if (request.url?.startsWith("/project-storage")) {
       try {
         const url = new URL(request.url, "http://127.0.0.1"); const parts = url.pathname.split("/").filter(Boolean);

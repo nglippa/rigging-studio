@@ -427,7 +427,12 @@ export class RiggingCommandService {
       case "project_list":
       case "project_import":
       case "project_reveal":
-      case "project_archive": throw new Error("Durable project storage commands are handled by the trusted local storage service");
+      case "project_archive":
+      case "rigging_review_provider_status":
+      case "rigging_review_list_pending":
+      case "rigging_review_open_job":
+      case "rigging_review_submit_result":
+      case "rigging_review_request_rerender": throw new Error("Durable project/review queue commands are handled by the trusted local service");
       case "character_set_prompt": return this.setCharacterPrompt(asString(args.prompt), actor);
       case "character_generate_image": return this.generateImage(asString(args.mode) as "generate" | "regenerate" | "variant", actor);
       case "character_import_generation": throw new Error("External generations must be normalized by the MCP managed-ingress service");

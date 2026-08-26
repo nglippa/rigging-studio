@@ -5,6 +5,7 @@ import { jsonValueSchema } from "../../rigging/schema/schemas";
 import { PART_SEMANTIC_TYPES } from "../../part-cutter/semanticTaxonomy";
 import { characterSegmentationResponseSchema, maskSchema, rectSchema } from "../../character-generation/segmentation/segmentationSchema";
 import { occlusionReconstructionResultSchema } from "../../character-generation/providers/characterPipelineProvider";
+import { visionReviewResultSchema } from "../../vision-review";
 
 const id = z.string().trim().min(1).max(160);
 const projectId = z.object({ projectId: id.optional() }).strict();
@@ -27,6 +28,7 @@ export const TOOL_NAMES = [
   "preview_render", "preview_get_last", "validation_get", "project_run_smoke_test",
   "transaction_begin", "transaction_commit", "transaction_rollback", "character_create_from_prompt",
   "diagnostics_export_report", "diagnostics_export_torture_test",
+  "rigging_review_provider_status", "rigging_review_list_pending", "rigging_review_open_job", "rigging_review_submit_result", "rigging_review_request_rerender",
   "image_provider_status", "image_provider_list_capabilities", "comfy_get_status", "image_generate_candidates", "character_generate_with_comfy",
   "image_provider_list", "character_generate", "character_generate_variant", "image_generation_get_job", "image_generation_get_proposal",
   "image_generation_render_proposal", "image_generation_approve_candidate", "image_generation_reject_candidate",
@@ -144,6 +146,11 @@ const schemas = {
   diagnostics_export_torture_test: z.object({
     results: z.record(z.string(), jsonValueSchema), markdown: z.string().max(2_000_000), overwrite: z.boolean().default(false),
   }).strict(),
+  rigging_review_provider_status: z.object({}).strict(),
+  rigging_review_list_pending: z.object({}).strict(),
+  rigging_review_open_job: z.object({ jobId: id }).strict(),
+  rigging_review_submit_result: z.object({ jobId: id, result: visionReviewResultSchema }).strict(),
+  rigging_review_request_rerender: z.object({ jobId: id, reason: z.string().trim().min(1).max(2000) }).strict(),
   image_provider_status: z.object({}).strict(),
   image_provider_list_capabilities: z.object({ refresh: z.boolean().default(false) }).strict(),
   comfy_get_status: z.object({}).strict(),

@@ -46,6 +46,23 @@ export const createRiggingStudioMcpServer = (bridge: StudioBridgeServer): McpSer
         return { content: [{ type: "text", text: JSON.stringify(disconnected, null, 2) }], structuredContent: disconnected };
       }
       try {
+        if (name === "rigging_review_provider_status") return toolResponse({ success: true, policy: bridge.visionReview.policy, providers: await bridge.visionReview.capabilities() });
+        if (name === "rigging_review_list_pending") {
+          const pending = await bridge.visionReview.listPending();
+          return toolResponse({ success: true, jobs: pending.map(({ job, status }) => ({ jobId: job.jobId, type: job.type, mode: job.mode, subject: job.subject, attempt: job.attempt, maxAttempts: job.maxAttempts, parentJobId: job.parentJobId, status: status.status, artifactCount: job.artifacts.length, createdAt: job.createdAt })) });
+        }
+        if (name === "rigging_review_open_job") {
+          const parsed = studioToolSchemas.rigging_review_open_job.parse(input) as { readonly jobId: string };
+          return toolResponse({ success: true, ...(await bridge.visionReview.queue.openPacket(parsed.jobId)) });
+        }
+        if (name === "rigging_review_submit_result") {
+          const parsed = studioToolSchemas.rigging_review_submit_result.parse(input) as { readonly jobId: string; readonly result: unknown };
+          return toolResponse({ success: true, ...(await bridge.visionReview.queue.submitManualResult(parsed.jobId, parsed.result)) });
+        }
+        if (name === "rigging_review_request_rerender") {
+          const parsed = studioToolSchemas.rigging_review_request_rerender.parse(input) as { readonly jobId: string; readonly reason: string };
+          return toolResponse({ success: true, ...(await bridge.visionReview.queue.requestRerender(parsed.jobId, parsed.reason)) });
+        }
         if (name === "project_storage_status") return toolResponse({ success: true, ...(await bridge.projectStorage.status()) });
         if (name === "project_list") return toolResponse({ success: true, projects: await bridge.projectStorage.list() });
         if (name === "project_open") {
