@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { PartCutterWorkspace } from "./PartCutterWorkspace";
 import { ProjectHydrationBoundary } from "../studio-ui/ProjectHydrationBoundary";
 import "./part-cutter.css";
+import "../studio-ui/workstation.css";
 
 export const metadata: Metadata = {
   title: "Part Cutter | Rig Studio",

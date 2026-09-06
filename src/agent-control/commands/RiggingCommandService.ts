@@ -43,6 +43,8 @@ import {
   recordOwnershipRelabel, reshapeRegionEdge, splitPart as splitPartCut, validateReconstructionAsset, type PartCutterState, type PartSemanticType, type RegionEdge,
 } from "../../part-cutter";
 import { OllamaProvider, type IntelligenceProvider } from "../../intelligence";
+import { applyDoctorProposal } from "../../animation-doctor/commands";
+import { doctorProposalSchema, type DoctorIdentity } from "../../animation-doctor/schema";
 
 type JsonObject = Readonly<Record<string, unknown>>;
 const isJsonObject = (value: JsonValue | undefined): value is Readonly<Record<string, JsonValue>> => Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -281,6 +283,18 @@ export class RiggingCommandService {
     const problems = blockingRigProjectProblems(validateRigProject(snapshot));
     if (problems.length) throw new Error(`Project integrity validation failed: ${problems.map((problem) => problem.message).join("; ")}`);
     return snapshot;
+  }
+  captureMotionReviewIdentity(clipId: string): DoctorIdentity {
+    const snapshot = this.getDurableSnapshot(); const operation = this.captureProjectOperation("animation-doctor");
+    if (!snapshot.animations?.animations.some((clip) => clip.id === clipId)) throw new Error("Review clip is missing");
+    return { projectId: snapshot.localProjectId ?? snapshot.project?.id ?? `editor:${snapshot.rig?.id}`, projectSessionToken: operation.projectSessionToken, revision: operation.revision, clipId, beforeDigest: canonicalProjectStateDigest(snapshot) };
+  }
+
+  applyMotionReview(input: unknown): CommandResult<JsonObject> {
+    const proposal = doctorProposalSchema.parse(input);
+    const currentIdentity = this.captureMotionReviewIdentity(proposal.identity.clipId);
+    const candidate = applyDoctorProposal(this.getDurableSnapshot(), proposal, currentIdentity);
+    return this.mutateAnimations("Accept motion review", () => candidate.animations!, "Human");
   }
   installDurableSnapshot(snapshot: LocalProjectSnapshot, actor = "Human"): void {
     const targetProjectId = snapshot.localProjectId ?? snapshot.project?.id ?? `editor:${snapshot.rig?.id ?? "unknown"}`;

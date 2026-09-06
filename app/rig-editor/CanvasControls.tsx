@@ -1,5 +1,7 @@
 "use client";
 
+import { StudioIcon } from "../studio-ui/StudioIcon";
+
 type Props = {
   readonly tool: "select" | "pan";
   readonly onTool: (tool: "select" | "pan") => void;
@@ -24,9 +26,9 @@ function Toggle({ label, checked, onChange }: { readonly label: string; readonly
 
 export function CanvasControls(props: Props) {
   return <div className="canvas-controls" aria-label="Canvas controls">
-    <div className="canvas-tool-group"><button type="button" className={props.tool === "select" ? "is-active" : ""} onClick={() => props.onTool("select")} aria-pressed={props.tool === "select"}>⌁ <span>Select</span></button><button type="button" className={props.tool === "pan" ? "is-active" : ""} onClick={() => props.onTool("pan")} aria-pressed={props.tool === "pan"}>✥ <span>Pan</span></button></div>
+    <div className="canvas-tool-group"><button type="button" className={props.tool === "select" ? "is-active" : ""} onClick={() => props.onTool("select")} aria-pressed={props.tool === "select"} aria-label="Select"><StudioIcon name="select" /><span>Select</span></button><button type="button" className={props.tool === "pan" ? "is-active" : ""} onClick={() => props.onTool("pan")} aria-pressed={props.tool === "pan"} aria-label="Pan"><StudioIcon name="pan" /><span>Pan</span></button></div>
     <details className="canvas-popover" data-dismissible-menu><summary>View <i>⌄</i></summary><div><Toggle label="Bones & pivots" checked={props.showBones} onChange={props.onShowBones} /><Toggle label="Grid" checked={props.showGrid} onChange={props.onShowGrid} /><Toggle label="Part bounds" checked={props.showBounds} onChange={props.onShowBounds} /></div></details>
     <details className="canvas-popover" data-dismissible-menu><summary>Snap <i>⌄</i></summary><div><Toggle label="Pixel snap" checked={props.wholePixelSnap} onChange={props.onWholePixelSnap} /><Toggle label="Grid snap" checked={props.snapToGrid} onChange={props.onSnapToGrid} /><Toggle label="Angle snap · 15°" checked={props.rotationSnap} onChange={props.onRotationSnap} /></div></details>
-    <button type="button" className="canvas-fit" onClick={props.onFit} title="Fit character (F)">⌗ <span>Fit</span></button>
+    <button type="button" className="canvas-fit" onClick={props.onFit} title="Fit character (F)" aria-label="Fit character"><StudioIcon name="fit" /><span>Fit</span></button>
   </div>;
 }

@@ -147,10 +147,10 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
     const left = -width; const right = width * 2; const top = -height; const bottom = height * 2;
     for (let x = left; x <= right; x += 16) state.grid.moveTo(x, top).lineTo(x, bottom);
     for (let y = top; y <= bottom; y += 16) state.grid.moveTo(left, y).lineTo(right, y);
-    state.grid.stroke({ color: 0x7667c9, width: 1, alpha: 0.07 });
+    state.grid.stroke({ color: 0x8da6c2, width: 1, alpha: 0.025 });
     for (let x = left; x <= right; x += 64) state.grid.moveTo(x, top).lineTo(x, bottom);
     for (let y = top; y <= bottom; y += 64) state.grid.moveTo(left, y).lineTo(right, y);
-    state.grid.stroke({ color: 0x8f82e8, width: 1, alpha: 0.13 });
+    state.grid.stroke({ color: 0x8da6c2, width: 1, alpha: 0.065 });
   };
 
   const selectedBone = (): string | null => propsRef.current.selections.find((selection) => selection.type === "bone")?.id ?? null;
@@ -192,14 +192,15 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
         const selected = bone.id === primaryBoneId;
         const related = bone.id === chain?.parentId || (chain?.childIds.includes(bone.id) ?? false);
         const hovered = hoveredSelectionRef.current?.type === "bone" && hoveredSelectionRef.current.id === bone.id;
-        const color = selected ? 0x5de4ff : related || hovered ? 0x56cde9 : 0x8b86ae;
-        const alpha = selected ? 1 : related ? 0.58 : hovered ? 0.88 : primaryBoneId ? 0.2 : 0.48;
+        const color = selected ? 0x68e1ef : related || hovered ? 0x85c9df : 0xa0b1c8;
+        const alpha = selected ? 1 : related ? 0.7 : hovered ? 0.88 : primaryBoneId ? 0.22 : 0.62;
         if (selected || hovered) state.overlay.moveTo(transform.x, transform.y).lineTo(end.x, end.y).stroke({ color, width: (selected ? 8 : 5) / zoom, alpha: selected ? 0.16 : 0.1 });
-        state.overlay.moveTo(transform.x, transform.y).lineTo(end.x, end.y).stroke({ color, width: (selected ? 3 : related ? 2 : 1.25) / zoom, alpha });
+        state.overlay.moveTo(transform.x, transform.y).lineTo(end.x, end.y).stroke({ color, width: (selected ? 1.75 : related ? 1.25 : 1) / zoom, alpha });
         if (selected) {
-          state.overlay.circle(transform.x, transform.y, 9 / zoom).fill({ color: 0xa77bff, alpha: 0.12 * pulse });
-          state.overlay.circle(transform.x, transform.y, 5.5 / zoom).fill({ color: 0xa77bff, alpha: pulse });
-        } else state.overlay.circle(transform.x, transform.y, (related || hovered ? 4 : 3) / zoom).fill({ color, alpha: Math.min(0.9, alpha + 0.2) });
+          state.overlay.circle(transform.x, transform.y, 8 / zoom).stroke({ color, width: 1 / zoom, alpha: 0.5 * pulse });
+          state.overlay.circle(transform.x, transform.y, 4 / zoom).fill({ color: 0x090e15 }).stroke({ color, width: 1.25 / zoom, alpha: 1 });
+          state.overlay.circle(transform.x, transform.y, 1.5 / zoom).fill({ color: 0xe9faff });
+        } else state.overlay.circle(transform.x, transform.y, (related || hovered ? 3.5 : 2.5) / zoom).fill({ color: 0x090e15 }).stroke({ color, width: 1 / zoom, alpha: Math.min(0.9, alpha + 0.2) });
       });
     }
     const boneId = primaryBoneId;
@@ -211,7 +212,14 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
         const handle = transformPoint(matrixFromTransform({ x: transform.x, y: transform.y, rotation: transform.rotation, scaleX: 1, scaleY: 1 }), { x: radius, y: 0 });
         state.overlay.circle(transform.x, transform.y, radius).stroke({ color: 0xa77bff, width: 1 / zoom, alpha: 0.3 });
         state.overlay.moveTo(transform.x, transform.y).lineTo(handle.x, handle.y).stroke({ color: 0xa77bff, width: 1 / zoom, alpha: 0.7 });
-        state.overlay.circle(handle.x, handle.y, 7 / zoom).fill({ color: 0xa77bff, alpha: pulse });
+        state.overlay.circle(handle.x, handle.y, 5 / zoom).fill({ color: 0x090e15 }).stroke({ color: 0xac97ff, width: 1.5 / zoom, alpha: pulse });
+        // Quarter-turn ticks clarify the existing rotation ring without changing its hit area.
+        for (let tick = 0; tick < 4; tick += 1) {
+          const angle = tick * Math.PI / 2;
+          state.overlay.moveTo(transform.x + Math.cos(angle) * (radius - 3 / zoom), transform.y + Math.sin(angle) * (radius - 3 / zoom))
+            .lineTo(transform.x + Math.cos(angle) * (radius + 3 / zoom), transform.y + Math.sin(angle) * (radius + 3 / zoom))
+            .stroke({ color: 0xac97ff, width: 1 / zoom, alpha: 0.55 });
+        }
         if (currentProps.interactionMode === "pivots") {
           const guide = 26 / zoom;
           state.overlay.moveTo(transform.x - guide, transform.y).lineTo(transform.x + guide, transform.y).stroke({ color: 0xa77bff, width: 1 / zoom, alpha: 0.26 });
@@ -269,7 +277,7 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
       const { Application, Container, Graphics } = await import("pixi.js");
       if (cancelled) return;
       const app = new Application();
-      await app.init({ resizeTo: mount, backgroundColor: 0x080718, antialias: true, autoDensity: true, resolution: Math.min(2, window.devicePixelRatio || 1) });
+      await app.init({ resizeTo: mount, backgroundColor: 0x090e15, backgroundAlpha: 0, antialias: true, autoDensity: true, resolution: Math.min(2, window.devicePixelRatio || 1) });
       if (cancelled) { app.destroy(true); return; }
       mount.appendChild(app.canvas);
       const view = new Container();
@@ -568,5 +576,5 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
     props.onZoom(scale);
   };
 
-  return <div ref={mountRef} className={`editor-viewport ${props.canvasTool === "pan" ? "is-pan-tool" : "is-select-tool"}`} data-interaction-mode={props.interactionMode ?? "body"} data-canvas-project-id={props.projectId ?? "browser-draft"} tabIndex={0} aria-label="Rig editor viewport" onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp} onPointerLeave={() => setHoveredSelection(null)} onWheel={wheel} onContextMenu={(event) => event.preventDefault()}>{hoveredSelection && props.canvasTool !== "pan" && <span className="viewport-semantic-hint">{hoveredSelection.type === "bone" ? "Joint" : "Part"} · {hoveredSelection.id.replaceAll("-", " ")}</span>}</div>;
+  return <div ref={mountRef} className={`editor-viewport ${props.canvasTool === "pan" ? "is-pan-tool" : "is-select-tool"}`} data-interaction-mode={props.interactionMode ?? "body"} data-canvas-project-id={props.projectId ?? "browser-draft"} role="region" tabIndex={0} aria-label="Rig editor viewport" onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp} onPointerLeave={() => setHoveredSelection(null)} onWheel={wheel} onContextMenu={(event) => event.preventDefault()}>{hoveredSelection && props.canvasTool !== "pan" && <span className="viewport-semantic-hint">{hoveredSelection.type === "bone" ? "Joint" : "Part"} · {hoveredSelection.id.replaceAll("-", " ")}</span>}</div>;
 });

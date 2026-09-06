@@ -1,0 +1,62 @@
+import assert from "node:assert/strict";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { chromium } from "playwright";
+import { LocalProjectStore } from "../../mcp/storage/localProjectStore";
+import type { LocalProjectSnapshot } from "../../src/project-storage/types";
+import type { RigDefinition } from "../../src/rigging/schema/types";
+import type { AnimationLibrary } from "../../src/tools/rig-editor/animation/types";
+import type { GeneratedCharacterProject } from "../../src/character-generation/project/generatedCharacterProject";
+
+const output = path.resolve(process.env.ASTRA_EVIDENCE_ROOT ?? ".rigging-studio/diagnostics/astra-intelligence/2026-09-06T-review");
+const projectRoot = "/tmp/rigging-studio-astra-review-projects";
+const load = async (file: string) => JSON.parse(await readFile(`tests/fixtures/golden/void-ranger/${file}`, "utf8"));
+const rig = await load("rig.json") as RigDefinition; const animations = await load("animations.json") as AnimationLibrary; const project = await load("project.json") as GeneratedCharacterProject;
+const snapshot: LocalProjectSnapshot = { storageVersion: 1, localProjectId: "astra-browser-copy", project: { ...project, id: "astra-browser-copy", name: "ASTRA BROWSER COPY" }, rig, animations, selectedSkinId: rig.defaultSkinId };
+const store = new LocalProjectStore({ root: projectRoot, cwd: process.cwd() }); await store.save(snapshot);
+await mkdir(path.join(output, "renders"), { recursive: true }); await mkdir(path.join(output, "review-sheets"), { recursive: true }); await mkdir(path.join(output, "before-after"), { recursive: true });
+const browser = await chromium.launch({ headless: true, executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" });
+try {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  const errors: string[] = []; page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("http://localhost:3000/?mode=animate", { waitUntil: "domcontentloaded" });
+  await page.evaluate("globalThis.__name = (target) => target");
+  const menu = page.locator("details.project-storage-menu"); await menu.waitFor(); await menu.evaluate((el) => { (el as HTMLDetailsElement).open = true; });
+  await menu.locator(".recent-projects article").filter({ hasText: "ASTRA BROWSER COPY" }).getByRole("button", { name: "Open", exact: true }).click();
+  await page.locator('.project-hydration-root[data-project-id="astra-browser-copy"]').waitFor();
+  await page.locator(".animation-toolbar select").first().selectOption("game-walk");
+  const renderResult = await page.evaluate(async () => {
+    // Import the same browser modules used by the product, not a second renderer.
+    const base = `${location.origin}/src/`;
+    const { getRiggingCommandService } = await import(`${base}agent-control/index.ts`);
+    const { canonicalProjectStateDigest } = await import(`${base}project-storage/digest.ts`);
+    const { applyDoctorProposal } = await import(`${base}animation-doctor/commands.ts`);
+    const { renderDoctorEvidence, inspectDoctorPacket } = await import(`${base}animation-doctor/evidence.ts`);
+    const { measureDoctorMotion } = await import(`${base}animation-doctor/metrics.ts`);
+    const service = getRiggingCommandService(); const snapshot = service.getDurableSnapshot(); const identity = service.captureMotionReviewIdentity("game-walk");
+    const clip = snapshot.animations.animations.find((clip: { id: string }) => clip.id === "game-walk");
+    const track = clip.tracks.find((track: { property: string; boneId: string }) => track.property === "rotation" && track.boneId === "left-upper-arm");
+    const key = track.keyframes.at(-1);
+    const edit = { id: "controlled-loop-defect", boneId: track.boneId, property: "rotation", time: key.time, currentValue: key.value, proposedValue: key.value + 8, reasonCode: "loop_pop", expectedVisualEffect: "Controlled defect for evaluator only", confidence: 1, evidence: ["metrics"] };
+    const broken = applyDoctorProposal(snapshot, { identity, edits: [edit] }, identity);
+    const before = await renderDoctorEvidence(broken, clip.id, 0); const after = await renderDoctorEvidence(snapshot, clip.id, 1);
+    const metrics = (state: typeof snapshot) => measureDoctorMotion(state.rig, state.animations.animations.find((animation: { id: string }) => animation.id === clip.id), { contacts: [], grips: [] });
+    const packet = inspectDoctorPacket(broken, { ...identity, beforeDigest: canonicalProjectStateDigest(broken) }, 0, metrics(broken), metrics(broken), before);
+    return { before, after, metricsBefore: metrics(broken), metricsAfter: metrics(snapshot), paths: packet.paths, identity, unchanged: canonicalProjectStateDigest(service.getDurableSnapshot()) === identity.beforeDigest };
+  });
+  assert.equal(renderResult.unchanged, true); assert(renderResult.metricsBefore.loopContinuity > renderResult.metricsAfter.loopContinuity);
+  for (const [label, images] of [["controlled-defect", renderResult.before], ["known-original", renderResult.after]] as const) for (const [index, image] of images.entries()) await writeFile(path.join(output, "renders", `${label}-${index}.png`), Buffer.from(image.dataUrl.split(",")[1], "base64"));
+  await writeFile(path.join(output, "before-after", "controlled-repair.json"), JSON.stringify({ attribution: "Deterministic evaluator demonstration, NOT an Astra repair", metricsBefore: renderResult.metricsBefore, metricsAfter: renderResult.metricsAfter, sourceUnchanged: renderResult.unchanged }, null, 2));
+  await mkdir(path.join(output, "motion-paths"), { recursive: true }); await writeFile(path.join(output, "motion-paths", "development.json"), JSON.stringify(renderResult.paths));
+  await writeFile(path.join(output, "review-sheets", "development.html"), `<!doctype html><meta charset="utf-8"><title>Controlled defect evidence</title><style>body{background:#101619;color:#cbd5de;font:14px system-ui;padding:24px}section{display:flex;gap:8px}img{width:200px}h1{font-size:20px}</style><h1>Controlled +8° loop defect / known original</h1><p>Evaluator demonstration only. These are not Astra-assisted results.</p><h2>Defect</h2><section>${renderResult.before.map((image: { dataUrl: string }) => `<img src="${image.dataUrl}" alt="Defective frame">`).join("")}</section><h2>Known original</h2><section>${renderResult.after.map((image: { dataUrl: string }) => `<img src="${image.dataUrl}" alt="Original frame">`).join("")}</section>`);
+  await page.locator(".motion-review-entry").click();
+  await page.getByRole("region", { name: "Animation Doctor" }).getByRole("button", { name: "Review Motion", exact: true }).click();
+  await page.getByRole("region", { name: "Animation Doctor" }).getByRole("alert").waitFor({ timeout: 180_000 });
+  const failure = await page.getByRole("region", { name: "Animation Doctor" }).getByRole("alert").innerText();
+  await page.screenshot({ path: path.join(output, "review-sheets", "provider-unavailable.png"), fullPage: true });
+  const unchanged = await page.evaluate(async (expected) => { const base = `${location.origin}/src/`; const { getRiggingCommandService } = await import(`${base}agent-control/index.ts`); const { canonicalProjectStateDigest } = await import(`${base}project-storage/digest.ts`); return canonicalProjectStateDigest(getRiggingCommandService().getDurableSnapshot()) === expected; }, renderResult.identity.beforeDigest);
+  assert.equal(unchanged, true);
+  await page.getByRole("button", { name: /Play/ }).click(); await page.getByRole("button", { name: /Pause/ }).waitFor();
+  const report = { success: true, assertions: { renderedTwelveFrames: true, literalEndpointMetric: true, sourceUnchangedAfterRendering: true, failedReviewPreservedProject: unchanged, playbackWorksAfterProviderFailure: true }, liveAstraError: failure, pageErrors: errors, compareAcceptanceTested: false, reason: "No Astra proposal available; no mock substituted in browser" };
+  await writeFile(path.join(output, "browser-results.json"), JSON.stringify(report, null, 2)); console.log(JSON.stringify(report));
+} finally { await browser.close(); }

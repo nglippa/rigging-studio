@@ -1,0 +1,267 @@
+/* Precision workstation presentation. Layout and interaction mechanics remain
+   in the owning workspace styles; this shared layer owns the visual system. */
+:root {
+  --ws-bg: #080b10;
+  --ws-recess: #090e15;
+  --ws-panel: #11161e;
+  --ws-raised: #19212c;
+  --ws-glass: rgba(17, 22, 30, .96);
+  --ws-text: #e9eef6;
+  --ws-secondary: #b0bbcc;
+  --ws-muted: #8d9bb0;
+  --ws-line: #283341;
+  --ws-line-soft: #1d2733;
+  --ws-accent: #ac97ff;
+  --ws-signal: #68e1ef;
+  --ws-success: #7be2b5;
+  --ws-warning: #efc17e;
+  --ws-error: #ff879c;
+  --ws-selection: rgba(104, 225, 239, .09);
+  --ws-guide: rgba(104, 225, 239, .035);
+  --glow-1: 0 0 8px rgba(104, 225, 239, .12);
+  --glow-2: 0 0 16px rgba(104, 225, 239, .18);
+  --glow-3: 0 0 24px rgba(172, 151, 255, .22);
+  --ws-radius: 6px;
+  --ws-space-1: 4px;
+  --ws-space-2: 8px;
+  --ws-space-3: 12px;
+  --ws-space-4: 16px;
+  --ws-space-5: 24px;
+  --ws-font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --ws-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+
+:is(.rig-editor-shell, .part-cutter-shell) {
+  --space-bg: var(--ws-bg);
+  --space-bg-elevated: var(--ws-panel);
+  --space-panel: var(--ws-glass);
+  --space-rail: var(--ws-bg);
+  --space-text: var(--ws-text);
+  --space-text-secondary: var(--ws-secondary);
+  --space-text-muted: var(--ws-muted);
+  --space-separator: var(--ws-line-soft);
+  --space-separator-strong: var(--ws-line);
+  --space-cyan: var(--ws-signal);
+  --space-violet: var(--ws-accent);
+  --space-blue: #8ba9f4;
+  --space-green: var(--ws-success);
+  --space-warning: var(--ws-warning);
+  --space-danger: var(--ws-error);
+  --space-glow-cyan: var(--glow-1);
+  --space-glow-violet: var(--glow-3);
+  --font-micro: 11px;
+  --font-caption: 12px;
+  --font-ui: 13px;
+  --font-nav: 13px;
+  --font-section: 14px;
+  --font-stage: 13px;
+  --font-brand: 15px;
+  --font-action: 13px;
+  color: var(--ws-text);
+  font-family: var(--ws-font);
+  font-variant-numeric: tabular-nums;
+  background: var(--ws-bg);
+}
+:is(.rig-editor-shell, .part-cutter-shell) :is(button, input, select, textarea) { font-family: inherit; }
+:is(.rig-editor-shell, .part-cutter-shell) :is(button, a, summary):hover:not(:disabled) { transform: none; filter: none; }
+:is(.rig-editor-shell, .part-cutter-shell) button:active:not(:disabled) { transform: translateY(1px); filter: brightness(.9); }
+:is(.rig-editor-shell, .part-cutter-shell) :is(button, a, summary, input, select, textarea):focus-visible { outline: 2px solid var(--ws-signal); outline-offset: 3px; }
+:is(.rig-editor-shell, .part-cutter-shell) :is(input, select, textarea) { border-color: var(--ws-line); background: var(--ws-recess); border-radius: 4px; color: var(--ws-text); color-scheme: dark; }
+:is(.rig-editor-shell, .part-cutter-shell) :is(input, select, textarea):focus { box-shadow: 0 0 0 2px var(--ws-selection); }
+:is(.rig-editor-shell, .part-cutter-shell) :is(small, p) { text-shadow: none; }
+:is(.rig-editor-shell, .part-cutter-shell) * { scrollbar-width: thin; scrollbar-color: #39475a transparent; }
+
+/* Command rail: modes of one instrument, with light reserved for the active mode. */
+:is(.rig-editor-shell, .part-cutter-shell) .studio-command-rail { height: 56px; grid-template-columns: minmax(250px, 1fr) auto minmax(350px, 1fr); background: var(--ws-bg); border-color: var(--ws-line); box-shadow: none; backdrop-filter: none; }
+:is(.rig-editor-shell, .part-cutter-shell) :is(.studio-mark, .studio-mode-nav, .studio-mode-nav button) { height: 56px; }
+:is(.rig-editor-shell, .part-cutter-shell) .studio-mark b { width: 30px; height: 30px; border: 1px solid #5a667f; border-radius: 8px 2px; background: #17212d; color: var(--ws-signal); box-shadow: inset 2px 0 var(--ws-signal); font: 600 11px var(--ws-mono); }
+:is(.rig-editor-shell, .part-cutter-shell) .studio-mark span { font-weight: 600; letter-spacing: -.035em; }
+:is(.rig-editor-shell, .part-cutter-shell) .studio-project-identity>span { font-size: 12px; font-weight: 450; }
+:is(.rig-editor-shell, .part-cutter-shell) .studio-mode-nav::before,
+:is(.rig-editor-shell, .part-cutter-shell) .studio-mode-nav::after { display: none; }
+:is(.rig-editor-shell, .part-cutter-shell) .studio-mode-nav button { min-width: 108px; gap: 9px; font-weight: 550; text-transform: capitalize; letter-spacing: .01em; color: var(--ws-muted); }
+:is(.rig-editor-shell, .part-cutter-shell) .studio-mode-nav button span { background: transparent; }
+:is(.rig-editor-shell, .part-cutter-shell) .studio-mode-nav button i { width: 21px; height: 21px; border-radius: 5px; color: var(--ws-muted); border-color: var(--ws-line); background: transparent; box-shadow: none; font: 10px var(--ws-mono); }
+:is(.rig-editor-shell, .part-cutter-shell) .studio-mode-nav button.is-complete { color: var(--ws-secondary); }
+:is(.rig-editor-shell, .part-cutter-shell) .studio-mode-nav button.is-complete i { color: var(--ws-success); border-color: transparent; background: transparent; }
+:is(.rig-editor-shell, .part-cutter-shell) .studio-mode-nav button.is-active { color: var(--ws-text); background: linear-gradient(0deg, rgba(104,225,239,.08), transparent 80%); box-shadow: inset 0 -2px var(--ws-signal); }
+:is(.rig-editor-shell, .part-cutter-shell) .studio-mode-nav button.is-active i { background: var(--ws-selection); border-color: #426a79; color: var(--ws-signal); box-shadow: var(--glow-1); }
+:is(.rig-editor-shell, .part-cutter-shell) :is(.rail-validity, .connection-cluster>summary, .project-storage-menu>summary) { min-height: 32px!important; height: 32px!important; font-size: 11px!important; font-weight: 500!important; letter-spacing: .015em; text-transform: none; border-radius: 5px!important; }
+:is(.rig-editor-shell, .part-cutter-shell) .project-storage-menu>summary { background: transparent; border-color: var(--ws-line); font-family: var(--ws-mono); white-space: nowrap; }
+:is(.rig-editor-shell, .part-cutter-shell) .project-storage-menu>summary span { max-width: 110px; }
+:is(.rig-editor-shell, .part-cutter-shell) .rail-export { min-height: 32px!important; height: 32px!important; padding-inline: 12px!important; border-radius: 5px!important; color: var(--ws-secondary)!important; background: var(--ws-panel)!important; border: 1px solid var(--ws-line)!important; box-shadow: none!important; font-weight: 550!important; }
+:is(.rig-editor-shell, .part-cutter-shell) .rail-icon-button { min-height: 32px; width: 32px; min-width: 32px; height: 32px; }
+:is(.rig-editor-shell, .part-cutter-shell) :is(.systems-popover, .rail-overflow>div, .project-storage-popover, .canvas-popover>div, .animation-manage>div, .animation-ghosts>div, .cutter-view-popover>div, .semantic-chooser) { background: var(--ws-glass); border: 1px solid #3b485b; border-radius: 7px; box-shadow: 0 16px 40px #03060bb3, inset 0 1px #ffffff08; backdrop-filter: blur(8px); }
+:is(.rig-editor-shell, .part-cutter-shell) .system-status-row { background: transparent; border-color: var(--ws-line-soft); }
+:is(.rig-editor-shell, .part-cutter-shell) .system-status-row small { color: var(--ws-muted); }
+
+/* Stage chamber and navigation. The sprite pixels stay unfiltered. */
+.rig-editor-shell { grid-template-rows: 56px minmax(0,1fr); }
+.rig-editor-shell :is(.editor-left-panel, .editor-right-panel, .animate-bones, .animate-inspector) { background: var(--ws-panel); border-color: var(--ws-line); }
+.rig-editor-shell :is(.panel-identity, .animation-library-heading) { min-height: 38px; height: 38px; background: transparent; color: var(--ws-muted); font-size: 11px; font-weight: 600; letter-spacing: .12em; }
+.rig-editor-shell .semantic-section-nav { gap: 2px; padding: 6px; }
+.rig-editor-shell .semantic-section-nav button { min-height: 32px; border-radius: 4px; color: var(--ws-muted); font-size: 12px; }
+.rig-editor-shell .semantic-section-nav button.is-active { color: var(--ws-text); background: var(--ws-selection); border-color: transparent; box-shadow: inset 2px 0 var(--ws-signal); }
+.rig-editor-shell .semantic-group-trigger { height: 34px!important; min-height: 34px!important; color: var(--ws-secondary)!important; background: transparent!important; font-size: 12px!important; font-weight: 550!important; }
+.rig-editor-shell .semantic-object { min-height: 32px; height: 32px; font-size: 12px; color: var(--ws-secondary); }
+.rig-editor-shell :is(.semantic-object.is-selected, .animate-bone-list>button.selected) { background: var(--ws-selection); color: var(--ws-signal); box-shadow: inset 2px 0 var(--ws-signal); border-right: 0; }
+.rig-editor-shell .semantic-object small { color: var(--ws-muted); font-size: 11px; }
+.rig-editor-shell :is(.semantic-summary, .inspector-heading) { background: transparent; }
+.rig-editor-shell .inspector-heading { border-bottom: 1px solid var(--ws-line); }
+.rig-editor-shell .inspector-heading strong { font-size: 19px; font-weight: 550; letter-spacing: -.03em; }
+.rig-editor-shell .inspector-heading>span { color: var(--ws-signal); font: 10px var(--ws-mono); letter-spacing: .12em; }
+.rig-editor-shell .inspector-field { color: var(--ws-secondary); }
+.rig-editor-shell .inspector-field :is(input, select) { height: 32px; font-family: var(--ws-mono); font-weight: 450; }
+.rig-editor-shell .inspector-grid .inspector-field { grid-template-columns: 62px minmax(0,1fr); gap: 5px; }
+.rig-editor-shell .editor-viewport { background: radial-gradient(ellipse at 50% 48%,#182a37 0%,#101a25 36%,#090e15 75%); }
+.rig-editor-shell .editor-viewport::after { background: none; box-shadow: inset 0 0 80px #03060b44; }
+.rig-editor-shell .editor-viewport::before { content: ""; position: absolute; z-index: 2; inset: 12px; pointer-events: none; border: 1px solid #68e1ef24; border-radius: 2px; mask-image: conic-gradient(at 24px 24px, transparent 75%, #000 0); mask-size: calc(100% - 24px) calc(100% - 24px); }
+.rig-editor-shell .editor-viewport[data-interaction-mode]::after { background: none; }
+.rig-editor-shell .editor-viewport[data-interaction-mode="pivots"] { background: radial-gradient(ellipse at 50% 48%,#212138 0%,#121923 40%,#090e15 75%); }
+.rig-editor-shell .canvas-controls { padding: 3px; border-color: var(--ws-line); border-radius: 6px; background: var(--ws-glass); box-shadow: 0 6px 18px #03060b55; backdrop-filter: none; }
+.rig-editor-shell :is(.canvas-controls button, .canvas-popover summary, .canvas-tool-group, .canvas-popover) { height: 32px; min-height: 32px; font-size: 12px; }
+.rig-editor-shell .canvas-tool-group button.is-active { color: var(--ws-signal); background: var(--ws-selection); box-shadow: inset 0 -1px #68e1ef88; font-weight: 550; }
+.rig-editor-shell .selection-breadcrumb { border: 0; background: transparent; font-size: 12px; }
+.rig-editor-shell .setup-workflow-rail { border-color: var(--ws-line); border-radius: 6px; background: var(--ws-glass); box-shadow: none; backdrop-filter: none; }
+.rig-editor-shell .setup-progress button { text-transform: none; font-size: 12px!important; letter-spacing: 0; font-weight: 550!important; color: var(--ws-muted)!important; }
+.rig-editor-shell .setup-progress button>i { border-radius: 4px; background: transparent!important; color: inherit!important; border-color: var(--ws-line)!important; box-shadow: none!important; }
+.rig-editor-shell .setup-progress button[data-state="current"] { color: var(--ws-signal)!important; }
+.rig-editor-shell .setup-progress button[data-state="complete"] { color: var(--ws-success)!important; }
+.rig-editor-shell .setup-progress button::after { display: none; }
+.rig-editor-shell .setup-workflow-rail .stage-next-action { min-height: 36px!important; height: 36px!important; background: var(--ws-signal)!important; border-radius: 4px!important; box-shadow: none; font-weight: 600!important; }
+.rig-editor-shell .studio-toast { color: var(--ws-muted); background: var(--ws-glass); border-color: var(--ws-line); border-radius: 4px; backdrop-filter: none; font-size: 11px; }
+.rig-editor-shell .studio-toast small { color: var(--ws-muted); font-size: 11px; }
+
+/* Animate: compact transport, engraved channels, crisp points in time. */
+.rig-editor-shell .animation-toolbar { background: var(--ws-panel); }
+.rig-editor-shell .animation-command-row>label:first-child { border: 0; padding-left: 5px; }
+.rig-editor-shell .animation-command-row :is(button, summary) { border-radius: 4px; font-weight: 500; }
+.rig-editor-shell .animation-command-row .play-action { min-height: 32px!important; height: 32px; background: var(--ws-signal); color: #091017; box-shadow: none; font-size: 12px!important; }
+.rig-editor-shell .animation-command-row .add-key-action { background: rgba(172,151,255,.12); color: #c7b9ff; border: 1px solid #ac97ff40; box-shadow: none; }
+.rig-editor-shell .animation-command-row>button.is-active { background: var(--ws-selection); color: var(--ws-signal); }
+.rig-editor-shell .transport-time { border: 0; background: var(--ws-recess); border-radius: 4px; color: var(--ws-signal); font: 12px var(--ws-mono); }
+.rig-editor-shell .animation-library-list { padding: 5px; gap: 2px; }
+.rig-editor-shell .animation-library-list button { min-height: 34px; font-size: 13px; font-weight: 450; border-radius: 4px; color: var(--ws-secondary); }
+.rig-editor-shell .animation-library-list button.is-active { color: #d3c8ff; background: linear-gradient(90deg,#ac97ff19,transparent); box-shadow: inset 2px 0 var(--ws-accent); }
+.rig-editor-shell .animation-library-list button small { color: var(--ws-muted); font: 10px var(--ws-mono); }
+.rig-editor-shell .animate-bone-list>button { height: 30px; font-size: 12px; }
+.rig-editor-shell .animation-fit-view { position: absolute; z-index: 3; right: 20px; top: 18px; min-height: 30px; padding: 0 10px; color: var(--ws-secondary); background: var(--ws-glass); border: 1px solid var(--ws-line); border-radius: 4px; font-size: 11px; }
+.rig-editor-shell .animation-fit-view:hover { color: var(--ws-signal); border-color: #68e1ef55; }
+.rig-editor-shell :is(.timeline-toolbar, .timeline-corner, .time-ruler) { background: #151c26; color: var(--ws-muted); border-color: var(--ws-line); font-family: var(--ws-mono); }
+.rig-editor-shell .dope-sheet { background: var(--ws-recess); box-shadow: inset 0 1px #68e1ef18; }
+.rig-editor-shell .timeline-labels { background: var(--ws-panel); }
+.rig-editor-shell .timeline-label { min-height: 30px; height: 30px; color: var(--ws-secondary)!important; font-family: var(--ws-font); font-size: 12px; border-color: var(--ws-line-soft)!important; }
+.rig-editor-shell .timeline-label.property { color: var(--ws-muted)!important; font: 11px var(--ws-mono); }
+.rig-editor-shell .timeline-label.selected-bone { color: var(--ws-signal)!important; background: var(--ws-selection); box-shadow: inset 2px 0 var(--ws-signal); }
+.rig-editor-shell .timeline-lane { border-color: #1a2431; }
+.rig-editor-shell .timeline-lane.bone { background: #151d2780; }
+.rig-editor-shell .timeline-rows { background-image: linear-gradient(to right,#ffffff05 1px,transparent 1px); }
+.rig-editor-shell .timeline-clip-range { position: absolute; z-index: 6; top: 30px; height: 2px; background: #ac97ff55; pointer-events: none; }
+.rig-editor-shell .timeline-clip-range.is-loop { background: #ac97ffa0; box-shadow: var(--glow-3); }
+.studio-icon { display: block; flex: none; }
+:is(.rig-editor-shell,.part-cutter-shell) .command-search-button { display: flex; align-items: center; gap: 5px; }
+.rig-editor-shell .key-diamond { min-height: 24px!important; min-width: 24px; height: 24px; width: 24px; top: 3px; padding: 0; border: 0; border-radius: 3px; background: transparent; box-shadow: none; transform: translateX(-12px); }
+.rig-editor-shell .key-diamond::before { content: ""; position: absolute; width: 8px; height: 8px; top: 8px; left: 8px; border: 1px solid #a0b4cf; border-radius: 1px; background: #4c627e; transform: rotate(45deg); transition: background-color var(--motion-fast), box-shadow var(--motion-fast); }
+.rig-editor-shell .key-diamond.summary::before { width: 5px; height: 5px; top: 9px; left: 9px; opacity: .75; background: #7893b7; border-color: #7893b7; }
+.rig-editor-shell .key-diamond.selected { transform: translateX(calc(-12px + var(--key-drag-preview,0px))); }
+.rig-editor-shell .key-diamond.selected::before { background: var(--ws-accent); border-color: #e6deff; box-shadow: var(--glow-3); }
+.rig-editor-shell .key-diamond:hover:not(.summary), .rig-editor-shell .key-diamond:focus-visible, .rig-editor-shell .key-diamond:active { background: transparent!important; box-shadow: none; transform: translateX(calc(-12px + var(--key-drag-preview,0px))); }
+.rig-editor-shell .key-diamond:hover::before, .rig-editor-shell .key-diamond:focus-visible::before { background: var(--ws-signal); border-color: #e8ffff; box-shadow: var(--glow-2); }
+.rig-editor-shell .timeline-playhead { width: 1px; border-left-color: var(--ws-signal); background: var(--ws-signal); box-shadow: var(--glow-1); }
+.rig-editor-shell .timeline-playhead>span { background: var(--ws-signal); }
+.rig-editor-shell .inspector-mode-tabs { background: var(--ws-panel); }
+.rig-editor-shell .inspector-mode-tabs button.is-active { color: #d4c9ff; background: #ac97ff14; box-shadow: inset 0 -1px var(--ws-accent); }
+.rig-editor-shell .motion-review-entry { color: var(--ws-secondary); }
+.rig-editor-shell .motion-review-entry::before { content: ""; width: 12px; height: 10px; margin-right: 6px; background: linear-gradient(90deg,transparent 0 10%,var(--ws-accent) 10% 20%,transparent 20% 40%,var(--ws-accent) 40% 50%,transparent 50% 70%,var(--ws-accent) 70% 80%,transparent 80%); clip-path: polygon(0 35%,30% 35%,30% 0,60% 0,60% 20%,100% 20%,100% 75%,60% 75%,60% 100%,30% 100%,30% 65%,0 65%); }
+.rig-editor-shell .motion-review { line-height: 1.6; }
+.rig-editor-shell .motion-review output { display: block; padding: 8px 0; border-bottom: 1px solid var(--ws-line); color: var(--ws-muted); font: 11px var(--ws-mono); }
+.rig-editor-shell .motion-review [role="alert"] { padding: 8px 10px; color: var(--ws-warning); background: #efc17e08; border-left: 2px solid var(--ws-warning); }
+.rig-editor-shell .motion-review-actions button { background: #ac97ff0c; color: #d3c7ff; border-color: #ac97ff44; }
+.rig-editor-shell .motion-review-compare { gap: 8px; margin-block: 14px; }
+.rig-editor-shell .motion-review-compare figure { overflow: hidden; border: 1px solid var(--ws-line); border-radius: 4px; background: var(--ws-recess); }
+.rig-editor-shell .motion-review-compare figcaption { padding: 6px 8px; color: var(--ws-secondary); font: 10px var(--ws-mono); border-bottom: 1px solid var(--ws-line); }
+.rig-editor-shell .motion-review-compare figure:last-child figcaption { color: #d3c7ff; }
+.rig-editor-shell .motion-review table { font: 11px/1.5 var(--ws-mono); }
+
+/* Prepare: the target and artwork take precedence over the container. */
+.part-cutter-shell { grid-template-rows: 56px minmax(0,1fr) 50px; }
+.part-cutter-shell :is(.cutter-left,.cutter-right) { background: var(--ws-panel); border-color: var(--ws-line); }
+.part-cutter-shell :is(.cutter-toolbar,.prepare-action-rail) { background: var(--ws-panel); border-color: var(--ws-line); box-shadow: none; backdrop-filter: none; }
+.part-cutter-shell .cutter-canvas-wrap { background: radial-gradient(ellipse at 50% 42%,#16253360,transparent 65%),var(--ws-bg); }
+.part-cutter-shell .cutter-canvas { background-color: #161d24; background-image: repeating-conic-gradient(#1b242d 0% 25%,transparent 0% 50%); background-size: 16px 16px; border: 1px solid #ffffff09; box-shadow: 0 20px 50px #0004; }
+.part-cutter-shell :is(.cutter-panel-title,.semantic-tree h3) { color: var(--ws-muted); background: transparent; font-size: 11px; font-weight: 550; letter-spacing: .09em; }
+.part-cutter-shell .semantic-tree button { min-height: 32px; font-size: 12px; border-radius: 3px; }
+.part-cutter-shell .semantic-tree button.selected { background: var(--ws-selection); color: var(--ws-signal); }
+.part-cutter-shell .guided-toolbar-status strong { font-size: 12px; text-transform: none; letter-spacing: 0; font-weight: 550; }
+.part-cutter-shell .guided-toolbar-status span { color: var(--ws-muted); font-size: 11px; }
+.part-cutter-shell .guided-manual-panel { margin: 0; padding: 18px 14px; gap: 14px; border: 0; border-bottom: 1px solid var(--ws-line); border-radius: 0; background: linear-gradient(145deg,#68e1ef08,transparent 40%); }
+.part-cutter-shell .guided-manual-panel header { padding-bottom: 14px; border-bottom: 1px solid var(--ws-line); }
+.part-cutter-shell .guided-manual-panel header strong { font-size: 27px; font-weight: 550; letter-spacing: -.045em; }
+.part-cutter-shell .guided-manual-panel header small { color: var(--ws-signal); font: 11px var(--ws-mono); letter-spacing: .09em; }
+.part-cutter-shell .guided-manual-panel header b { align-self: start; background: var(--ws-selection); border: 0; color: var(--ws-signal); font: 10px var(--ws-mono); }
+.part-cutter-shell .guided-manual-panel p { color: var(--ws-secondary); font-size: 12px; }
+.part-cutter-shell .guided-manual-panel button { border-color: var(--ws-line); border-radius: 4px; background: var(--ws-raised); }
+.part-cutter-shell .guided-manual-panel :is(small,kbd) { color: var(--ws-muted); }
+.part-cutter-shell .guided-intents button.active { color: var(--ws-signal); background: var(--ws-selection); border-color: #68e1ef70; font-weight: 550; }
+.part-cutter-shell .guided-assists button { color: var(--ws-signal); background: transparent; }
+.part-cutter-shell .guided-nav button { background: transparent; }
+.part-cutter-shell .guided-review button { gap: 8px; padding: 8px; }
+.part-cutter-shell .anatomical-guide rect { stroke: #68e1ef55; stroke-width: 1; fill: var(--ws-guide); filter: none; vector-effect: non-scaling-stroke; }
+.part-cutter-shell .anatomical-guide rect[data-current="true"] { stroke: var(--ws-signal); stroke-width: 1.5; fill: #68e1ef09; filter: none; }
+.part-cutter-shell .anatomical-guide circle { fill: #090e15; stroke: var(--ws-signal); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.part-cutter-shell .cutter-canvas .anatomical-guide [data-landmark-id] .guide-landmark-hit { fill: transparent; stroke: transparent; filter: none; }
+.part-cutter-shell .cutter-canvas .anatomical-guide [data-landmark-id] .guide-landmark-point { fill: var(--ws-signal); stroke: #090e15; pointer-events: none; filter: none; }
+.part-cutter-shell .cutter-canvas>img { image-rendering: pixelated; }
+.part-cutter-shell .anatomical-guide line { stroke: var(--ws-signal); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.part-cutter-shell .cutter-canvas g[data-region-id] path { fill: #68e1ef06; stroke: #7be2b588; stroke-width: 1; filter: none; }
+.part-cutter-shell .cutter-canvas g[data-region-id].selected path { fill: #68e1ef14; stroke: var(--ws-signal); stroke-width: 1.5; filter: none; }
+.part-cutter-shell .guided-canvas-target { border-color: #68e1ef44; border-radius: 4px; box-shadow: none; background: var(--ws-glass); }
+.part-cutter-shell .prepare-rail-action { min-height: 34px; height: 34px; background: var(--ws-signal); color: #090e15; border-radius: 4px; box-shadow: none; font: 600 12px var(--ws-font); letter-spacing: 0; }
+.part-cutter-shell .prepare-rail-context, .part-cutter-shell .prepare-rail-progress { font-family: var(--ws-font); font-weight: 500; }
+.part-cutter-shell .part-cutter-empty>div { border: 0; border-left: 2px solid var(--ws-signal); border-radius: 0; background: transparent; box-shadow: none; padding: 24px 32px; }
+.part-cutter-shell .part-cutter-empty h1 { font-size: 38px; font-weight: 500; letter-spacing: -.05em; max-width: 460px; }
+.part-cutter-shell .part-cutter-empty { background: radial-gradient(ellipse at 50% 45%,#172d3b50,transparent 65%),var(--ws-bg); }
+.part-cutter-shell .ollama-settings { background: var(--ws-panel); border-color: var(--ws-line); border-radius: 8px; color: var(--ws-text); box-shadow: 0 24px 70px #0008; }
+
+.project-hydration-shell { background: var(--ws-bg); color: var(--ws-text); font-family: var(--ws-font); }
+.project-hydration-shell>div { position: relative; background: var(--ws-panel); border: 1px solid var(--ws-line); border-radius: 6px; }
+.project-hydration-shell>div::after { content: ""; position: absolute; left: 0; right: 60%; bottom: 0; height: 1px; background: var(--ws-signal); transform-origin: left; animation: workstation-loading 1.2s ease-in-out infinite alternate; }
+@keyframes workstation-loading { to { transform: scaleX(2.5); opacity: .35; } }
+.studio-command-rail .command-search-button kbd { color: var(--ws-muted); font: 11px var(--ws-mono); }
+.part-cutter-shell .prepare-rail-context small,
+.part-cutter-shell .prepare-rail-progress>span:not(.done):not(.current):not(.ready) { color: var(--ws-muted); }
+
+@media (min-width: 901px) {
+  :is(.rig-editor-shell,.part-cutter-shell) .studio-command-rail { grid-template-columns: minmax(180px,1fr) auto max-content; }
+  :is(.rig-editor-shell,.part-cutter-shell) .studio-rail-actions>button { flex-shrink: 0; }
+  :is(.rig-editor-shell,.part-cutter-shell) .command-search-button { width: auto; flex-basis: auto; }
+}
+@media (min-width: 901px) and (max-width: 1380px) {
+  :is(.rig-editor-shell,.part-cutter-shell) .studio-mark span,
+  :is(.rig-editor-shell,.part-cutter-shell) .command-search-button kbd { display: none; }
+}
+
+@media (max-width: 1180px) {
+  :is(.rig-editor-shell,.part-cutter-shell) .studio-command-rail { grid-template-columns: minmax(180px,1fr) auto max-content; }
+  :is(.rig-editor-shell,.part-cutter-shell) .studio-mode-nav button { min-width: 92px; }
+}
+@media (max-width: 900px) {
+  :is(.rig-editor-shell,.part-cutter-shell) .studio-command-rail { grid-template-columns: 56px minmax(0,1fr) 104px; }
+  :is(.rig-editor-shell,.part-cutter-shell) .studio-mode-nav button { min-width: 0; flex: 1; font-size: 13px; }
+  .rig-editor-shell .animate-main:not(.animate-context-idle) { grid-template-columns: minmax(0,1fr) 280px; }
+  .rig-editor-shell .animate-main:not(.animate-context-idle) .animate-inspector { display: flex!important; position: static; grid-column: 2; }
+  .rig-editor-shell .animate-main.has-ai-panel .animate-center { min-width: 0; }
+  .rig-editor-shell .animation-command-row { overflow-x: auto; }
+  .rig-editor-shell .animation-command-row>.motion-review-entry { display: flex!important; }
+  :is(.rig-editor-shell,.part-cutter-shell) .connection-cluster>summary { font-size: 0!important; }
+  .part-cutter-shell.guided-manual-active .part-cutter-body { grid-template-columns: 0 minmax(0,1fr) 260px; }
+  .part-cutter-shell.guided-manual-active .cutter-right { display: flex; }
+  .part-cutter-shell .cutter-canvas { width: 100%; height: auto; max-height: none; }
+  .part-cutter-shell .tool-group button:nth-child(3) { display: block; }
+  .part-cutter-shell .guided-toolbar-status { min-width: 0; }
+  .part-cutter-shell .guided-toolbar-status span { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .project-hydration-shell>div::after { animation: none; }
+  :is(.rig-editor-shell,.part-cutter-shell) button:active:not(:disabled) { transform: none; }
+}

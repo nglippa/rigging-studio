@@ -141,6 +141,7 @@ export const DopeSheet = memo(forwardRef<DopeSheetHandle, Props>(function DopeSh
     <div className="timeline-corner">BONES / TRACKS</div>
     <div className="timeline-scroll" ref={scrollRef} onScroll={(event) => { setScrollTop(event.currentTarget.scrollTop); setViewportHeight(event.currentTarget.clientHeight); }} onPointerDown={boxDown} onPointerMove={boxMove} onPointerUp={boxUp}>
       <div className="timeline-content" style={{ width: LABEL_WIDTH + totalWidth, height: RULER_HEIGHT + totalHeight }}>
+        <div className={`timeline-clip-range ${props.animation.loop ? "is-loop" : ""}`} style={{ left: LABEL_WIDTH, width: props.animation.duration * props.pixelsPerSecond }} aria-hidden="true" />
         <div className="time-ruler" style={{ left: LABEL_WIDTH, width: totalWidth }} onPointerDown={scrub}>
           {ticks.map((time) => <span key={time} style={{ left: time * props.pixelsPerSecond }}><i />{props.showFrames ? Math.round(time * props.fps) : `${time.toFixed(time % 1 ? 2 : 0)}s`}</span>)}
         </div>

@@ -19,6 +19,7 @@ import { ImageProposalStorage } from "../../src/image-production/assets/imagePro
 import { LocalProjectStore } from "../storage/localProjectStore";
 import type { LocalProjectSnapshot } from "../../src/project-storage/types";
 import { VisionReviewQueue, VisionReviewService } from "../vision-review";
+import { AstraAnimationDoctorProvider } from "../vision-review/AstraAnimationDoctorProvider";
 
 type PendingRequest = { readonly resolve: (value: unknown) => void; readonly reject: (error: Error) => void; readonly timer: ReturnType<typeof setTimeout> };
 
@@ -44,10 +45,12 @@ export class StudioBridgeServer {
   readonly imageGenerationJobs: ImageGenerationJobService;
   readonly characterPipeline: ComfyCharacterPipelineService;
   readonly visionReview: VisionReviewService;
+  private readonly animationDoctor: AstraAnimationDoctorProvider;
 
   constructor(options: StudioBridgeOptions = {}) {
     this.requestTimeoutMs = options.requestTimeoutMs ?? 30_000;
     this.cwd = options.cwd ?? process.cwd();
+    this.animationDoctor = new AstraAnimationDoctorProvider(this.cwd);
     this.generationStorage = new ManagedGenerationStorage({ cwd: this.cwd });
     this.diagnosticExporter = new DiagnosticReportExporter({ cwd: this.cwd });
     this.projectStorage = new LocalProjectStore({ cwd: this.cwd, ...(this.configuredProjectRoot() ? { root: this.configuredProjectRoot() } : {}) });
@@ -234,6 +237,25 @@ export class StudioBridgeServer {
   }
 
   private async onHttpRequest(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    if (["/animation-doctor/review", "/animation-doctor/audit"].includes(request.url?.split("?")[0] ?? "")) {
+      const origin = request.headers.origin;
+      // This invokes an account-backed provider. Do not inherit the general bridge's wildcard CORS.
+      if (origin && !/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) { response.writeHead(403).end(); return; }
+      if (origin) response.setHeader("Access-Control-Allow-Origin", origin);
+      response.setHeader("Access-Control-Allow-Headers", "content-type");
+      response.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+      response.setHeader("Cache-Control", "no-store");
+      if (request.method === "OPTIONS") { response.writeHead(204).end(); return; }
+      if (request.method !== "POST" || !request.headers["content-type"]?.startsWith("application/json")) { response.writeHead(405).end(); return; }
+      try {
+        const input = await this.readJsonBody(request, 24_000_000);
+        const result = request.url?.split("?")[0] === "/animation-doctor/audit" ? await this.animationDoctor.recordAudit(input) : await this.animationDoctor.review(input);
+        response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(result));
+      } catch (error) {
+        response.writeHead(503, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error instanceof Error ? error.message : "Motion review unavailable" }));
+      }
+      return;
+    }
     response.setHeader("Access-Control-Allow-Origin", "*");
     response.setHeader("Access-Control-Allow-Headers", "content-type");
     response.setHeader("Cache-Control", "no-store");
