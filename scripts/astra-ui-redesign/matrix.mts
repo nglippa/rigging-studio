@@ -15,7 +15,7 @@ try {
     const page = await browser.newPage({ viewport: { width, height } });
     const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
     const mode = state.startsWith('setup') ? 'setup' : 'animate';
-    await page.goto(`http://localhost:3000/?mode=${mode}`, { waitUntil: 'networkidle' });
+    await page.goto(`http://localhost:5177/?mode=${mode}`, { waitUntil: 'networkidle' });
     await page.locator('.editor-viewport canvas').waitFor();
     if (state === 'setup-body-selected') await page.locator('.semantic-object').first().click();
     if (state === 'setup-pivot-selected') { await page.locator('.setup-progress button').filter({ hasText: /pivots/i }).click(); await page.locator('.semantic-object').first().click(); }

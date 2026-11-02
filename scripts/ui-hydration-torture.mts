@@ -8,7 +8,7 @@ import type { GeneratedCharacterProject } from "../src/character-generation/proj
 import type { RigDefinition } from "../src/rigging/schema/types";
 import type { AnimationLibrary } from "../src/tools/rig-editor/animation/types";
 
-const APP_URL = process.env.RIG_STUDIO_APP_URL ?? "http://localhost:3000";
+const APP_URL = process.env.RIG_STUDIO_APP_URL ?? "http://localhost:5177";
 const ROOT = process.cwd();
 const ids = ["hydration-project-a", "hydration-project-b", "hydration-project-c"] as const;
 

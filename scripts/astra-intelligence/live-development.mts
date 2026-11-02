@@ -17,7 +17,7 @@ await mkdir(output, { recursive: true });
 const browser = await chromium.launch({ headless: true, executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" });
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-  await page.goto("http://localhost:3000/?mode=animate", { waitUntil: "domcontentloaded" });
+  await page.goto("http://localhost:5177/?mode=animate", { waitUntil: "domcontentloaded" });
   const menu = page.locator("details.project-storage-menu"); await menu.waitFor(); await menu.evaluate((el) => { (el as HTMLDetailsElement).open = true; });
   await menu.locator(".recent-projects article").filter({ hasText: "ASTRA DEVELOPMENT COPY" }).getByRole("button", { name: "Open", exact: true }).click();
   await page.locator('.project-hydration-root[data-project-id="astra-development-copy"]').waitFor();

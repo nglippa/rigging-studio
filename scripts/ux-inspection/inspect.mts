@@ -69,8 +69,8 @@ async function discoverBaseUrl(explicit?: string): Promise<{ url: string; eviden
   const evidence: Json[] = [];
   const candidates = [...new Set([
     explicit,
+    ...Array.from({ length: 21 }, (_, index) => `http://localhost:${5177 + index}`),
     ...Array.from({ length: 31 }, (_, index) => `http://localhost:${3000 + index}`),
-    ...Array.from({ length: 21 }, (_, index) => `http://localhost:${5173 + index}`),
     "http://localhost:4173",
   ].filter((item): item is string => Boolean(item)).map((item) => item.replace(/\/$/, "")))];
   for (const candidate of candidates) {

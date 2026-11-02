@@ -15,7 +15,7 @@ page.on('pageerror', e => errors.push(e.message));
 const checks: Record<string, unknown> = {};
 const shots: string[] = [];
 async function shot(name: string) { await page.waitForTimeout(250); await page.screenshot({ path: path.join(output, `${name}.png`) }); shots.push(name); console.log(`captured ${phase}/${name}`); }
-async function ready(p: Page, route: string) { await p.goto(`http://localhost:3000${route}`, { waitUntil: 'domcontentloaded' }); await p.locator('.studio-command-rail').waitFor(); await p.evaluate('globalThis.__name = (target) => target'); }
+async function ready(p: Page, route: string) { await p.goto(`http://localhost:5177${route}`, { waitUntil: 'domcontentloaded' }); await p.locator('.studio-command-rail').waitFor(); await p.evaluate('globalThis.__name = (target) => target'); }
 try {
   await ready(page, '/part-cutter');
   await shot('prepare-empty');

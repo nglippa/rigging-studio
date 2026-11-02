@@ -33,7 +33,7 @@ try {
   });
   // Keep replay audit records out of the real provider audit history.
   await page.route('**/animation-doctor/audit', route => route.fulfill({ json: { replay: true } }));
-  await page.goto('http://localhost:3000/?mode=animate');
+  await page.goto('http://localhost:5177/?mode=animate');
   await page.locator('.project-storage-menu>summary').click();
   await page.locator('.recent-projects article').filter({ hasText: 'Recorded proposal · UI replay' }).getByRole('button', { name: 'Open', exact: true }).click();
   await page.locator('.project-hydration-root[data-project-id="ui-proposal-replay"]').waitFor();

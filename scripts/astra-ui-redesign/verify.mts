@@ -39,7 +39,7 @@ async function geometry(state: string) {
   }, state));
 }
 try {
-  await page.goto('http://localhost:3000/?mode=setup', { waitUntil: 'domcontentloaded' });
+  await page.goto('http://localhost:5177/?mode=setup', { waitUntil: 'domcontentloaded' });
   await page.evaluate('globalThis.__name = (target) => target');
   await page.locator('.project-storage-menu>summary').click();
   const open = page.locator('.recent-projects article').filter({ hasText: 'Guild Warrior · visual copy' }).getByRole('button', { name: 'Open', exact: true });
@@ -114,7 +114,7 @@ try {
   await page.close();
   page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   page.on('pageerror', e => errors.push(e.message));
-  await page.goto('http://localhost:3000/part-cutter', { waitUntil: 'networkidle' });
+  await page.goto('http://localhost:5177/part-cutter', { waitUntil: 'networkidle' });
   await page.evaluate('globalThis.__name = (target) => target');
   await page.getByRole('button', { name: 'Import character', exact: true }).waitFor();
   // The server-rendered file input exists before React installs onChange.

@@ -8,7 +8,7 @@ const timings: Record<string, number[]> = {};
 const measure = async (name: string, work: () => Promise<unknown>) => { const start = performance.now(); await work(); (timings[name] ??= []).push(performance.now() - start); };
 const summarize = (values: number[]) => { const sorted = [...values].sort((a,b) => a-b); return { samples: sorted.length, median: sorted[Math.floor(sorted.length/2)], p95: sorted[Math.floor(sorted.length*.95)], max: sorted.at(-1) }; };
 try {
-  await page.goto('http://localhost:3000/?mode=setup', { waitUntil: 'networkidle' });
+  await page.goto('http://localhost:5177/?mode=setup', { waitUntil: 'networkidle' });
   await page.evaluate('globalThis.__name = (target) => target');
   await page.locator('.project-storage-menu>summary').click();
   await page.locator('.recent-projects article').filter({ hasText: 'Guild Warrior · visual copy' }).getByRole('button', { name: 'Open', exact: true }).click();

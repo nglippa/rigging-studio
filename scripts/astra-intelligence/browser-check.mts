@@ -19,7 +19,7 @@ const browser = await chromium.launch({ headless: true, executablePath: "/Applic
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors: string[] = []; page.on("pageerror", (error) => errors.push(error.message));
-  await page.goto("http://localhost:3000/?mode=animate", { waitUntil: "domcontentloaded" });
+  await page.goto("http://localhost:5177/?mode=animate", { waitUntil: "domcontentloaded" });
   await page.evaluate("globalThis.__name = (target) => target");
   const menu = page.locator("details.project-storage-menu"); await menu.waitFor(); await menu.evaluate((el) => { (el as HTMLDetailsElement).open = true; });
   await menu.locator(".recent-projects article").filter({ hasText: "ASTRA BROWSER COPY" }).getByRole("button", { name: "Open", exact: true }).click();

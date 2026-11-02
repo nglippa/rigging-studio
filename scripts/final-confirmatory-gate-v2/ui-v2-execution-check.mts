@@ -8,7 +8,7 @@ const ROOT = process.cwd();
 const RUN_ID = process.env.RIG_STUDIO_FINAL_GATE_RUN_ID;
 if (!RUN_ID) throw new Error("RIG_STUDIO_FINAL_GATE_RUN_ID is required");
 const OUT = path.join(ROOT, ".rigging-studio/diagnostics/final-confirmatory-gates/v2-execution", RUN_ID);
-const APP_URL = process.env.RIG_STUDIO_APP_URL ?? "http://localhost:3000";
+const APP_URL = process.env.RIG_STUDIO_APP_URL ?? "http://localhost:5177";
 const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
 
 type CharacterResult = {
