@@ -37,3 +37,41 @@ export async function extractPartToDataUrl(imageSource: string, bounds: Rect, ma
   outputContext.putImageData(new ImageData(imageBytes, extracted.width, extracted.height), 0, 0);
   return output.toDataURL("image/png");
 }
+
+/** Encodes raw pixels as a PNG data URL. Browser only. */
+export function pixelImageToDataUrl(image: PixelImage): string {
+  const output = document.createElement("canvas"); output.width = image.width; output.height = image.height;
+  const context = output.getContext("2d"); if (!context) throw new Error("Canvas extraction is unavailable");
+  const bytes = new Uint8ClampedArray(image.data.length); bytes.set(image.data);
+  context.putImageData(new ImageData(bytes, image.width, image.height), 0, 0);
+  return output.toDataURL("image/png");
+}
+
+/** Decodes an image (data URL or path) to raw pixels. Browser only. */
+export async function readImagePixels(imageSource: string): Promise<PixelImage> {
+  const image = new Image(); image.crossOrigin = "anonymous"; image.src = imageSource; await image.decode();
+  const canvas = document.createElement("canvas"); canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+  const context = canvas.getContext("2d", { willReadFrequently: true }); if (!context) throw new Error("Image analysis is unavailable");
+  context.drawImage(image, 0, 0);
+  return { width: canvas.width, height: canvas.height, data: context.getImageData(0, 0, canvas.width, canvas.height).data };
+}
+
+/**
+ * Which pixels belong to the character (255) rather than the background (0). Transparent images use alpha; opaque ones
+ * are compared with the average of the four corner colours.
+ */
+export function estimateForeground(pixels: PixelImage): { readonly mask: number[]; readonly transparent: boolean } {
+  const count = pixels.width * pixels.height;
+  const corners = [0, pixels.width - 1, (pixels.height - 1) * pixels.width, count - 1].map((index) => [pixels.data[index * 4], pixels.data[index * 4 + 1], pixels.data[index * 4 + 2]]);
+  const background = [0, 1, 2].map((channel) => corners.reduce((sum, color) => sum + color[channel], 0) / corners.length);
+  let transparent = false; for (let index = 0; index < count && !transparent; index += 1) if (pixels.data[index * 4 + 3] < 16) transparent = true;
+  const mask = new Array<number>(count);
+  for (let index = 0; index < count; index += 1) {
+    const offset = index * 4;
+    if (pixels.data[offset + 3] < 16) { mask[index] = 0; continue; }
+    if (transparent) { mask[index] = 255; continue; }
+    const distance = Math.abs(pixels.data[offset] - background[0]) + Math.abs(pixels.data[offset + 1] - background[1]) + Math.abs(pixels.data[offset + 2] - background[2]);
+    mask[index] = distance > 48 ? 255 : 0;
+  }
+  return { mask, transparent };
+}

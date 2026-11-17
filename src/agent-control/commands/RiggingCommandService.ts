@@ -36,9 +36,10 @@ import { LOCAL_PROJECT_STORAGE_VERSION, type LocalProjectSnapshot } from "../../
 import { canonicalProjectStateDigest } from "../../project-storage/digest";
 import { ProjectLifecycleCoordinator, type DurableSaveRequest, type ProjectOperationContext, type ProjectSwitchTransaction } from "../../project-storage/projectLifecycle";
 import { extractPartToDataUrl } from "../../character-generation/segmentation/partImageProcessor";
+import { prepareRiggedPartArt } from "../../character-generation/rigging/riggedPartArt";
 import type { CharacterSegmentationResponse, Point, Rect, SegmentationMask } from "../../character-generation/segmentation/segmentationSchema";
 import {
-  SEMANTIC_TAXONOMY, acceptProposal as acceptPartCutProposal, anatomicalGuidePrompt, analyzeCoverage, assignOwnershipSelection, buildAnatomicalPartitionGuide, constrainProviderMaskToZone, createPartCutterState, deriveRiggingExtraction, ensureOwnershipPartition, evaluateRotationTest, guidedProposalFromSegmentation, mergeParts as mergePartCuts,
+  SEMANTIC_TAXONOMY, acceptProposal as acceptPartCutProposal, anatomicalGuidePrompt, analyzeCoverage, assignOwnershipSelection, buildAnatomicalPartitionGuide, constrainProviderMaskToZone, createPartCutterState, ensureOwnershipPartition, evaluateRotationTest, guidedProposalFromSegmentation, mergeParts as mergePartCuts,
   partCutToSegmentation, proposalToSegmentation, rejectProposal as rejectPartCutProposal, renderProposalSvg,
   recordOwnershipRelabel, reshapeRegionEdge, splitPart as splitPartCut, validateReconstructionAsset, type PartCutterState, type PartSemanticType, type RegionEdge,
 } from "../../part-cutter";
@@ -469,7 +470,7 @@ export class RiggingCommandService {
       case "parts_merge": return this.mergePartCuts(args.partIds as readonly string[], asOptionalString(args.label), actor);
       case "parts_split": return this.splitPartCut(asString(args.partId), asString(args.axis) as "horizontal" | "vertical", actor);
       case "parts_set_mask": return this.setPartMask(asString(args.partId), args.mask as SegmentationMask, actor);
-      case "parts_set_pivot": return this.mutatePartCut(asString(args.partId), { pivot: { x: asNumber(args.x), y: asNumber(args.y) } }, `Set ${asString(args.partId)} pivot`, actor);
+      case "parts_set_pivot": return this.mutatePartCut(asString(args.partId), { pivot: { x: asNumber(args.x), y: asNumber(args.y) }, pivotSetByUser: true }, `Set ${asString(args.partId)} pivot`, actor);
       case "parts_set_z_order": return this.mutatePartCut(asString(args.partId), { zOrder: asNumber(args.zOrder), ...(args.layer ? { layer: asString(args.layer) as "front" | "body" | "back" } : {}) }, `Set ${asString(args.partId)} draw order`, actor);
       case "parts_mark_occluded": return this.mutatePartCut(asString(args.partId), { occlusionState: asString(args.state) as "complete" | "likely-incomplete" | "unknown" }, `Marked ${asString(args.partId)} ${asString(args.state)}`, actor);
       case "parts_reconstruct": return this.repairOcclusion(asString(args.partId), actor);
@@ -961,14 +962,17 @@ export class RiggingCommandService {
   }
 
   private async finalizePartCuts(actor: string): Promise<CommandResult<JsonObject>> {
-    const project = this.requireProject(); const source = project.sourceImage; if (!source) throw new Error("A source image is required"); const state = ensureOwnershipPartition(this.requirePartCutterState()); const segmentationData = partCutToSegmentation(state); if (!segmentationData.parts.length) throw new Error("Accept at least one part before finalizing");
-    const extractedParts = await Promise.all(segmentationData.parts.map(async (part) => { const cut = state.parts.find((item) => item.partId === part.id); const extraction = deriveRiggingExtraction(state, part.id); const image = cut?.reconstructionImage ?? await extractPartToDataUrl(source.image, extraction.bounds, extraction.mask, 0); return { partId: part.id, image, width: extraction.bounds.width, height: extraction.bounds.height, padding: extraction.padding, status: cut?.provenance === "reconstructed" ? "reconstructed" as const : "accepted" as const }; }));
-    const proposal = buildRigProposal({ name: project.name, parts: segmentationData.parts, imageWidth: source.width, imageHeight: source.height, resolvedImages: Object.fromEntries(extractedParts.map((part) => [part.partId, part.image])), partCutterState: state }); const validated = validateRigProposal(proposal); if (!validated.success) throw new Error(validated.message);
-    const finalized = { ...state, finalized: true, updatedAt: now() }; const next = updatedProject(project, { stage: "rig", partCutterState: finalized, segmentationData, extractedParts, reconstructedParts: detectOcclusionReviews(segmentationData.parts), rigDefinition: validated.data.rig, skins: validated.data.rig.skins, warnings: [...project.warnings, ...validated.data.warnings] });
+    const project = this.requireProject(); const source = project.sourceImage; if (!source) throw new Error("A source image is required"); if (!partCutToSegmentation(ensureOwnershipPartition(this.requirePartCutterState())).parts.length) throw new Error("Accept at least one part before finalizing");
+    // Same art preparation as the Parts screen: stray slivers adopted, joint caps and hidden-area fill added.
+    const prepared = await prepareRiggedPartArt(source.image, { width: source.width, height: source.height }, this.requirePartCutterState()); const state = prepared.state; const segmentationData = prepared.segmentation;
+    const extractedParts = prepared.parts.map((part) => ({ ...part, status: part.status === "reconstructed" ? "reconstructed" as const : "accepted" as const }));
+    const proposal = buildRigProposal({ name: project.name, parts: segmentationData.parts, imageWidth: source.width, imageHeight: source.height, resolvedImages: Object.fromEntries(extractedParts.map((part) => [part.partId, part.image])), artBounds: prepared.artBounds, partCutterState: state }); const validated = validateRigProposal(proposal); if (!validated.success) throw new Error(validated.message);
+    const keptFacing = project.rigDefinition?.metadata.facing; const builtRig = typeof keptFacing === "string" ? { ...validated.data.rig, metadata: { ...validated.data.rig.metadata, facing: keptFacing } } : validated.data.rig;
+    const finalized = { ...state, finalized: true, updatedAt: now() }; const next = updatedProject(project, { stage: "rig", partCutterState: finalized, segmentationData, extractedParts, reconstructedParts: detectOcclusionReviews(segmentationData.parts), rigDefinition: builtRig, skins: builtRig.skins, warnings: [...project.warnings, ...validated.data.warnings] });
     const candidateAnimations = this.animations ? { ...this.animations, rigId: validated.data.rig.id } : null;
-    const candidateProblems = blockingRigProjectProblems(validateRigProject({ storageVersion: LOCAL_PROJECT_STORAGE_VERSION, localProjectId: this.durableProjectId, project: next, rig: validated.data.rig, animations: candidateAnimations, selectedSkinId: validated.data.rig.defaultSkinId }));
+    const candidateProblems = blockingRigProjectProblems(validateRigProject({ storageVersion: LOCAL_PROJECT_STORAGE_VERSION, localProjectId: this.durableProjectId, project: next, rig: builtRig, animations: candidateAnimations, selectedSkinId: builtRig.defaultSkinId }));
     if (candidateProblems.length) throw new Error(`Auto-rig candidate rejected before commit: ${candidateProblems.map((problem) => problem.message).join("; ")}`);
-    this.pendingRigProposal = validated.data; this.setProject(next); this.standaloneRig = structuredClone(validated.data.rig); this.animations = candidateAnimations; this.emit("rig.changed", actor, `Finalized ${extractedParts.length} parts into ${validated.data.rig.id}`, validated.data.rig.id); return this.ok({ finalized: true, partCount: extractedParts.length, rig: rigSummary(validated.data.rig, true), nextStep: "open rig editor" }, validated.data.warnings);
+    this.pendingRigProposal = { ...validated.data, rig: builtRig }; this.setProject(next); this.standaloneRig = structuredClone(builtRig); this.animations = candidateAnimations; this.emit("rig.changed", actor, `Finalized ${extractedParts.length} parts into ${validated.data.rig.id}`, validated.data.rig.id); return this.ok({ finalized: true, partCount: extractedParts.length, rig: rigSummary(validated.data.rig, true), nextStep: "open rig editor" }, validated.data.warnings);
   }
 
   private createRigProposal(actor: string): CommandResult<JsonObject> {

@@ -16,6 +16,8 @@ export type PartCutRecord = {
   readonly sourceBoundingBox: Rect;
   readonly sourceCanvasSize: { readonly width: number; readonly height: number };
   readonly pivot: Point;
+  /** True once someone deliberately placed the pivot. Otherwise it is a guess from the part's outline and the rig builder may do better. */
+  readonly pivotSetByUser?: boolean;
   readonly suggestedParent: string | null;
   readonly suggestedSlot: string;
   readonly zOrder: number;
@@ -183,7 +185,7 @@ const semanticSchema = z.enum(PART_SEMANTIC_TYPES);
 const landmarkIdSchema = z.enum(ANATOMICAL_LANDMARK_IDS);
 const partShape = {
   label: z.string().trim().min(1).max(120), semanticType: semanticSchema, mask: maskSchema, boundingBox: rectSchema,
-  sourceBoundingBox: rectSchema, sourceCanvasSize: sizeSchema, pivot: pointSchema, suggestedParent: z.string().nullable(), suggestedSlot: z.string().min(1),
+  sourceBoundingBox: rectSchema, sourceCanvasSize: sizeSchema, pivot: pointSchema, pivotSetByUser: z.boolean().optional(), suggestedParent: z.string().nullable(), suggestedSlot: z.string().min(1),
   zOrder: z.number().int().min(-10000).max(10000), layer: z.enum(["front", "body", "back"]), confidence: z.number().min(0).max(1).nullable(), confidenceSource: z.enum(CONFIDENCE_SOURCES).default("heuristic"),
   articulated: z.boolean(), equipment: z.boolean(), occlusionState: z.enum(OCCLUSION_STATES), reconstructionImage: z.string().min(1).optional(),
   provenance: z.enum(["manual", "ai", "reconstructed"]), notes: z.array(z.string().max(1000)),

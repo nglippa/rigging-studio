@@ -7,6 +7,8 @@ import type {
 } from "../../rigging/schema/types";
 import { validateRigDefinition } from "../../rigging/validation/rig";
 import type { JsonValue } from "../../rigging/schema/types";
+import { invertMatrix, matrixFromTransform, multiplyMatrices, transformPoint, type Matrix2D } from "../../rigging/math/matrix";
+import { degreesToRadians } from "../../rigging/math/rotation";
 
 export type BonePatch = Partial<Omit<BoneDefinition, "id">>;
 export type SlotPatch = Partial<Omit<SlotDefinition, "id">>;
@@ -73,6 +75,46 @@ export function updateBone(rig: RigDefinition, boneId: string, patch: BonePatch)
     }
   }
   return assertValid(recordManualOverride({ ...rig, bones: rig.bones.map((candidate) => candidate.id === boneId ? { ...candidate, ...patch } : candidate) }, "bones", boneId, Object.keys(patch)));
+}
+
+/**
+ * Moves a bone's pivot to (x, y) in its parent's space while leaving everything that rides on the bone
+ * where it is: the art it controls and its child bones are counter-shifted in the bone's own space.
+ * This is the "edit pivot" operation; use updateBone to move a bone together with its art.
+ */
+export function moveBonePivot(rig: RigDefinition, boneId: string, x: number, y: number): RigDefinition {
+  const bone = rig.bones.find((candidate) => candidate.id === boneId);
+  if (!bone) throw new Error(`Bone "${boneId}" does not exist`);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error("Pivot position must be finite");
+  if (x === bone.x && y === bone.y) return rig;
+  const local = (px: number, py: number): Matrix2D => matrixFromTransform({ x: px, y: py, rotation: degreesToRadians(bone.rotation), scaleX: bone.scaleX, scaleY: bone.scaleY });
+  const inverse = invertMatrix(local(x, y));
+  if (!inverse) throw new Error(`Bone "${boneId}" has zero scale, so its pivot cannot be moved independently`);
+  // A point fixed in parent space keeps its place when re-expressed through the moved bone.
+  const rebase = multiplyMatrices(inverse, local(bone.x, bone.y));
+  const slotIds = new Set(rig.slots.filter((slot) => slot.boneId === boneId).map((slot) => slot.id));
+  const shown = (predicate: (slotId: string) => boolean): Set<string> => new Set([
+    ...rig.slots.filter((slot) => predicate(slot.id)).flatMap((slot) => slot.attachmentId ? [slot.attachmentId] : []),
+    ...rig.skins.flatMap((skin) => Object.entries(skin.slotAttachments).flatMap(([slotId, attachmentId]) => attachmentId && predicate(slotId) ? [attachmentId] : [])),
+  ]);
+  const elsewhere = shown((slotId) => !slotIds.has(slotId));
+  // Art that is also shown on another bone cannot be compensated without moving it there, so it is left alone.
+  const owned = new Set([...shown((slotId) => slotIds.has(slotId))].filter((id) => !elsewhere.has(id)));
+  const next: RigDefinition = {
+    ...rig,
+    bones: rig.bones.map((candidate) => {
+      if (candidate.id === boneId) return { ...candidate, x, y };
+      if (candidate.parentId !== boneId) return candidate;
+      const moved = transformPoint(rebase, { x: candidate.x, y: candidate.y });
+      return { ...candidate, x: moved.x, y: moved.y };
+    }),
+    attachments: rig.attachments.map((attachment) => {
+      if (!owned.has(attachment.id)) return attachment;
+      const moved = transformPoint(rebase, { x: attachment.offsetX, y: attachment.offsetY });
+      return { ...attachment, offsetX: moved.x, offsetY: moved.y };
+    }),
+  };
+  return assertValid(recordManualOverride(next, "bones", boneId, ["x", "y"]));
 }
 
 export function addBone(rig: RigDefinition, parentId = rig.rootBoneId): { readonly rig: RigDefinition; readonly id: string } {

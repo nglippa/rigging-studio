@@ -90,6 +90,34 @@ function safeMask(state: PartCutterState, targetPartId: string | null, selection
   }) };
 }
 
+/**
+ * Pixels a loop may claim. Normally a loop only takes pixels nobody owns, so the slight overlap at a seam never nibbles
+ * the neighbouring part. A loop drawn mostly on top of existing parts is different: the user is cutting out something
+ * that lies in front (a hand over the torso), so it carves those pixels out. Returns null when carving would erase a part.
+ */
+function claimableMask(state: PartCutterState, targetPartId: string | null, selection: GuidedSelection, clipped: SegmentationMask): { readonly mask: SegmentationMask; readonly carved: boolean } | null {
+  const free = safeMask(state, targetPartId, { bounds: selection.bounds, mask: clipped });
+  const wanted = clipped.alpha.reduce((count, alpha) => count + (alpha > 0 ? 1 : 0), 0);
+  const available = free.alpha.reduce((count, alpha) => count + (alpha > 0 ? 1 : 0), 0);
+  if (!wanted || available * 2 >= wanted) return { mask: free, carved: false };
+  const ownership = ensureOwnershipPartition(state).ownership!; const labels = decodeOwnership(ownership);
+  const targetOwner = targetPartId ? ownership.regionIds.indexOf(targetPartId) + 1 : -1;
+  const left = Math.round(selection.bounds.x); const top = Math.round(selection.bounds.y);
+  const taken = new Map<number, number>();
+  clipped.alpha.forEach((alpha, index) => {
+    if (alpha <= 0) return;
+    const x = left + index % clipped.width; const y = top + Math.floor(index / clipped.width);
+    if (x < 0 || y < 0 || x >= ownership.width || y >= ownership.height) return;
+    const owner = labels[y * ownership.width + x] ?? -1;
+    if (owner > 0 && owner !== targetOwner) taken.set(owner, (taken.get(owner) ?? 0) + 1);
+  });
+  for (const [owner, count] of taken) {
+    const part = state.parts.find((candidate) => candidate.partId === ownership.regionIds[owner - 1]);
+    if (part && part.mask.alpha.reduce((total, alpha) => total + (alpha > 0 ? 1 : 0), 0) <= count) return null;
+  }
+  return { mask: clipped, carved: taken.size > 0 };
+}
+
 function targetFor(state: PartCutterState, semantic: PartSemanticType) {
   return state.parts.find((part) => part.semanticType === semantic);
 }
@@ -115,13 +143,17 @@ export function commitGuidedSelection(state: PartCutterState, selection: GuidedS
     const result = assignOwnershipSelection(initialized, null, selection.bounds, ownedOnly, { actor: "human" });
     resultState = result.state; changedPixels = result.changedPixels;
   } else if (progress.intent === "add") {
-    const mask = safeMask(initialized, target!.partId, { bounds: selection.bounds, mask: clipped });
+    const claim = claimableMask(initialized, target!.partId, selection, clipped);
+    if (!claim) return { ok: false, state, changedPixels: 0, message: "That loop would erase another part completely. Draw a smaller loop." };
+    const mask = claim.mask;
     if (!mask.alpha.some(Boolean)) return { ok: false, state, changedPixels: 0, message: "Those pixels already belong to another manual region." };
     const result = assignOwnershipSelection(initialized, target!.partId, selection.bounds, mask, { actor: "human", includeBackground: true });
     if (!result.changedPixels) return { ok: false, state, changedPixels: 0, message: "No ownership changed." };
     resultState = result.state; changedPixels = result.changedPixels;
   } else {
-    const mask = safeMask(initialized, target?.partId ?? null, { bounds: selection.bounds, mask: clipped });
+    const claim = claimableMask(initialized, target?.partId ?? null, selection, clipped);
+    if (!claim) return { ok: false, state, changedPixels: 0, message: "That loop would erase another part completely. Draw a smaller loop." };
+    const mask = claim.mask;
     if (!mask.alpha.some(Boolean)) return { ok: false, state, changedPixels: 0, message: "Those pixels already belong to another manual region." };
     const withoutTarget = target ? removeOwnershipRegion(initialized, target.partId, "human") : initialized;
     const result = createManualRegionFromSelection(withoutTarget, semantic, selection.bounds, mask, undefined, "human");
@@ -160,8 +192,10 @@ export function unresolvedComponents(state: PartCutterState, foreground: readonl
     components.push({ pixels, count: pixels.length });
   }
   return components.sort((a, b) => b.count - a.count).map(({ pixels }) => {
-    const xs = pixels.map((index) => index % ownership.width); const ys = pixels.map((index) => Math.floor(index / ownership.width));
-    const bounds = { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs) + 1, height: Math.max(...ys) - Math.min(...ys) + 1 };
+    // A component can hold every pixel of a large sprite, so bounds are folded in a loop rather than spread into Math.min/max.
+    let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+    for (const index of pixels) { const x = index % ownership.width; const y = Math.floor(index / ownership.width); if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; }
+    const bounds = { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 };
     const alpha = new Array<number>(bounds.width * bounds.height).fill(0);
     pixels.forEach((index) => { const x = index % ownership.width; const y = Math.floor(index / ownership.width); alpha[(y - bounds.y) * bounds.width + x - bounds.x] = 255; });
     return { bounds, mask: { width: bounds.width, height: bounds.height, alpha } };

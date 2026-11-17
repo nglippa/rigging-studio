@@ -305,3 +305,35 @@ export function ownershipSummary(state: PartCutterState): { readonly assignedPix
   labels.forEach((owner) => { if (owner > 0) assignedPixels += 1; else if (owner === OWNERSHIP_UNRESOLVED) unresolvedPixels += 1; else backgroundPixels += 1; });
   return { assignedPixels, unresolvedPixels, backgroundPixels, exclusive: true };
 }
+
+/**
+ * Gives artwork nobody cut to the nearest part. Hand-drawn loops rarely meet exactly, and the slivers left between them
+ * would otherwise be missing from the rig, showing as cracks in the character. Only artwork within `maxDistance` pixels
+ * of a part is adopted, so a whole piece that was deliberately left out stays out.
+ */
+export function adoptStrayArtwork(state: PartCutterState, foreground: readonly number[] | undefined, maxDistance: number): { readonly state: PartCutterState; readonly adopted: number } {
+  const canonical = ensureOwnershipPartition(state); const partition = canonical.ownership!;
+  if (!foreground || foreground.length !== partition.width * partition.height) return { state: canonical, adopted: 0 };
+  const { width } = partition; const labels = decodeOwnership(partition);
+  const stray = (index: number): boolean => labels[index] <= 0 && (foreground[index] ?? 0) > 0;
+  let frontier: number[] = [];
+  for (let index = 0; index < labels.length; index += 1) {
+    if (labels[index] <= 0) continue;
+    const x = index % width;
+    if ((x > 0 && stray(index - 1)) || (x + 1 < width && stray(index + 1)) || (index >= width && stray(index - width)) || (index + width < labels.length && stray(index + width))) frontier.push(index);
+  }
+  let adopted = 0;
+  for (let step = 0; step < maxDistance && frontier.length; step += 1) {
+    const next: number[] = [];
+    for (const index of frontier) {
+      const x = index % width; const owner = labels[index];
+      for (const neighbour of [x > 0 ? index - 1 : -1, x + 1 < width ? index + 1 : -1, index - width, index + width]) {
+        if (neighbour < 0 || neighbour >= labels.length || !stray(neighbour)) continue;
+        labels[neighbour] = owner; adopted += 1; next.push(neighbour);
+      }
+    }
+    frontier = next;
+  }
+  if (!adopted) return { state: canonical, adopted: 0 };
+  return { state: commitOwnership(canonical, labels, "assign", partition.regionIds, adopted, "migration", "Uncut artwork joined to the nearest part"), adopted };
+}

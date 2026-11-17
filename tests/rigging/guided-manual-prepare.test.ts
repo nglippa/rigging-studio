@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   GUIDED_BODY_ORDER, SnapshotCommandHistory, backGuidedSemantic, buildAnatomicalPartitionGuide, commitGuidedSelection,
   createPartCutterState, finishGuidedBody, finishGuidedEquipment, guideSelectionForCurrent,
-  initializeGuidedManual, setGuidedIntent, skipGuidedSemantic, unresolvedComponents,
+  adoptStrayArtwork, initializeGuidedManual, setGuidedIntent, skipGuidedSemantic, unresolvedComponents,
 } from "../../src/part-cutter";
 
 const foreground = new Array<number>(20 * 20).fill(255);
@@ -27,7 +27,7 @@ describe("Guided Manual Prepare", () => {
     expect(backGuidedSemantic(skipped).guidedManual?.currentSemantic).toBe("head");
   });
 
-  it("Replace is transactional and does not steal another manual region", () => {
+  it("Replace is transactional and does not steal a neighbour's pixels at a seam", () => {
     const first = commitGuidedSelection(state(), select(1, 1, 4, 4), foreground).state;
     const withTorso = commitGuidedSelection(first, select(5, 2, 4, 4), foreground).state;
     const headAgain = { ...withTorso, guidedManual: { ...withTorso.guidedManual!, currentSemantic: "head" as const, intent: "replace" as const } };
@@ -36,8 +36,9 @@ describe("Guided Manual Prepare", () => {
     expect(replaced.state.parts.find((part) => part.semanticType === "torso")?.mask.alpha.filter(Boolean)).toHaveLength(16);
     const before = replaced.state;
     const attempt = { ...before, guidedManual: { ...before.guidedManual!, currentSemantic: "leftUpperArm" as const } };
-    const protectedOnly = commitGuidedSelection(attempt, select(2, 2, 3, 3), foreground);
-    expect(protectedOnly.ok).toBe(false); expect(protectedOnly.state).toBe(attempt);
+    // A loop that would swallow the whole head is refused and changes nothing.
+    const swallow = commitGuidedSelection(attempt, select(1, 1, 7, 7), foreground);
+    expect(swallow.ok).toBe(false); expect(swallow.state).toBe(attempt);
   });
 
   it("Add and Remove edit the current owner without auto-advancing", () => {
@@ -67,6 +68,41 @@ describe("Guided Manual Prepare", () => {
     expect(guided?.mask.alpha.some(Boolean)).toBe(true);
     const sparse = new Array<number>(400).fill(0); sparse[21] = 255; sparse[22] = 255; sparse[300] = 255;
     const components = unresolvedComponents(base, sparse); expect(components).toHaveLength(2); expect(components[0].mask.alpha.filter(Boolean)).toHaveLength(2);
+  });
+
+  it("finds one unresolved component covering a whole large sprite without overflowing the stack", () => {
+    const width = 700; const height = 700;
+    const large = initializeGuidedManual(createPartCutterState("large-source", width, height, "manual", "2026-08-25T12:00:00.000Z"), "2026-08-25T12:00:00.000Z");
+    const components = unresolvedComponents(large, new Array<number>(width * height).fill(255));
+    expect(components).toHaveLength(1); expect(components[0].bounds).toEqual({ x: 0, y: 0, width, height });
+  });
+
+  it("carves a part out of the one it lies on, but never nibbles a neighbour at a seam", () => {
+    const head = commitGuidedSelection(state(), select(0, 0, 20, 4), foreground, "2026-08-25T12:00:01.000Z").state;
+    const torso = commitGuidedSelection(head, select(0, 4, 20, 12), foreground, "2026-08-25T12:00:02.000Z").state;
+    const owned = (current: typeof torso, semantic: string) => current.parts.find((part) => part.semanticType === semantic)!.mask.alpha.filter(Boolean).length;
+    expect(owned(torso, "torso")).toBe(240);
+    // An arm drawn entirely on top of the torso is cut out of it.
+    const arm = commitGuidedSelection(torso, select(2, 6, 4, 6), foreground, "2026-08-25T12:00:03.000Z");
+    expect(arm.ok).toBe(true); expect(owned(arm.state, "leftUpperArm")).toBe(24); expect(owned(arm.state, "torso")).toBe(216);
+    // The next loop mostly covers free pixels and only brushes the torso's edge: it takes the free pixels and leaves the torso alone.
+    const forearm = commitGuidedSelection(arm.state, select(0, 15, 8, 4), foreground, "2026-08-25T12:00:04.000Z");
+    expect(forearm.ok).toBe(true); expect(owned(forearm.state, "leftForearm")).toBe(24); expect(owned(forearm.state, "torso")).toBe(216);
+    // A loop that would swallow another part whole is refused.
+    const swallow = commitGuidedSelection(forearm.state, select(0, 0, 20, 5), foreground, "2026-08-25T12:00:05.000Z");
+    expect(swallow.ok).toBe(false); expect(swallow.message).toContain("erase another part");
+  });
+
+  it("joins uncut slivers to the nearest part at build time, but leaves artwork far from any part alone", () => {
+    const head = commitGuidedSelection(state(), select(0, 0, 20, 4), foreground).state;
+    // Rows 4-5 were missed between the two loops; rows 12 and below were never cut at all.
+    const torso = commitGuidedSelection(head, select(0, 6, 20, 4), foreground).state;
+    const owned = (current: typeof torso, semantic: string) => current.parts.find((part) => part.semanticType === semantic)!.mask.alpha.filter(Boolean).length;
+    const result = adoptStrayArtwork(torso, foreground, 2);
+    // The missed strip is shared between its two neighbours; the torso also takes the two rows below it and no more.
+    expect(owned(result.state, "head")).toBe(100); expect(owned(result.state, "torso")).toBe(140);
+    expect(result.adopted).toBe(80);
+    expect(adoptStrayArtwork(torso, undefined, 2).adopted).toBe(0);
   });
 
   it("persists mid-flow progression and isolates separate projects", () => {

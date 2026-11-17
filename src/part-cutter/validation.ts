@@ -53,8 +53,8 @@ export function validatePrepare(
       id: `prepare-missing-${semantic}`,
       severity: "error",
       objectId: semantic,
-      message: `Missing required ${semantic} part for the ${profile} anatomy profile.`,
-      suggestedAction: `Cut, relabel, or accept ${semantic}; switch to Custom only for a genuinely non-standard rig.`,
+      message: `No ${plainPartName(semantic)} has been drawn.`,
+      suggestedAction: `Draw it, or build without it if it is hidden in this pose (the far arm or leg of a side view, for example).`,
       overrideable: true,
     }));
   }
@@ -77,3 +77,6 @@ export function validatePrepare(
     overlapRatio,
   };
 }
+
+/** "leftUpperArm" → "left upper arm". */
+function plainPartName(semantic: string): string { return semantic.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase(); }
