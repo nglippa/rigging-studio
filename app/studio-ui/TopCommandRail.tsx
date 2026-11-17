@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { StudioModeNav, type StudioMode } from "./StudioModeNav";
+import { StudioModeNav, type StageStatuses, type StudioMode } from "./StudioModeNav";
 import { useDismissibleMenus } from "./useDismissibleMenus";
 import { ProjectStorageMenu } from "./ProjectStorageMenu";
 import { StudioIcon } from "./StudioIcon";
@@ -16,6 +16,7 @@ export type StudioConnection = {
 
 type Props = {
   readonly active: StudioMode;
+  readonly stageStatuses?: StageStatuses;
   readonly projectName: string;
   readonly dirty?: boolean;
   readonly editingName?: boolean;
@@ -55,7 +56,7 @@ export function TopCommandRail(props: Props) {
         <button type="button" className="rail-icon-button" onClick={props.onRedo} disabled={!props.canRedo} aria-label="Redo" title={props.redoTitle ?? "Redo"}><StudioIcon name="redo" /></button>
       </div>}
     </div>
-    <StudioModeNav active={props.active} onSelect={props.onSelect} />
+    <StudioModeNav active={props.active} statuses={props.stageStatuses} onSelect={props.onSelect} />
     <div className="studio-rail-actions">
       <ProjectStorageMenu />
       {props.validity && <button type="button" data-ux-role="status" className={`rail-validity ${props.validity.count ? "has-issues" : "is-valid"}`} onClick={props.validity.onOpen}><i />{props.validity.count ? `${props.validity.count} Issues` : "Valid"}</button>}

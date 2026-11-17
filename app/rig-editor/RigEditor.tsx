@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import Link from "next/link";
-import { safeParseAnimationDefinition, safeParseAnimationJson, safeParseRigJson } from "@/src/rigging/schema/parsing";
+import { safeParseAnimationJson, safeParseRigJson } from "@/src/rigging/schema/parsing";
 import type { AnimationDefinition, AttachmentDefinition, RigDefinition } from "@/src/rigging/schema/types";
 import { blockingRigProjectProblems, validateRigProject } from "@/src/rigging/validation/project";
 import type { ValidationIssue } from "@/src/rigging/validation/issues";
@@ -21,6 +21,7 @@ import {
   duplicateBone,
   duplicateSkin,
   duplicateSlot,
+  moveBonePivot,
   moveSlot,
   renameSkin,
   updateAttachment,
@@ -43,6 +44,8 @@ import { loadAnimationDraft } from "@/src/tools/rig-editor/animation/draft";
 import { createAnimationLibrary } from "@/src/tools/rig-editor/animation/library";
 import { SAMPLE_ANIMATION_PATHS } from "@/src/tools/rig-editor/animation/samplePaths";
 import { useRouter } from "next/navigation";
+import { FacingQuestion, REBUILD_REQUEST_KEY, RebuildNotice } from "./RigNotices";
+import type { RigFacing } from "@/src/rigging/motion/rigMotion";
 import { ImageProductionStatus } from "./ImageProductionStatus";
 import { PART_CUTTER_IMPORT_KEY, type PartCutterImportPayload } from "@/src/part-cutter/importBridge";
 import { StudioCommandPalette, type StudioCommand } from "@/app/studio-ui/StudioCommandPalette";
@@ -53,7 +56,14 @@ import { StudioDialog } from "@/app/studio-ui/StudioDialog";
 import { presentAgentStatus } from "@/app/studio-ui/agentStatus";
 import { TopCommandRail, type StudioConnection } from "@/app/studio-ui/TopCommandRail";
 import { CanvasControls } from "./CanvasControls";
-import { SemanticNavigator, type SemanticSection } from "./SemanticNavigator";
+import { SkeletonTree, partName, type StructureView } from "./SkeletonTree";
+import { EditorHierarchy } from "./EditorHierarchy";
+import { RigReviewStrip } from "./RigReviewStrip";
+import { TestPoseStrip } from "./TestPoseStrip";
+import { CanvasContextMenu, type ContextMenuItem } from "./CanvasContextMenu";
+import { reviewRig, type RigChainId } from "@/src/tools/rig-editor/rigReview";
+import { buildPoseTest, buildRotationSweep, poseTestBoneIds, POSE_TESTS, type PoseTestId } from "@/src/tools/rig-editor/poseTests";
+import type { StageStatuses } from "@/app/studio-ui/StudioModeNav";
 import { publishIntegrityEvidence } from "@/src/diagnostics/integrityEvidence";
 import { useProjectHydrationIdentity } from "@/app/studio-ui/ProjectHydrationBoundary";
 import { useProviderHealth } from "@/app/studio-ui/useProviderHealth";
@@ -68,7 +78,15 @@ type PendingDelete = {
   readonly slotIds: readonly string[];
   readonly replacementChoices: readonly string[];
 };
-type SetupStep = "body" | "pivots" | "equipment" | "validate";
+type EditorMode = "setup" | "test" | "animate";
+/** A throwaway rotation sweep playing in the viewport: a review chain, a quick test, or one bone. */
+type Sweep = { readonly kind: "chain"; readonly id: RigChainId } | { readonly kind: "test"; readonly id: PoseTestId } | { readonly kind: "bone"; readonly id: string };
+type AnimationHistoryBridge = { readonly canUndo: boolean; readonly canRedo: boolean; readonly undoLabel: string | null; readonly redoLabel: string | null };
+const TESTED_KEY = "rigging-studio-tested-v1";
+const ANIMATED_KEY = "rigging-studio-animated-v1";
+const readStageMark = (key: string, projectId: string): boolean => { try { return Boolean((JSON.parse(window.localStorage.getItem(key) ?? "{}") as Record<string, boolean>)[projectId]); } catch { return false; } };
+const writeStageMark = (key: string, projectId: string): void => { try { window.localStorage.setItem(key, JSON.stringify({ ...(JSON.parse(window.localStorage.getItem(key) ?? "{}") as Record<string, boolean>), [projectId]: true })); } catch { /* a stage mark is a convenience; losing it is harmless */ } };
+const readTested = (projectId: string): boolean => readStageMark(TESTED_KEY, projectId);
 const readHistoryUi = (history: RigCommandHistory): HistoryUi => ({ canUndo: history.canUndo, canRedo: history.canRedo, undoLabel: history.getUndoLabel(), redoLabel: history.getRedoLabel() });
 
 export function RigEditor() {
@@ -91,16 +109,22 @@ export function RigEditor() {
   const [snapToGrid, setSnapToGrid] = useState(false);
   const [wholePixelSnap, setWholePixelSnap] = useState(true);
   const [rotationSnap, setRotationSnap] = useState(true);
-  const [previewMode, setPreviewMode] = useState(false);
-  const [editorMode, setEditorMode] = useState<"setup" | "animate">("setup");
+  const [sweep, setSweep] = useState<Sweep | null>(null);
+  const [posed, setPosed] = useState(false);
+  const [tested, setTested] = useState(false);
+  const [hasMotion, setHasMotion] = useState(false);
+  const [reviewChainId, setReviewChainId] = useState<RigChainId | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ readonly selection: EditorSelection; readonly x: number; readonly y: number; readonly items: readonly ContextMenuItem[] } | null>(null);
+  const [animationHistory, setAnimationHistory] = useState<AnimationHistoryBridge>({ canUndo: false, canRedo: false, undoLabel: null, redoLabel: null });
+  const [editorMode, setEditorMode] = useState<EditorMode>("setup");
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [utilityOpen, setUtilityOpen] = useState(false);
   const [utilityTab, setUtilityTab] = useState<"problems" | "activity">("problems");
   const [focusMode, setFocusMode] = useState(false);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
-  const [semanticSection, setSemanticSection] = useState<SemanticSection>("body");
-  const [setupStep, setSetupStep] = useState<SetupStep>("body");
+  const [structureView, setStructureView] = useState<StructureView>("skeleton");
+  const [advancedStructure, setAdvancedStructure] = useState(false);
   const [canvasTool, setCanvasTool] = useState<"select" | "pan">("select");
   const [renamingRig, setRenamingRig] = useState(false);
   const [leftPanelWidth, setLeftPanelWidth] = useState(264);
@@ -130,7 +154,7 @@ export function RigEditor() {
   const generatedProjectRef = useRef<GeneratedCharacterProject | null>(null);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => { const params = new URLSearchParams(window.location.search); const mode = params.get("mode"); if (mode === "animate") setEditorMode("animate"); setDemoInvalid(params.get("demo") === "invalid"); const step = params.get("step"); if (["body", "pivots", "equipment", "validate"].includes(step ?? "")) setSetupStep(step as SetupStep); try { const stored = JSON.parse(window.localStorage.getItem("rigging-studio-workspace-v1") ?? "{}") as { leftCollapsed?: boolean; rightCollapsed?: boolean; showGrid?: boolean; showBones?: boolean; showBounds?: boolean; focusMode?: boolean; semanticSection?: SemanticSection; leftPanelWidth?: number; rightPanelWidth?: number }; setLeftCollapsed(Boolean(stored.leftCollapsed)); setRightCollapsed(Boolean(stored.rightCollapsed)); setFocusMode(Boolean(stored.focusMode)); if (["character", "body", "equipment", "layers", "advanced"].includes(stored.semanticSection ?? "")) setSemanticSection(stored.semanticSection!); if (Number.isFinite(stored.leftPanelWidth)) setLeftPanelWidth(Math.max(208, Math.min(360, stored.leftPanelWidth!))); if (Number.isFinite(stored.rightPanelWidth)) setRightPanelWidth(Math.max(268, Math.min(420, stored.rightPanelWidth!))); if (stored.showGrid !== undefined) setShowGrid(stored.showGrid); if (stored.showBones !== undefined) setShowBones(stored.showBones); if (stored.showBounds !== undefined) setShowBounds(stored.showBounds); } catch { /* invalid workspace preferences fall back to the disciplined default layout */ } setPreferencesReady(true); }, 0);
+    const timer = window.setTimeout(() => { const params = new URLSearchParams(window.location.search); const mode = params.get("mode"); if (mode === "animate" || mode === "test") setEditorMode(mode); setDemoInvalid(params.get("demo") === "invalid"); try { const stored = JSON.parse(window.localStorage.getItem("rigging-studio-workspace-v1") ?? "{}") as { leftCollapsed?: boolean; rightCollapsed?: boolean; showGrid?: boolean; showBones?: boolean; showBounds?: boolean; focusMode?: boolean; structureView?: StructureView; leftPanelWidth?: number; rightPanelWidth?: number }; setLeftCollapsed(Boolean(stored.leftCollapsed)); setRightCollapsed(Boolean(stored.rightCollapsed)); setFocusMode(Boolean(stored.focusMode)); if (stored.structureView === "skeleton" || stored.structureView === "parts") setStructureView(stored.structureView); if (Number.isFinite(stored.leftPanelWidth)) setLeftPanelWidth(Math.max(208, Math.min(360, stored.leftPanelWidth!))); if (Number.isFinite(stored.rightPanelWidth)) setRightPanelWidth(Math.max(268, Math.min(420, stored.rightPanelWidth!))); if (stored.showGrid !== undefined) setShowGrid(stored.showGrid); if (stored.showBones !== undefined) setShowBones(stored.showBones); if (stored.showBounds !== undefined) setShowBounds(stored.showBounds); } catch { /* invalid workspace preferences fall back to the disciplined default layout */ } setPreferencesReady(true); }, 0);
     return () => window.clearTimeout(timer);
   }, []);
 
@@ -147,21 +171,22 @@ export function RigEditor() {
         setActiveSkinId(snapshot.selectedSkinId ?? snapshot.rig?.defaultSkinId ?? "");
       } catch { generatedProjectRef.current = null; setGeneratedProjectState(null); }
       setSelections([]); setHiddenBoneIds(new Set()); setLockedIds(new Set()); setSearch(""); setPendingDelete(null); setDeleteReplacementId("");
-      setRenamingRig(false); setCommandPaletteOpen(false); setUtilityOpen(false); setPreviewMode(false); setCanvasTool("select");
+      setRenamingRig(false); setCommandPaletteOpen(false); setUtilityOpen(false); setSweep(null); setPosed(false); setReviewChainId(null); setContextMenu(null); setCanvasTool("select");
       setProjectSessionToken(detail?.projectSessionToken ?? commandService.getProjectLifecycleSnapshot().projectSessionToken);
-      if (mode === "setup" || mode === "animate") setEditorMode(mode);
+      if (mode === "setup" || mode === "test" || mode === "animate") setEditorMode(mode);
     };
     window.addEventListener("rig-studio:durable-project-opened", onDurableOpen);
     return () => window.removeEventListener("rig-studio:durable-project-opened", onDurableOpen);
   }, [commandService]);
 
-  useEffect(() => { if (preferencesReady) window.localStorage.setItem("rigging-studio-workspace-v1", JSON.stringify({ leftCollapsed, rightCollapsed, showGrid, showBones, showBounds, focusMode, semanticSection, leftPanelWidth, rightPanelWidth })); }, [focusMode, leftCollapsed, leftPanelWidth, preferencesReady, rightCollapsed, rightPanelWidth, semanticSection, showBones, showBounds, showGrid]);
+  useEffect(() => { if (preferencesReady) window.localStorage.setItem("rigging-studio-workspace-v1", JSON.stringify({ leftCollapsed, rightCollapsed, showGrid, showBones, showBounds, focusMode, structureView, leftPanelWidth, rightPanelWidth })); }, [focusMode, leftCollapsed, leftPanelWidth, preferencesReady, rightCollapsed, rightPanelWidth, structureView, showBones, showBounds, showGrid]);
 
   useEffect(() => { if (!focusMode || !rig) return; const timer = window.setTimeout(() => viewportRef.current?.resetView(), 210); return () => window.clearTimeout(timer); }, [focusMode, rig]);
 
   useEffect(() => {
     if (!preferencesReady) return;
-    const currentMode = new URLSearchParams(window.location.search).get("mode") === "animate" ? "animate" : "setup";
+    const urlMode = new URLSearchParams(window.location.search).get("mode");
+    const currentMode = urlMode === "animate" || urlMode === "test" ? urlMode : "setup";
     if (currentMode !== editorMode) router.replace(`/?mode=${editorMode}`, { scroll: false });
   }, [editorMode, preferencesReady, router]);
 
@@ -227,6 +252,10 @@ export function RigEditor() {
         rigStateRef.current = historyRef.current.present;
         setActiveSkinId(initialRig.defaultSkinId);
         setAnimation(parsedAnimation.success ? parsedAnimation.data : null);
+        setHasMotion(durableAnimations !== null || readStageMark(ANIMATED_KEY, hydrationIdentity.activeProjectId ?? "browser-draft"));
+        setTested(readTested(hydrationIdentity.activeProjectId ?? "browser-draft"));
+        // A rig that has just been built from Parts opens straight into review, one chain at a time.
+        if (handoff) setReviewChainId(reviewRig(initialRig)[0]?.id ?? null);
         if (handoff?.showBones) setShowBones(true);
         if (handoff?.centerView) setCenterOnLoad(true);
         setHistoryUi(readHistoryUi(historyRef.current));
@@ -285,10 +314,13 @@ export function RigEditor() {
   }, [characterStorage, rig]);
 
   const previewAnimation = useMemo(() => {
-    if (!rig || !animation) return null;
-    const result = safeParseAnimationDefinition(animation, rig);
-    return result.success ? result.data : null;
-  }, [animation, rig]);
+    if (!rig || !sweep) return null;
+    if (sweep.kind === "test") return buildPoseTest(rig, sweep.id);
+    if (sweep.kind === "bone") return buildRotationSweep(rig, [sweep.id], { id: "pose-test-bone" });
+    return buildRotationSweep(rig, rig.bones.filter((bone) => reviewRig(rig).find((chain) => chain.id === sweep.id)?.joints.some((joint) => joint.boneId === bone.id)).map((bone) => bone.id), { id: `rig-review-${sweep.id}` });
+  }, [rig, sweep]);
+  // While a sweep plays the viewport is showing a pose, not the rig, so rig edits are held off.
+  const previewMode = previewAnimation !== null;
 
   const primarySelection = selections.at(-1) ?? null;
   const selectedLocked = primarySelection ? lockedIds.has(`${primarySelection.type}:${primarySelection.id}`) : false;
@@ -306,7 +338,7 @@ export function RigEditor() {
   useEffect(() => {
     if (editorMode !== "animate" || !blockingValidationIssues.length) return;
     const timer = window.setTimeout(() => {
-      setEditorMode("setup"); setSetupStep("validate"); setUtilityTab("problems"); setUtilityOpen(true);
+      setEditorMode("setup"); setUtilityTab("problems"); setUtilityOpen(true);
       setError("Animate was not opened because the durable project failed integrity validation");
       router.replace("/?mode=setup", { scroll: false });
     }, 0);
@@ -358,6 +390,10 @@ export function RigEditor() {
       return null;
     }
   }, [commandService, previewMode]);
+  // Which way the character faces decides the direction of every standard clip; stored with the rig.
+  const setFacing = (facing: RigFacing | null): void => { run(facing ? `Face ${facing}` : "Detect facing automatically", (current) => { const metadata = { ...current.metadata }; if (facing) metadata.facing = facing; else delete metadata.facing; return { ...current, metadata }; }); };
+  // Rebuilding happens in Parts, where the cut and the source image live.
+  const rebuildFromParts = (): void => { try { window.sessionStorage.setItem(REBUILD_REQUEST_KEY, hydrationIdentity.activeProjectId ?? ""); } catch { /* storage unavailable: Parts opens without rebuilding */ } router.push("/part-cutter"); };
 
   const select = useCallback((selection: EditorSelection | null, additive: boolean): void => {
     if (!selection) { setSelections([]); return; }
@@ -439,7 +475,7 @@ export function RigEditor() {
     setRig(next);
     setSelections([]);
     setActiveSkinId(next.defaultSkinId);
-    setPreviewMode(false);
+    setSweep(null);
     setDirty(false);
     setHistoryUi(readHistoryUi(commandHistory));
     setError(null);
@@ -469,7 +505,7 @@ export function RigEditor() {
     setRig(next);
     setSelections([]);
     setActiveSkinId(next.defaultSkinId);
-    setPreviewMode(false);
+    setSweep(null);
     setDirty(false);
     setHistoryUi(readHistoryUi(commandHistory));
     setMessage("Local draft discarded");
@@ -599,11 +635,12 @@ export function RigEditor() {
     const keyDown = (event: KeyboardEvent): void => {
       if (editorMode === "animate") return;
       const modifier = event.metaKey || event.ctrlKey;
-      if (modifier && event.key.toLowerCase() === "z") { event.preventDefault(); if (event.shiftKey) redo(); else undo(); return; }
+      if (modifier && event.key.toLowerCase() === "z") { event.preventDefault(); if (editorMode === "test") return; if (event.shiftKey) redo(); else undo(); return; }
       if (modifier && event.key.toLowerCase() === "s") { event.preventDefault(); downloadJson(); return; }
       if (modifier && event.key.toLowerCase() === "o") { event.preventDefault(); if (!previewMode) loadInputRef.current?.click(); return; }
       if (editableTarget(event.target)) return;
-      if (event.key === "Escape") { setSelections([]); return; }
+      if (event.key === "Escape") { if (sweep) setSweep(null); else setSelections([]); return; }
+      if (editorMode === "test") { if (event.key === "0") { event.preventDefault(); setSweep(null); viewportRef.current?.resetPose(); setPosed(false); setMessage("Pose reset"); } return; }
       if ((event.key === "Delete" || event.key === "Backspace") && primarySelection) { event.preventDefault(); deleteItem(primarySelection.type); return; }
       if (!previewMode && primarySelection?.type === "bone" && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
         event.preventDefault();
@@ -617,14 +654,16 @@ export function RigEditor() {
     };
     window.addEventListener("keydown", keyDown);
     return () => window.removeEventListener("keydown", keyDown);
-  }, [deleteItem, downloadJson, editorMode, previewMode, primarySelection, redo, rig, run, undo]);
+  }, [deleteItem, downloadJson, editorMode, previewMode, primarySelection, redo, rig, run, sweep, undo]);
 
   useEffect(() => {
     const keyDown = (event: KeyboardEvent): void => {
       if (editableTarget(event.target) || commandPaletteOpen) return;
       if (event.key === "1") { event.preventDefault(); router.push("/part-cutter"); return; }
-      if (event.key === "2") { event.preventDefault(); router.replace("/?mode=setup", { scroll: false }); setEditorMode("setup"); setPreviewMode(false); setFocusMode(false); return; }
-      if (event.key === "3") { event.preventDefault(); if (blockingValidationIssues.length) { setSetupStep("validate"); setUtilityTab("problems"); setUtilityOpen(true); setError("Setup must pass integrity validation before Animate can open"); } else { router.replace("/?mode=animate", { scroll: false }); setEditorMode("animate"); setPreviewMode(false); setFocusMode(false); } return; }
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.key === "2" || event.key === "3") { event.preventDefault(); const next = event.key === "2" ? "setup" : "test"; router.replace(`/?mode=${next}`, { scroll: false }); setEditorMode(next); setSweep(null); setFocusMode(false); return; }
+      if (event.key === "4") { event.preventDefault(); if (blockingValidationIssues.length) { setEditorMode("setup"); setUtilityTab("problems"); setUtilityOpen(true); setError("Fix the rig problems before animating"); } else { router.replace("/?mode=animate", { scroll: false }); setEditorMode("animate"); setSweep(null); setFocusMode(false); } return; }
+      if (event.key.toLowerCase() === "v") { setCanvasTool("select"); return; }
       if (event.key.toLowerCase() === "f") { event.preventDefault(); viewportRef.current?.resetView(); return; }
       if (event.key === "Escape" && focusMode) { event.preventDefault(); setFocusMode(false); }
     };
@@ -637,55 +676,105 @@ export function RigEditor() {
   const toggleSetValue = (setter: React.Dispatch<React.SetStateAction<Set<string>>>, value: string): void => setter((current) => { const next = new Set(current); if (next.has(value)) next.delete(value); else next.add(value); return next; });
   const effectiveSkinId = rig.skins.some((skin) => skin.id === activeSkinId) ? activeSkinId : rig.defaultSkinId;
   const agentActivity = agentSession.activity.filter((event) => event.actor !== "Human");
-  const selectionLabel = editorMode === "animate" && agentSession.selectedBoneId
-    ? humanizeTechnicalId(agentSession.selectedBoneId)
-    : primarySelection ? humanizeTechnicalId(primarySelection.id) : "Nothing selected";
+  const selectedBoneId = selections.find((selection) => selection.type === "bone")?.id ?? null;
+  const selectionLabel = primarySelection ? primarySelection.type === "slot" ? partName(primarySelection.id) : humanizeTechnicalId(primarySelection.id) : "Nothing selected";
   const agentStatus = presentAgentStatus(agentSession);
+  const projectKey = hydrationIdentity.activeProjectId ?? "browser-draft";
+  const review = reviewRig(rig, validationIssues, effectiveSkinId);
+  const reviewFlags = review.reduce((count, chain) => count + chain.joints.filter((joint) => joint.problem).length, 0);
+  const jointReview = selectedBoneId ? review.flatMap((chain) => chain.joints).find((joint) => joint.boneId === selectedBoneId) ?? null : null;
+  const stageStatuses: StageStatuses = {
+    prepare: rig.slots.some((slot) => slot.attachmentId) ? "done" : "todo",
+    setup: blockingValidationIssues.length || reviewFlags ? "attention" : rig.bones.length > 1 ? "done" : "todo",
+    test: tested ? "done" : "todo",
+    animate: hasMotion ? "done" : "todo",
+  };
+  const markTested = (): void => {
+    if (tested) return;
+    setTested(true);
+    writeStageMark(TESTED_KEY, projectKey);
+  };
+  const enterMode = (mode: EditorMode): void => { router.replace(`/?mode=${mode}`, { scroll: false }); setEditorMode(mode); setSweep(null); setPosed(false); setContextMenu(null); setFocusMode(false); };
+  const showProblems = (): void => { setUtilityTab("problems"); setUtilityOpen(true); };
+  const modeSelect = (mode: StudioMode): void => {
+    if (mode === "prepare") router.push("/part-cutter");
+    else if (mode === "animate" && blockingValidationIssues.length) { enterMode("setup"); showProblems(); setError("Fix the rig problems before animating"); }
+    else enterMode(mode);
+  };
   const selectIssueSource = (issue: ValidationIssue): (() => void) | undefined => {
     if (issue.mode === "prepare") return () => router.push("/part-cutter");
-    const path = issue.path;
-    const collection = path[0]; const index = typeof path[1] === "number" ? path[1] : -1;
-    if (collection === "bones" && rig.bones[index]) return () => { router.replace("/?mode=setup", { scroll: false }); setEditorMode("setup"); select({ type: "bone", id: rig.bones[index].id }, false); setUtilityOpen(false); };
-    if (collection === "slots" && rig.slots[index]) return () => { router.replace("/?mode=setup", { scroll: false }); setEditorMode("setup"); select({ type: "slot", id: rig.slots[index].id }, false); setUtilityOpen(false); };
-    if (collection === "attachments" && rig.attachments[index]) return () => { router.replace("/?mode=setup", { scroll: false }); setEditorMode("setup"); select({ type: "attachment", id: rig.attachments[index].id }, false); setUtilityOpen(false); };
-    if (collection === "skins" && rig.skins[index]) return () => { router.replace("/?mode=setup", { scroll: false }); setEditorMode("setup"); select({ type: "skin", id: rig.skins[index].id }, false); setUtilityOpen(false); };
+    const collection = issue.path[0]; const index = typeof issue.path[1] === "number" ? issue.path[1] : -1;
+    const reveal = (selection: EditorSelection) => () => { enterMode("setup"); select(selection, false); setUtilityOpen(false); };
+    if (collection === "bones" && rig.bones[index]) return reveal({ type: "bone", id: rig.bones[index].id });
+    if (collection === "slots" && rig.slots[index]) return reveal({ type: "slot", id: rig.slots[index].id });
+    if (collection === "attachments" && rig.attachments[index]) return reveal({ type: "attachment", id: rig.attachments[index].id });
+    if (collection === "skins" && rig.skins[index]) return reveal({ type: "skin", id: rig.skins[index].id });
     return undefined;
   };
   const problems: StudioProblem[] = validationIssues.map((issue, index) => ({ id: `${issue.code}-${index}`, severity: issue.severity ?? "error", title: humanizeTechnicalId(issue.code), detail: issue.suggestedAction ? `${issue.message} ${issue.suggestedAction}` : issue.message, context: issue.objectId ? humanizeTechnicalId(issue.objectId) : issue.path.join(" › ") || "Rig", onSelect: selectIssueSource(issue) }));
-  const modeSelect = (mode: StudioMode): void => { if (mode === "prepare") router.push("/part-cutter"); else if (mode === "animate" && blockingValidationIssues.length) { setSetupStep("validate"); setUtilityTab("problems"); setUtilityOpen(true); setError("Setup must pass integrity validation before Animate can open"); } else { router.replace(`/?mode=${mode}`, { scroll: false }); setEditorMode(mode); setPreviewMode(false); setFocusMode(false); } };
   const toggleFocusMode = (): void => { const entering = !focusMode; setFocusMode(entering); if (entering) { window.requestAnimationFrame(() => viewportRef.current?.resetView()); window.setTimeout(() => viewportRef.current?.resetView(), 190); } };
-  const activateSetupStep = (step: SetupStep): void => {
-    setSetupStep(step);
-    if (step === "body" || step === "pivots") { setSemanticSection("body"); setShowBones(true); }
-    if (step === "equipment") { setSemanticSection("equipment"); setShowBounds(false); setSelections([]); }
-    if (step === "validate") { setUtilityTab("problems"); setUtilityOpen(true); }
-  };
   const resetWorkspace = (): void => { setLeftCollapsed(false); setRightCollapsed(false); setShowGrid(true); setShowBones(true); setShowBounds(false); setFocusMode(false); viewportRef.current?.resetView(); setMessage("Workspace layout reset"); };
-  const animationCommand = (action: "play" | "pause" | "restart" | "ai" | "review" | "save"): void => { window.dispatchEvent(new CustomEvent("rig-studio:animation-command", { detail: action })); };
+  const animationCommand = (action: "play" | "pause" | "restart" | "ai" | "review" | "save" | "undo" | "redo"): void => { window.dispatchEvent(new CustomEvent("rig-studio:animation-command", { detail: action })); };
+
+  // Selection is one thing everywhere. In Test only bones can be posed, so clicking art selects the bone that moves it.
+  const selectInStage = (selection: EditorSelection | null, additive: boolean): void => {
+    if (editorMode === "test" && selection?.type === "slot") { const boneId = rig.slots.find((slot) => slot.id === selection.id)?.boneId; select(boneId ? { type: "bone", id: boneId } : null, false); return; }
+    select(selection, additive);
+  };
+  const resetPose = (): void => { setSweep(null); viewportRef.current?.resetPose(); setPosed(false); setMessage("Pose reset"); };
+  const runSweep = (next: Sweep | null): void => { setPosed(false); setSweep(next); if (next) { setShowBones(true); if (editorMode === "test") markTested(); } };
+  const testRotation = (boneId: string): void => { enterMode("test"); select({ type: "bone", id: boneId }, false); setShowBones(true); setSweep({ kind: "bone", id: boneId }); markTested(); setMessage(`Swinging ${humanizeTechnicalId(boneId)}. Press Esc to stop`); };
+  const movePivot = (boneId: string, x: number, y: number): void => { if (run("Move pivot", (current) => moveBonePivot(current, boneId, x, y))) setMessage(`Moved ${humanizeTechnicalId(boneId)} pivot. The art stayed in place`); };
+  const selectChain = (id: RigChainId | null): void => {
+    setReviewChainId(id); setSweep(null);
+    const first = review.find((chain) => chain.id === id)?.joints[0];
+    if (first) { setShowBones(true); select({ type: "bone", id: (review.find((chain) => chain.id === id)?.joints.find((joint) => joint.problem) ?? first).boneId }, false); }
+  };
+  const poseTestAvailability = Object.fromEntries(POSE_TESTS.map((test) => [test.id, poseTestBoneIds(rig, test.id).length > 0])) as Record<PoseTestId, boolean>;
+
+  const contextItems = (selection: EditorSelection): readonly ContextMenuItem[] => {
+    if (selection.type === "bone") {
+      const bone = rig.bones.find((candidate) => candidate.id === selection.id);
+      const child = rig.bones.find((candidate) => candidate.parentId === selection.id);
+      return [
+        { label: "Select parent", disabled: !bone?.parentId, onSelect: () => { if (bone?.parentId) select({ type: "bone", id: bone.parentId }, false); } },
+        { label: "Select child", disabled: !child, onSelect: () => { if (child) select({ type: "bone", id: child.id }, false); } },
+        { label: "Edit pivot", disabled: editorMode === "setup", onSelect: () => { enterMode("setup"); select(selection, false); setMessage("Drag the joint to move its pivot"); } },
+        { label: "Test rotation", onSelect: () => testRotation(selection.id) },
+        { label: "Reset pose", shortcut: "0", disabled: editorMode !== "test", onSelect: resetPose },
+      ];
+    }
+    const slot = rig.slots.find((candidate) => candidate.id === selection.id);
+    return [
+      { label: "Select its bone", disabled: !slot, onSelect: () => { if (slot) select({ type: "bone", id: slot.boneId }, false); } },
+      { label: "Edit region in Parts", shortcut: "1", onSelect: () => router.push("/part-cutter") },
+      { label: slot?.visible === false ? "Show" : "Hide", disabled: !slot || editorMode !== "setup", onSelect: () => { if (slot) run("Toggle part visibility", (current) => updateSlot(current, slot.id, { visible: !slot.visible })); } },
+      { label: lockedIds.has(`slot:${selection.id}`) ? "Unlock" : "Lock", onSelect: () => toggleSetValue(setLockedIds, `slot:${selection.id}`) },
+    ];
+  };
+
   const commands: StudioCommand[] = [
-    { id: "prepare", label: "Prepare character parts", description: "Open source cutting, masks, semantics, and reconstruction", group: "Mode", shortcut: "1", keywords: "ai cut manual cut masks", run: () => modeSelect("prepare") },
-    { id: "setup", label: "Setup rig", description: "Edit bones, pivots, slots, equipment, and skins", group: "Mode", shortcut: "2", run: () => modeSelect("setup") },
-    { id: "animate", label: "Animate character", description: "Open animations, playback, timeline, and visual review", group: "Mode", shortcut: "3", run: () => modeSelect("animate") },
-    { id: "fit", label: "Frame selection", description: "Fit or frame the selected character object in the viewport", group: "View", shortcut: "F", keywords: "fit character frame selected", run: () => viewportRef.current?.resetView() },
-    { id: "focus", label: focusMode ? "Exit focus mode" : "Enter focus mode", description: "Hide panels and overlays for a clean character review", group: "View", shortcut: "Esc", run: toggleFocusMode },
-    { id: "bones", label: showBones ? "Hide bone overlay" : "Show bone overlay", description: "Toggle joint and bone controls", group: "View", keywords: "show bones hide bones skeleton joints", run: () => setShowBones((value) => !value) },
-    { id: "bounds", label: showBounds ? "Hide part bounds" : "Show part bounds", description: "Toggle attachment bounding boxes", group: "View", run: () => setShowBounds((value) => !value) },
-    { id: "show-all", label: "Show all bones", description: "Clear hidden-bone isolation and visibility overrides", group: "Visibility", disabled: editorMode === "animate", run: () => setHiddenBoneIds(new Set()) },
-    { id: "isolate", label: "Isolate selected bone", description: "Hide every bone except the current selection", group: "Selection", disabled: editorMode === "animate" || primarySelection?.type !== "bone", run: () => { if (primarySelection?.type === "bone") setHiddenBoneIds(new Set(rig.bones.filter((bone) => bone.id !== primarySelection.id).map((bone) => bone.id))); } },
-    { id: "save", label: editorMode === "animate" ? "Save animations" : "Save rig", description: "Export the current authored document", group: "File", shortcut: "⌘S", keywords: "export character download project", run: () => editorMode === "animate" ? window.dispatchEvent(new CustomEvent("rig-studio:animation-command", { detail: "save" })) : downloadJson() },
-    { id: "equipment", label: "Equipment and attachments", description: "Open Setup and find equipment, slots, and attachments", group: "Setup", keywords: "shield sword attachment slot skin", run: () => { modeSelect("setup"); setSearch("attachment"); } },
-    { id: "test-joint", label: "Test selected joint", description: "Check the selected bone's editable length and open its inspector", group: "Setup", disabled: editorMode !== "setup" || primarySelection?.type !== "bone", keywords: "rotate bone test pivot", run: () => { const bone = primarySelection?.type === "bone" ? rig.bones.find((candidate) => candidate.id === primarySelection.id) : null; setMessage(bone && bone.length > .001 ? `${humanizeTechnicalId(bone.id)} is ready for rotation testing in the inspector` : "Selected joint needs a meaningful nonzero length"); } },
-    { id: "validate-rig", label: "Validate rig", description: "Run structural checks and open actionable Problems", group: "Review", keywords: "check skeleton missing slot", run: () => { setUtilityTab("problems"); setUtilityOpen(true); setMessage(problems.length ? `Validation found ${problems.length} problem(s)` : "Rig validation passed"); } },
-    { id: "undo", label: "Undo", description: historyUi.undoLabel ?? "No setup change to undo", group: "Edit", shortcut: "⌘Z", disabled: editorMode === "animate" || !historyUi.canUndo, run: undo },
-    { id: "redo", label: "Redo", description: historyUi.redoLabel ?? "No setup change to redo", group: "Edit", shortcut: "⇧⌘Z", disabled: editorMode === "animate" || !historyUi.canRedo, run: redo },
-    { id: "play", label: "Play animation", description: "Start playback in the current animation", group: "Animate", shortcut: "Space", disabled: editorMode !== "animate", run: () => animationCommand("play") },
-    { id: "pause", label: "Pause animation", description: "Pause playback at the current time", group: "Animate", disabled: editorMode !== "animate", run: () => animationCommand("pause") },
-    { id: "ai-animation", label: "AI Animate · Generate Walk", description: "Generate or refine a walk for the selected animation", group: "AI", disabled: editorMode !== "animate", keywords: "generate walk ai animation motion", run: () => animationCommand("ai") },
-    { id: "visual-review", label: "Visual Review · Render Preview", description: "Render a contact sheet and inspect motion diagnostics", group: "Review", disabled: editorMode !== "animate", keywords: "preview render contact sheet diagnose", run: () => animationCommand("review") },
-    { id: "problems", label: "Show problems", description: `${problems.length} current workspace ${problems.length === 1 ? "problem" : "problems"}`, group: "Review", run: () => { setUtilityTab("problems"); setUtilityOpen(true); } },
-    { id: "activity", label: "Agent status", description: agentStatus.label, group: "Review", keywords: "mcp tools bridge connection", run: () => { setUtilityTab("activity"); setUtilityOpen(true); } },
-    { id: "comfy-status", label: "Comfy status", description: "Inspect the image-production provider status in the top bar", group: "Review", keywords: "image provider comfyui workflow", run: () => setMessage("Comfy provider status is shown in the top bar") },
-    { id: "reset-workspace", label: "Reset workspace", description: "Restore panels, overlays, and viewport defaults", group: "Workspace", run: resetWorkspace },
+    { id: "prepare", label: "Parts", description: "Define the pieces of your character that can move", group: "Stage", shortcut: "1", keywords: "prepare cut masks regions", run: () => modeSelect("prepare") },
+    { id: "setup", label: "Rig", description: "Connect the parts with bones and pivots", group: "Stage", shortcut: "2", keywords: "setup bones pivots skeleton", run: () => modeSelect("setup") },
+    { id: "test", label: "Test", description: "Pose the character and confirm the rig behaves", group: "Stage", shortcut: "3", keywords: "pose rotate check", run: () => modeSelect("test") },
+    { id: "animate", label: "Animate", description: "Create and edit motion", group: "Stage", shortcut: "4", keywords: "timeline clips keyframes", run: () => modeSelect("animate") },
+    { id: "fit", label: "Fit character", description: "Fit the character in the viewport", group: "View", shortcut: "F", keywords: "frame zoom", run: () => viewportRef.current?.resetView() },
+    { id: "focus", label: focusMode ? "Exit focus mode" : "Enter focus mode", description: "Hide panels for a clean look at the character", group: "View", shortcut: "Esc", run: toggleFocusMode },
+    { id: "bones", label: showBones ? "Hide bones" : "Show bones", description: "Toggle bones, joints and pivots on the canvas", group: "View", keywords: "skeleton joints overlay", run: () => setShowBones((value) => !value) },
+    { id: "bounds", label: showBounds ? "Hide part bounds" : "Show part bounds", description: "Toggle the box around each part's art", group: "View", run: () => setShowBounds((value) => !value) },
+    { id: "show-all", label: "Show all bones", description: "Clear isolation and hidden bones", group: "View", disabled: editorMode === "animate", run: () => setHiddenBoneIds(new Set()) },
+    { id: "test-joint", label: "Test selected bone", description: "Swing the selected bone in Test", group: "Test", disabled: !selectedBoneId, keywords: "rotate pivot joint", run: () => { if (selectedBoneId) testRotation(selectedBoneId); } },
+    { id: "reset-pose", label: "Reset pose", description: "Return every bone to its rest pose", group: "Test", shortcut: "0", disabled: editorMode !== "test", run: resetPose },
+    { id: "validate-rig", label: "Show rig problems", description: `${problems.length} current ${problems.length === 1 ? "problem" : "problems"}`, group: "Rig", keywords: "validate check issues", run: showProblems },
+    { id: "save", label: editorMode === "animate" ? "Save animations" : "Save rig", description: "Export the current document", group: "File", shortcut: "⌘S", keywords: "export download", run: () => editorMode === "animate" ? animationCommand("save") : downloadJson() },
+    { id: "undo", label: "Undo", description: (editorMode === "animate" ? animationHistory.undoLabel : historyUi.undoLabel) ?? "Nothing to undo", group: "Edit", shortcut: "⌘Z", disabled: editorMode === "test" || !(editorMode === "animate" ? animationHistory.canUndo : historyUi.canUndo), run: () => editorMode === "animate" ? animationCommand("undo") : undo() },
+    { id: "redo", label: "Redo", description: (editorMode === "animate" ? animationHistory.redoLabel : historyUi.redoLabel) ?? "Nothing to redo", group: "Edit", shortcut: "⇧⌘Z", disabled: editorMode === "test" || !(editorMode === "animate" ? animationHistory.canRedo : historyUi.canRedo), run: () => editorMode === "animate" ? animationCommand("redo") : redo() },
+    { id: "play", label: "Play animation", description: "Start playback of the current clip", group: "Animate", shortcut: "Space", disabled: editorMode !== "animate", run: () => animationCommand("play") },
+    { id: "pause", label: "Pause animation", description: "Pause at the current time", group: "Animate", disabled: editorMode !== "animate", run: () => animationCommand("pause") },
+    { id: "ai-animation", label: "Generate motion", description: "Generate or refine a clip for this character", group: "Animate", disabled: editorMode !== "animate", keywords: "ai walk run idle attack", run: () => animationCommand("ai") },
+    { id: "visual-review", label: "Review motion", description: "Check the current clip for motion problems", group: "Animate", disabled: editorMode !== "animate", keywords: "preview render diagnose", run: () => animationCommand("review") },
+    { id: "activity", label: "Agent status", description: agentStatus.label, group: "System", keywords: "mcp tools bridge connection", run: () => { setUtilityTab("activity"); setUtilityOpen(true); } },
+    { id: "reset-workspace", label: "Reset workspace", description: "Restore panels, overlays and the view", group: "System", run: resetWorkspace },
   ];
   const connections: readonly StudioConnection[] = [
     { id: "rig", label: "Rig", state: validationIssues.length ? "degraded" : "ready", title: validationIssues.length ? `${validationIssues.length} issues` : "Document ready" },
@@ -700,42 +789,49 @@ export function RigEditor() {
     window.addEventListener("pointermove", move); window.addEventListener("pointerup", stop, { once: true });
   };
   const workspaceStyle = { "--navigator-width": `${leftPanelWidth}px`, "--inspector-width": `${rightPanelWidth}px` } as CSSProperties;
-  return <main className={`rig-editor-shell mode-${editorMode} ${focusMode ? "is-focus-mode" : ""}`} style={workspaceStyle} data-project-id={hydrationIdentity.activeProjectId ?? "browser-draft"} data-project-session-token={hydrationIdentity.projectSessionToken} data-hydration-token={hydrationIdentity.hydrationToken}>
+  const testing = editorMode === "test";
+  const inAnimate = editorMode === "animate";
+  const railUndo = inAnimate ? animationHistory : historyUi;
+  const hierarchyDisabled = previewMode || testing;
+  return <main className={`rig-editor-shell workflow-v2 mode-${editorMode} ${focusMode ? "is-focus-mode" : ""}`} style={workspaceStyle} data-project-id={hydrationIdentity.activeProjectId ?? "browser-draft"} data-project-session-token={hydrationIdentity.projectSessionToken} data-hydration-token={hydrationIdentity.hydrationToken}>
     <input ref={loadInputRef} hidden type="file" accept="application/json,.json" onChange={(event) => void loadJson(event)} />
     <input ref={uploadInputRef} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void uploadAttachment(event)} />
     <input ref={prepareInputRef} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void importSpriteForCutting(event)} />
-    <TopCommandRail active={editorMode} projectName={rigName(rig)} dirty={dirty} editingName={renamingRig} onEditingName={setRenamingRig} onCommitName={commitRigName} onSelect={modeSelect} onCommand={() => setCommandPaletteOpen(true)} onUndo={undo} onRedo={redo} canUndo={editorMode === "setup" && !previewMode && historyUi.canUndo} canRedo={editorMode === "setup" && !previewMode && historyUi.canRedo} undoTitle={historyUi.undoLabel ?? "Nothing to undo"} redoTitle={historyUi.redoLabel ?? "Nothing to redo"} onExport={() => editorMode === "animate" ? animationCommand("save") : downloadJson()} validity={{ count: validationIssues.length, onOpen: () => { setUtilityTab("problems"); setUtilityOpen(true); } }} connections={connections} onConnections={() => { setUtilityTab("activity"); setUtilityOpen(true); }} focus={{ active: focusMode, onToggle: toggleFocusMode }} overflow={<><Link href="/create-character">Create character</Link><button type="button" onClick={() => prepareInputRef.current?.click()} disabled={previewMode || editorMode === "animate"}>Import sprite</button><button type="button" onClick={() => loadInputRef.current?.click()} disabled={previewMode || editorMode === "animate"}>Load rig</button><button type="button" onClick={discardDraft} disabled={previewMode || editorMode === "animate"}>Discard local draft</button><button type="button" onClick={resetWorkspace}>Reset workspace</button><button type="button" onClick={() => { setUtilityTab("activity"); setUtilityOpen(true); }}>Diagnostics</button></>}><ImageProductionStatus projectId={agentSession.activeProjectId?.startsWith("character-") ? agentSession.activeProjectId : null} /></TopCommandRail>
+    <TopCommandRail active={editorMode} stageStatuses={stageStatuses} projectName={rigName(rig)} dirty={dirty} editingName={renamingRig} onEditingName={setRenamingRig} onCommitName={commitRigName} onSelect={modeSelect} onCommand={() => setCommandPaletteOpen(true)} onUndo={() => inAnimate ? animationCommand("undo") : undo()} onRedo={() => inAnimate ? animationCommand("redo") : redo()} canUndo={!testing && !previewMode && railUndo.canUndo} canRedo={!testing && !previewMode && railUndo.canRedo} undoTitle={testing ? "Posing in Test is not recorded. Use Reset pose" : `${railUndo.undoLabel ?? "Nothing to undo"}  (⌘Z)`} redoTitle={`${railUndo.redoLabel ?? "Nothing to redo"}  (⇧⌘Z)`} onExport={() => inAnimate ? animationCommand("save") : downloadJson()} validity={{ count: validationIssues.length, onOpen: showProblems }} connections={connections} onConnections={() => { setUtilityTab("activity"); setUtilityOpen(true); }} focus={{ active: focusMode, onToggle: toggleFocusMode }} overflow={<><Link href="/create-character">Create character</Link><button type="button" onClick={() => prepareInputRef.current?.click()} disabled={previewMode || inAnimate}>Import sprite</button><button type="button" onClick={() => loadInputRef.current?.click()} disabled={previewMode || inAnimate}>Load rig</button><button type="button" onClick={discardDraft} disabled={previewMode || inAnimate}>Discard local draft</button><button type="button" onClick={resetWorkspace}>Reset workspace</button><button type="button" onClick={() => { setUtilityTab("activity"); setUtilityOpen(true); }}>Diagnostics</button></>}><ImageProductionStatus projectId={agentSession.activeProjectId?.startsWith("character-") ? agentSession.activeProjectId : null} /></TopCommandRail>
 
-      {editorMode === "animate" ? <AnimateWorkspace key={hydrationIdentity.projectSessionToken} projectId={hydrationIdentity.activeProjectId} rig={rig} activeSkinId={effectiveSkinId} showGrid={showGrid} showBones={showBones} showBounds={showBounds} viewportRef={viewportRef} onCursor={setCursor} onZoom={setZoom} onMessage={setMessage} onError={setError} /> : <div key={hydrationIdentity.projectSessionToken} className={`editor-body ${leftCollapsed ? "left-collapsed" : ""} ${rightCollapsed ? "right-collapsed" : ""} ${!primarySelection ? "context-idle" : ""}`} data-canvas-project-id={hydrationIdentity.activeProjectId ?? "browser-draft"} data-inspector-project-id={hydrationIdentity.activeProjectId ?? "browser-draft"}>
-      <aside className="editor-left-panel">
-        <header className="panel-identity"><span>Setup</span><button type="button" onClick={() => setLeftCollapsed(true)} aria-label="Collapse setup navigator">‹</button></header>
-        <div className="outliner-search"><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`Search ${semanticSection}`} aria-label="Search setup objects" /><button type="button" onClick={() => setSearch("")} disabled={!search}>×</button></div>
-        <SemanticNavigator section={semanticSection} onSection={(section) => { setSemanticSection(section); if (section === "equipment") setSetupStep("equipment"); else if (section === "body" && setupStep === "equipment") setSetupStep("body"); }} rig={rig} search={search} selections={selections} hiddenBoneIds={hiddenBoneIds} lockedIds={lockedIds} onSelect={select} onToggleBoneVisibility={(id) => toggleSetValue(setHiddenBoneIds, id)} onToggleSlotVisibility={(id) => run("Toggle slot visibility", (current) => { const slot = current.slots.find((item) => item.id === id); return slot ? updateSlot(current, id, { visible: !slot.visible }) : current; })} onToggleLock={(key) => toggleSetValue(setLockedIds, key)} onAdd={addItem} onDuplicate={duplicateItem} onDelete={deleteItem} onMoveSlot={(id, direction) => run("Reorder slot", (current) => moveSlot(current, id, direction))} disabled={previewMode} />
-        <button type="button" className="panel-resize-handle resize-left" onPointerDown={(event) => beginPanelResize("left", event)} aria-label="Resize setup navigator" />
+      {inAnimate ? <AnimateWorkspace key={hydrationIdentity.projectSessionToken} projectId={hydrationIdentity.activeProjectId} rig={rig} activeSkinId={effectiveSkinId} showGrid={showGrid} showBones={showBones} showBounds={showBounds} viewportRef={viewportRef} initialBoneId={selectedBoneId} onSelectedBone={(boneId) => setSelections((current) => current.length === 1 && current[0].type === "bone" && current[0].id === boneId ? current : [{ type: "bone", id: boneId }])} onHistory={setAnimationHistory} onMotion={(edited) => { if (edited && !hasMotion) { setHasMotion(true); writeStageMark(ANIMATED_KEY, projectKey); } }} onFacing={setFacing} onRebuild={rebuildFromParts} onCursor={setCursor} onZoom={setZoom} onMessage={setMessage} onError={setError} /> : <div key={hydrationIdentity.projectSessionToken} className={`editor-body ${leftCollapsed ? "left-collapsed" : ""} ${rightCollapsed ? "right-collapsed" : ""} ${!primarySelection ? "context-idle" : ""}`} data-canvas-project-id={hydrationIdentity.activeProjectId ?? "browser-draft"} data-inspector-project-id={hydrationIdentity.activeProjectId ?? "browser-draft"}>
+      <aside className="editor-left-panel" aria-label="Structure">
+        <header className="panel-identity"><span>{testing ? "Skeleton" : advancedStructure ? "Advanced structure" : "Structure"}</span><button type="button" onClick={() => setLeftCollapsed(true)} aria-label="Collapse structure panel">‹</button></header>
+        <div className="outliner-search"><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={structureView === "parts" && !testing ? "Find a part" : "Find a bone"} aria-label="Search structure" /><button type="button" onClick={() => setSearch("")} disabled={!search} aria-label="Clear search">×</button></div>
+        {advancedStructure && !testing
+          ? <div className="structure-advanced"><EditorHierarchy rig={rig} search={search} selections={selections} hiddenBoneIds={hiddenBoneIds} lockedIds={lockedIds} onSelect={select} onToggleBoneVisibility={(id) => toggleSetValue(setHiddenBoneIds, id)} onToggleSlotVisibility={(id) => run("Toggle slot visibility", (current) => { const slot = current.slots.find((item) => item.id === id); return slot ? updateSlot(current, id, { visible: !slot.visible }) : current; })} onToggleLock={(key) => toggleSetValue(setLockedIds, key)} onAdd={addItem} onDuplicate={duplicateItem} onDelete={deleteItem} onMoveSlot={(id, direction) => run("Reorder slot", (current) => moveSlot(current, id, direction))} disabled={hierarchyDisabled} /></div>
+          : <SkeletonTree view={structureView} onView={setStructureView} rig={rig} activeSkinId={effectiveSkinId} search={search} selections={selections} review={review} skeletonOnly={testing} onSelect={selectInStage} />}
+        {!testing && <button type="button" className={`advanced-tree-toggle ${advancedStructure ? "is-active" : ""}`} aria-pressed={advancedStructure} title="Raw bones, slots, attachments and skins" onClick={() => setAdvancedStructure((value) => !value)}><span>⌘</span>{advancedStructure ? "Back to skeleton" : "Advanced structure"}<b>›</b></button>}
+        <button type="button" className="panel-resize-handle resize-left" onPointerDown={(event) => beginPanelResize("left", event)} aria-label="Resize structure panel" />
       </aside>
 
       <section className="editor-center">
-        {leftCollapsed && <button type="button" className="restore-panel restore-left" onClick={() => setLeftCollapsed(false)}>Navigator ›</button>}
+        {leftCollapsed && <button type="button" className="restore-panel restore-left" onClick={() => setLeftCollapsed(false)}>{testing ? "Skeleton" : "Structure"} ›</button>}
         {rightCollapsed && <button type="button" className="restore-panel restore-right" onClick={() => setRightCollapsed(false)}>‹ Inspector</button>}
-        <div className="viewport-context-row"><div className="selection-breadcrumb"><span>{humanizeTechnicalId(semanticSection)}</span><i>›</i><strong>{primarySelection ? selectionLabel : "Select an object"}</strong></div><CanvasControls tool={canvasTool} onTool={setCanvasTool} showBones={showBones} showGrid={showGrid} showBounds={showBounds} snapToGrid={snapToGrid} wholePixelSnap={wholePixelSnap} rotationSnap={rotationSnap} onShowBones={() => setShowBones((value) => !value)} onShowGrid={() => setShowGrid((value) => !value)} onShowBounds={() => setShowBounds((value) => !value)} onSnapToGrid={() => setSnapToGrid((value) => !value)} onWholePixelSnap={() => setWholePixelSnap((value) => !value)} onRotationSnap={() => setRotationSnap((value) => !value)} onFit={() => viewportRef.current?.resetView()} /></div>
-        <EditorViewport ref={viewportRef} rig={rig} animation={previewAnimation} previewMode={previewMode} activeSkinId={effectiveSkinId} selections={selections} hiddenBoneIds={hiddenBoneIds} lockedBoneIds={new Set([...lockedIds].filter((key) => key.startsWith("bone:")).map((key) => key.slice(5)))} showGrid={showGrid} showBones={showBones} showBounds={showBounds} snapToGrid={snapToGrid} wholePixelSnap={wholePixelSnap} rotationSnap={rotationSnap} canvasTool={canvasTool} interactionMode={setupStep} onSelect={select} onCursor={(point) => setCursor(point)} onZoom={setZoom} onBoneDragStart={beginBoneDrag} onBoneDragPreview={() => undefined} onBoneDragCommit={commitBoneDrag} onWarning={setError} />
-        {previewMode && <div className="preview-notice">Preview mode. Setup-pose editing is locked.</div>}
-        <div className={`setup-workflow-rail ${blockingValidationIssues.length ? "has-issues" : "is-valid"}`} aria-label="Setup workflow">
-          <div className="setup-progress">{(["body", "pivots", "equipment", "validate"] as const).map((step, index) => { const state = setupStep === step ? "current" : step === "validate" && problems.length ? "blocked" : step === "validate" || index < (["body", "pivots", "equipment", "validate"] as const).indexOf(setupStep) ? "complete" : "available"; return <button key={step} type="button" data-state={state} aria-current={setupStep === step ? "step" : undefined} onClick={() => activateSetupStep(step)}><i>{state === "complete" ? "✓" : index + 1}</i><span>{step}</span></button>; })}</div>
-          <div className="setup-next-state"><span><i />{blockingValidationIssues.length ? "Setup needs attention" : "Setup valid"}</span><small>{blockingValidationIssues.length ? `${blockingValidationIssues.length} blocking ${blockingValidationIssues.length === 1 ? "issue" : "issues"}` : validationIssues.length ? `${validationIssues.length} non-blocking ${validationIssues.length === 1 ? "warning" : "warnings"}` : "Ready for animation"}</small></div>
-          <button type="button" className="stage-next-action" onClick={() => blockingValidationIssues.length ? activateSetupStep("validate") : modeSelect("animate")}>{blockingValidationIssues.length ? "Review issues" : "Enter Animate"}<span>→</span></button>
-        </div>
+        {!testing && <div className="rig-notices"><RebuildNotice rig={rig} onRebuild={rebuildFromParts} /><FacingQuestion rig={rig} onFacing={setFacing} /></div>}
+        <div className="viewport-context-row"><div className="selection-breadcrumb"><span>{testing ? "Test" : "Rig"}</span><i>›</i><strong>{primarySelection ? `${primarySelection.type === "bone" ? "Bone" : primarySelection.type === "slot" ? "Part" : humanizeTechnicalId(primarySelection.type)} · ${selectionLabel}` : testing ? "Drag a bone to pose" : "Click a bone or a part"}</strong></div><CanvasControls tool={canvasTool} onTool={setCanvasTool} showBones={showBones} showGrid={showGrid} showBounds={showBounds} snapToGrid={snapToGrid} wholePixelSnap={wholePixelSnap} rotationSnap={rotationSnap} onShowBones={() => setShowBones((value) => !value)} onShowGrid={() => setShowGrid((value) => !value)} onShowBounds={() => setShowBounds((value) => !value)} onSnapToGrid={() => setSnapToGrid((value) => !value)} onWholePixelSnap={() => setWholePixelSnap((value) => !value)} onRotationSnap={() => setRotationSnap((value) => !value)} onFit={() => viewportRef.current?.resetView()} /></div>
+        <EditorViewport ref={viewportRef} rig={rig} animation={previewAnimation} previewMode={previewMode} poseMode={testing} pivotEdit={!testing} activeSkinId={effectiveSkinId} selections={selections} hiddenBoneIds={hiddenBoneIds} lockedBoneIds={new Set([...lockedIds].filter((key) => key.startsWith("bone:")).map((key) => key.slice(5)))} showGrid={showGrid} showBones={showBones} showBounds={showBounds} snapToGrid={snapToGrid} wholePixelSnap={wholePixelSnap} rotationSnap={testing ? false : rotationSnap} canvasTool={canvasTool} interactionMode={testing ? "test" : "rig"} onSelect={selectInStage} onCursor={(point) => setCursor(point)} onZoom={setZoom} onBoneDragStart={testing ? () => undefined : beginBoneDrag} onBoneDragPreview={() => undefined} onBoneDragCommit={testing ? () => { setPosed(true); markTested(); } : commitBoneDrag} onPivotCommit={movePivot} onContextMenu={(selection, x, y) => setContextMenu({ selection, x, y, items: contextItems(selection) })} onWarning={setError} />
+        {previewMode && <div className="preview-notice" role="status">{testing ? "Quick test playing" : "Rotate test playing"} · the rig is not changed · Esc to stop</div>}
+        {testing
+          ? <TestPoseStrip available={poseTestAvailability} activeTest={sweep?.kind === "test" ? sweep.id : null} posed={posed || sweep !== null} onTest={(id) => runSweep(id ? { kind: "test", id } : null)} onReset={resetPose} onFix={() => enterMode("setup")} onNext={() => modeSelect("animate")} />
+          : <RigReviewStrip chains={review} activeChainId={reviewChainId} selectedBoneId={selectedBoneId} testing={sweep?.kind === "chain"} blockingCount={blockingValidationIssues.length} onChain={selectChain} onJoint={(boneId) => { setSweep(null); select({ type: "bone", id: boneId }, false); }} onRotateTest={() => runSweep(sweep?.kind === "chain" || !reviewChainId ? null : { kind: "chain", id: reviewChainId })} onShowProblems={showProblems} onNext={() => modeSelect("test")} />}
       </section>
 
-      <aside className={`editor-right-panel ${!primarySelection ? "is-context-idle" : ""}`}>
+      <aside className={`editor-right-panel ${!primarySelection ? "is-context-idle" : ""}`} aria-label="Inspector">
         <button type="button" className="panel-resize-handle resize-right" onPointerDown={(event) => beginPanelResize("right", event)} aria-label="Resize inspector" />
         <header className="panel-identity"><span>{primarySelection ? "Inspector" : "Context"}</span><button type="button" onClick={() => setRightCollapsed(true)} aria-label="Collapse inspector">›</button></header>
-        {primarySelection ? <EditorInspector rig={rig} selection={primarySelection} previewMode={previewMode} locked={selectedLocked} onFrame={() => viewportRef.current?.resetView()} onIsolate={() => { if (primarySelection?.type === "bone") setHiddenBoneIds(new Set(rig.bones.filter((bone) => bone.id !== primarySelection.id).map((bone) => bone.id))); }} onBonePatch={(id, patch, label) => run(label, (current) => updateBone(current, id, patch))} onSlotPatch={(id, patch, label) => run(label, (current) => updateSlot(current, id, patch))} onAttachmentPatch={(id, patch, label) => run(label, (current) => updateAttachment(current, id, patch))} onRenameSkin={(id, name) => run("Rename skin", (current) => renameSkin(current, id, name))} onAssignSkin={(skinId, slotId, attachmentId) => run("Assign skin attachment", (current) => assignSkinAttachment(current, skinId, slotId, attachmentId))} /> : <div className="context-rail-empty"><span>⌁</span><p>Select a body part</p><button type="button" onClick={() => { setSemanticSection("body"); setLeftCollapsed(false); }}>Browse body</button></div>}
+        {primarySelection ? <EditorInspector rig={rig} selection={primarySelection} activeSkinId={effectiveSkinId} jointReview={jointReview} previewMode={previewMode || testing} locked={selectedLocked} onSelect={(selection) => select(selection, false)} onFrame={() => viewportRef.current?.resetView()} onIsolate={() => { if (primarySelection?.type === "bone") setHiddenBoneIds(new Set(rig.bones.filter((bone) => bone.id !== primarySelection.id).map((bone) => bone.id))); }} onBonePatch={(id, patch, label) => run(label, (current) => updateBone(current, id, patch))} onPivot={movePivot} onSlotPatch={(id, patch, label) => run(label, (current) => updateSlot(current, id, patch))} onAttachmentPatch={(id, patch, label) => run(label, (current) => updateAttachment(current, id, patch))} onRenameSkin={(id, name) => run("Rename skin", (current) => renameSkin(current, id, name))} onAssignSkin={(skinId, slotId, attachmentId) => run("Assign skin attachment", (current) => assignSkinAttachment(current, skinId, slotId, attachmentId))} onTestRotation={testRotation} onEditRegion={() => router.push("/part-cutter")} /> : <div className="context-rail-empty"><span>⌁</span><p>Click a bone or a part</p></div>}
       </aside>
     </div>}
-    {focusMode && editorMode === "animate" && <div className="focus-playback-controls" aria-label="Focus playback controls"><button type="button" onClick={() => animationCommand("play")}>▶ Play</button><button type="button" onClick={() => animationCommand("pause")}>Ⅱ Pause</button><button type="button" onClick={() => animationCommand("restart")}>↺ Restart</button><button type="button" onClick={() => setFocusMode(false)}>Exit Focus</button></div>}
+    {focusMode && inAnimate && <div className="focus-playback-controls" aria-label="Focus playback controls"><button type="button" onClick={() => animationCommand("play")}>▶ Play</button><button type="button" onClick={() => animationCommand("pause")}>Ⅱ Pause</button><button type="button" onClick={() => animationCommand("restart")}>↺ Restart</button><button type="button" onClick={() => setFocusMode(false)}>Exit Focus</button></div>}
 
-    {(error || message) && <output className={`studio-toast ${error ? "is-error" : ""}`}><span>{error ? "!" : "●"}</span>{agentSession.lastOperation ? `${agentSession.lastOperation} · ` : ""}{error ?? message}<small>{(zoom * 100).toFixed(0)}%</small></output>}
+    {contextMenu && <CanvasContextMenu title={contextMenu.selection.type === "bone" ? `Bone · ${humanizeTechnicalId(contextMenu.selection.id)}` : `Part · ${partName(contextMenu.selection.id)}`} x={contextMenu.x} y={contextMenu.y} items={contextMenu.items} onClose={() => setContextMenu(null)} />}
+    {(error || message) && <output key={error ?? message} className={`studio-toast ${error ? "is-error" : ""}`}><span>{error ? "!" : "●"}</span>{agentSession.lastOperation ? `${agentSession.lastOperation} · ` : ""}{error ?? message}<small>{(zoom * 100).toFixed(0)}%</small></output>}
     <StudioUtilityDrawer open={utilityOpen} tab={utilityTab} problems={problems} activity={agentActivity} onTab={setUtilityTab} onClose={() => setUtilityOpen(false)} />
     <StudioCommandPalette commands={commands} mode={editorMode} selection={selectionLabel} open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
     <StudioDialog open={confirmDiscard} title="Discard local rig draft?" description="The bundled test rig will replace the current local setup document. This action intentionally clears the local draft." confirmLabel="Discard draft" danger onCancel={() => setConfirmDiscard(false)} onConfirm={confirmDiscardDraft} />

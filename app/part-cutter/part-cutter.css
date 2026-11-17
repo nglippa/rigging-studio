@@ -432,3 +432,60 @@
 .provider-diagnostics small { white-space:normal;overflow:auto;text-overflow:clip;max-height:3em; }
 .part-cutter-shell .systems-popover>.prepare-provider-disclosure>.provider-diagnostics { width:min(660px,calc(100vw - 28px));max-height:calc(100vh - 150px);overflow:auto; }
 .semantic-chooser,.cutter-view-popover>div,.cutter-more-tools>div { max-height:calc(100vh - 72px);overflow:auto; }
+
+/* Parts: character checklist, current-part panel, Advanced disclosure ------ */
+.cutter-left .parts-checklist { padding-bottom:12px; }
+.cutter-left .parts-checklist section h3 { background:transparent; }
+.cutter-left .parts-checklist .part-group h4 { margin:0; min-height:30px; padding:8px 14px 0; display:flex; align-items:flex-end; color:var(--pc-muted); font-size:var(--font-micro); font-weight:650; letter-spacing:.04em; text-transform:none; border-bottom:1px solid var(--space-separator); }
+.cutter-left .parts-checklist .part-row { width:100%; min-height:40px; height:40px; padding:0 14px; display:flex; align-items:center; gap:10px; color:var(--space-text-secondary); border:0; border-bottom:1px solid var(--space-separator); border-radius:0; background:transparent; box-shadow:none; font-size:var(--font-nav); text-align:left; transition:background 120ms ease,color 120ms ease; }
+.cutter-left .parts-checklist .part-group h4~.part-row { padding-left:26px; }
+.cutter-left .parts-checklist .part-row:hover:not(:disabled) { color:var(--space-text); background:rgba(255,255,255,.04); }
+.cutter-left .parts-checklist .part-row:focus-visible,.parts-advanced>summary:focus-visible,.part-add>summary:focus-visible { outline:2px solid var(--space-cyan); outline-offset:-2px; }
+.cutter-left .parts-checklist .part-row span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cutter-left .parts-checklist .part-row i { width:18px; height:auto; flex:none; border-radius:0; background:none; box-shadow:none; color:var(--pc-muted); font-style:normal; font-weight:700; text-align:center; }
+.cutter-left .parts-checklist .part-row[data-status="ready"] i { color:var(--pc-green); }
+.cutter-left .parts-checklist .part-row[data-status="review"] i { color:var(--pc-amber); }
+.cutter-left .parts-checklist .part-row[data-status="missing"] { color:var(--pc-muted); }
+.cutter-left .parts-checklist .part-row[aria-current="true"] { color:var(--space-text); background:rgba(84,232,255,.08); box-shadow:inset 2px 0 var(--space-cyan); font-weight:650; }
+.part-add>summary { min-height:40px; padding:0 14px; display:flex; align-items:center; color:var(--pc-cyan); cursor:pointer; list-style:none; font-size:var(--font-nav); }
+.part-add>summary::-webkit-details-marker,.parts-advanced>summary::-webkit-details-marker { display:none; }
+.cutter-left .parts-checklist .part-add-target { color:var(--space-text-secondary); }
+.cutter-left .parts-checklist .part-add-target i { color:var(--pc-cyan); }
+
+.cutter-right .guided-manual-panel { margin:0; padding:14px; gap:12px; border:0; border-bottom:1px solid var(--space-separator); border-radius:0; background:transparent; }
+.guided-manual-panel header b.part-status { padding:0; display:inline-flex; align-items:center; gap:6px; border:0; border-radius:0; color:var(--pc-muted); font-size:var(--font-caption); font-weight:650; letter-spacing:0; }
+.guided-manual-panel header b.part-status i { font-style:normal; font-weight:700; }
+.guided-manual-panel header b.part-status[data-status="ready"] { color:var(--pc-green); }
+.guided-manual-panel header b.part-status[data-status="review"] { color:var(--pc-amber); }
+.guided-manual-panel header small { letter-spacing:.04em; text-transform:none; }
+.cutter-right .parts-note { margin:0; padding:12px 14px; color:var(--pc-amber); border-bottom:1px solid var(--space-separator); font-size:var(--font-caption); }
+
+.parts-advanced { margin-top:auto; border-top:1px solid var(--space-separator); }
+.parts-advanced>summary { min-height:var(--control-md); padding:0 14px; display:flex; align-items:center; justify-content:space-between; color:var(--space-text-secondary); cursor:pointer; list-style:none; font-size:var(--font-ui); }
+.parts-advanced>summary::after { content:"▸"; color:var(--pc-muted); }
+.parts-advanced[open]>summary::after { content:"▾"; }
+.parts-advanced-body { display:grid; align-content:start; }
+.parts-advanced-row,.parts-provider-note { padding:10px 14px; display:grid; gap:8px; border-top:1px solid var(--space-separator); }
+.parts-advanced-row small,.parts-provider-note small { color:var(--pc-muted); font-size:var(--font-caption); line-height:1.4; }
+.parts-provider-note>div { display:flex; flex-wrap:wrap; gap:6px; }
+.parts-advanced .parts-advanced-row button,.parts-provider-note button { min-height:36px; }
+
+.cutter-toolbar .ai-assist-toggle,.cutter-toolbar .auto-cut-action { margin-left:4px; }
+.cutter-toolbar .ai-assist-toggle.active { color:#071012; background:var(--pc-cyan); }
+
+.coverage-legend { display:flex; align-items:center; pointer-events:auto; font:var(--font-caption)/1.2 "SF Pro Text","Segoe UI",ui-sans-serif,system-ui,sans-serif; }
+.coverage-legend span { padding:8px 10px; color:var(--pc-text); }
+.coverage-legend .unassigned-toggle { min-height:36px; margin:0; padding:0 10px; color:var(--pc-amber); border:0; border-left:1px solid #ffffff26; border-radius:0; background:transparent; font-size:var(--font-caption); }
+.coverage-legend .unassigned-toggle[aria-pressed="true"] { background:rgba(255,193,94,.14); }
+
+.prepare-action-rail { grid-template-columns:minmax(0,1fr) auto; }
+.prepare-action-rail .prepare-rail-action { min-width:160px; background:var(--space-green)!important; box-shadow:none!important; }
+.prepare-action-rail .prepare-rail-action:disabled { opacity:.45; }
+.prepare-rail-context small { color:var(--pc-muted); }
+
+@media (min-width:701px) and (max-width:900px) {
+  .part-cutter-body { grid-template-columns:184px minmax(440px,1fr) 252px; }
+  .cutter-left .parts-checklist .part-row { padding-inline:10px; }
+  .cutter-left .parts-checklist .part-group h4~.part-row { padding-left:20px; }
+}
+@media (prefers-reduced-motion:reduce) { .cutter-left .parts-checklist .part-row { transition:none; } }

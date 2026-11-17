@@ -1,5 +1,7 @@
 "use client";
 
+import { boneDisplayEnd } from "@/src/tools/rig-editor/rigReview";
+import { artlessLimbBones } from "@/src/rigging/motion/rigMotion";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { Application, Container, Graphics } from "pixi.js";
 import { AnimationPlayer } from "@/src/rigging/animation/AnimationPlayer";
@@ -15,12 +17,16 @@ import { RigAssetLoader } from "@/src/rigging/assets/RigAssetLoader";
 import type { BoneAuthoringPatch, EditorSelection } from "@/src/tools/rig-editor/types";
 import { selectionChainForBone } from "./viewportSelection";
 
+const MAX_ZOOM = 24;
+
 export type EditorViewportHandle = {
   readonly resetView: () => void;
   readonly seekAnimation: (time: number) => void;
   readonly playAnimation: () => void;
   readonly pauseAnimation: () => void;
   readonly stopAnimation: () => void;
+  /** Returns every bone to the rig's rest pose without touching the rig document. */
+  readonly resetPose: () => void;
 };
 
 type Props = {
@@ -45,7 +51,13 @@ type Props = {
   readonly wholePixelSnap: boolean;
   readonly rotationSnap: boolean;
   readonly canvasTool?: "select" | "pan";
-  readonly interactionMode?: "body" | "pivots" | "equipment" | "validate" | "animate";
+  readonly interactionMode?: "rig" | "test" | "animate";
+  /** Test stage: dragging a bone rotates it (the root moves) and the result stays a pose, never a rig edit. */
+  readonly poseMode?: boolean;
+  /** Rig stage: dragging a joint moves only its pivot; the art stays put until the drop is committed. */
+  readonly pivotEdit?: boolean;
+  readonly onPivotCommit?: (boneId: string, x: number, y: number) => void;
+  readonly onContextMenu?: (selection: EditorSelection, clientX: number, clientY: number) => void;
   readonly onSelect: (selection: EditorSelection | null, additive: boolean) => void;
   readonly onCursor: (point: Point) => void;
   readonly onZoom: (zoom: number) => void;
@@ -70,8 +82,10 @@ type PixiState = {
 
 type PanDrag = { readonly mode: "pan"; readonly x: number; readonly y: number; readonly viewX: number; readonly viewY: number };
 type BoneDrag = {
-  readonly mode: "position" | "rotation";
+  readonly mode: "position" | "rotation" | "pivot";
   readonly boneId: string;
+  /** Radians between the grab point and the bone's axis, so a bone grabbed mid-length does not jump. */
+  readonly angleOffset: number;
   readonly startBoneX: number;
   readonly startBoneY: number;
   readonly localOffsetX: number;
@@ -96,6 +110,7 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
   const spacePressedRef = useRef(false);
   const reduceMotionRef = useRef(false);
   const hoveredSelectionRef = useRef<EditorSelection | null>(null);
+  const pivotGhostRef = useRef<{ readonly boneId: string; readonly x: number; readonly y: number; readonly world: Point } | null>(null);
   const [pixiReady, setPixiReady] = useState(false);
   const [hoveredSelection, setHoveredSelection] = useState<EditorSelection | null>(null);
   propsRef.current = props;
@@ -118,7 +133,8 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
     if (!state || !mount) return;
     const { width, height } = mount.getBoundingClientRect();
     state.app.renderer.resize(Math.max(1, width), Math.max(1, height));
-    const scale = Math.max(0.15, Math.min(2.5, Math.min(width / propsRef.current.rig.canvas.width, height / propsRef.current.rig.canvas.height) * 0.88));
+    // Small pixel-art sprites need far more magnification than a painted character to fill the viewport.
+    const scale = Math.max(0.15, Math.min(MAX_ZOOM, Math.min(width / propsRef.current.rig.canvas.width, height / propsRef.current.rig.canvas.height) * 0.88));
     state.view.scale.set(scale);
     state.view.position.set(
       (width - propsRef.current.rig.canvas.width * scale) / 2,
@@ -137,6 +153,7 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
     },
     pauseAnimation: () => stateRef.current?.player?.pause(),
     stopAnimation: () => { stateRef.current?.player?.stop(); stateRef.current?.renderer?.update(); },
+    resetPose: () => { stateRef.current?.runtime?.resetToSetupPose(); stateRef.current?.renderer?.update(); },
   }), []);
 
   const drawGrid = (state: PixiState): void => {
@@ -173,9 +190,10 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
       const drawGhost = (ghostTime: number, color: number): void => {
         const pose = evaluateAnimationAtTime(currentProps.animation!, createRestPose(currentProps.rig), ghostTime);
         const transforms = computeWorldTransforms(currentProps.rig, pose);
+        const artless = artlessLimbBones(currentProps.rig);
         currentProps.rig.bones.forEach((bone) => {
-          const transform = transforms[bone.id]; if (!transform) return;
-          const end = transformPoint(transform.matrix, { x: bone.length, y: 0 });
+          const transform = transforms[bone.id]; if (!transform || artless.has(bone.id)) return;
+          const end = boneDisplayEnd(currentProps.rig, transforms, bone, currentProps.activeSkinId);
           state.overlay.moveTo(transform.x, transform.y).lineTo(end.x, end.y).stroke({ color, width: 2 / zoom, alpha: .22 });
           state.overlay.circle(transform.x, transform.y, 3 / zoom).fill({ color, alpha: .2 });
         });
@@ -183,24 +201,35 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
       if (currentProps.showPreviousGhost && previous !== undefined) drawGhost(previous, 0x87b8ff);
       if (currentProps.showNextGhost && next !== undefined) drawGhost(next, 0xff9a78);
     }
-    if (currentProps.showBones || currentProps.interactionMode === "pivots") {
+    const linkedSlot = currentProps.selections.find((selection) => selection.type === "slot");
+    const linkedBoneId = linkedSlot ? runtime.definition.slots.find((slot) => slot.id === linkedSlot.id)?.boneId ?? null : null;
+    if (currentProps.showBones) {
+      const artless = artlessLimbBones(currentProps.rig);
       runtime.definition.bones.forEach((bone) => {
-        if (currentProps.hiddenBoneIds.has(bone.id)) return;
+        if (currentProps.hiddenBoneIds.has(bone.id) || artless.has(bone.id)) return;
         const transform = world[bone.id];
         if (!transform) return;
-        const end = transformPoint(transform.matrix, { x: bone.length, y: 0 });
+        const end = boneDisplayEnd(runtime.definition, world, bone, currentProps.activeSkinId);
         const selected = bone.id === primaryBoneId;
         const related = bone.id === chain?.parentId || (chain?.childIds.includes(bone.id) ?? false);
         const hovered = hoveredSelectionRef.current?.type === "bone" && hoveredSelectionRef.current.id === bone.id;
-        const color = selected ? 0x68e1ef : related || hovered ? 0x85c9df : 0xa0b1c8;
-        const alpha = selected ? 1 : related ? 0.7 : hovered ? 0.88 : primaryBoneId ? 0.22 : 0.62;
-        if (selected || hovered) state.overlay.moveTo(transform.x, transform.y).lineTo(end.x, end.y).stroke({ color, width: (selected ? 8 : 5) / zoom, alpha: selected ? 0.16 : 0.1 });
-        state.overlay.moveTo(transform.x, transform.y).lineTo(end.x, end.y).stroke({ color, width: (selected ? 1.75 : related ? 1.25 : 1) / zoom, alpha });
+        // A bone lit violet is the one controlling the selected part: the part ↔ bone link, on the canvas.
+        const linked = bone.id === linkedBoneId;
+        const color = selected ? 0x68e1ef : linked ? 0xac97ff : related || hovered ? 0x9fdcec : 0xc3d2e6;
+        const alpha = selected || linked ? 1 : related ? 0.82 : hovered ? 0.95 : primaryBoneId || linkedBoneId ? 0.34 : 0.8;
+        if (selected || hovered || linked) state.overlay.moveTo(transform.x, transform.y).lineTo(end.x, end.y).stroke({ color, width: (selected || linked ? 8 : 5) / zoom, alpha: selected || linked ? 0.18 : 0.12 });
+        // A dark underlay keeps thin bones readable on bright or busy art.
+        state.overlay.moveTo(transform.x, transform.y).lineTo(end.x, end.y).stroke({ color: 0x05080d, width: (selected || linked ? 6 : 4.5) / zoom, alpha: alpha * 0.6 });
+        state.overlay.moveTo(transform.x, transform.y).lineTo(end.x, end.y).stroke({ color, width: (selected || linked ? 3 : 2) / zoom, alpha });
         if (selected) {
           state.overlay.circle(transform.x, transform.y, 8 / zoom).stroke({ color, width: 1 / zoom, alpha: 0.5 * pulse });
           state.overlay.circle(transform.x, transform.y, 4 / zoom).fill({ color: 0x090e15 }).stroke({ color, width: 1.25 / zoom, alpha: 1 });
           state.overlay.circle(transform.x, transform.y, 1.5 / zoom).fill({ color: 0xe9faff });
-        } else state.overlay.circle(transform.x, transform.y, (related || hovered ? 3.5 : 2.5) / zoom).fill({ color: 0x090e15 }).stroke({ color, width: 1 / zoom, alpha: Math.min(0.9, alpha + 0.2) });
+        } else {
+          // Every joint carries a pivot ring so pivots can be found without selecting anything first.
+          state.overlay.circle(transform.x, transform.y, (linked ? 8 : 6.5) / zoom).stroke({ color, width: 1 / zoom, alpha: alpha * (linked ? 0.6 : 0.3) });
+          state.overlay.circle(transform.x, transform.y, (related || hovered || linked ? 4.5 : 4) / zoom).fill({ color: 0x090e15 }).stroke({ color, width: 1.75 / zoom, alpha: Math.min(1, alpha + 0.2) });
+        }
       });
     }
     const boneId = primaryBoneId;
@@ -220,17 +249,26 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
             .lineTo(transform.x + Math.cos(angle) * (radius + 3 / zoom), transform.y + Math.sin(angle) * (radius + 3 / zoom))
             .stroke({ color: 0xac97ff, width: 1 / zoom, alpha: 0.55 });
         }
-        if (currentProps.interactionMode === "pivots") {
+        if (currentProps.pivotEdit) {
           const guide = 26 / zoom;
           state.overlay.moveTo(transform.x - guide, transform.y).lineTo(transform.x + guide, transform.y).stroke({ color: 0xa77bff, width: 1 / zoom, alpha: 0.26 });
           state.overlay.moveTo(transform.x, transform.y - guide).lineTo(transform.x, transform.y + guide).stroke({ color: 0xa77bff, width: 1 / zoom, alpha: 0.26 });
         }
       }
     }
+    const ghost = pivotGhostRef.current;
+    if (ghost) {
+      const guide = 14 / zoom;
+      state.overlay.moveTo(ghost.world.x - guide, ghost.world.y).lineTo(ghost.world.x + guide, ghost.world.y).stroke({ color: 0xac97ff, width: 1.25 / zoom, alpha: 0.95 });
+      state.overlay.moveTo(ghost.world.x, ghost.world.y - guide).lineTo(ghost.world.x, ghost.world.y + guide).stroke({ color: 0xac97ff, width: 1.25 / zoom, alpha: 0.95 });
+      state.overlay.circle(ghost.world.x, ghost.world.y, 7 / zoom).stroke({ color: 0xe9faff, width: 1.5 / zoom, alpha: 1 });
+    }
     const attachmentBoneIds = chain?.relatedIds ?? new Set<string>();
+    // Outline the art the selected bone controls, so "this bone moves that piece" is visible, not inferred.
+    if (primaryBoneId) runtime.definition.slots.forEach((slot) => { if (slot.boneId === primaryBoneId) drawSelectedSlot(state, slot.id, zoom, true); });
     runtime.getResolvedSlots().forEach(({ slot, attachment }) => {
       const equipment = /weapon|shield|sword|staff|bow|helmet|armor|cape|tail|quiver/i.test(`${slot.id} ${attachment?.id ?? ""}`);
-      if (!attachment || (!attachmentBoneIds.has(slot.boneId) && !(currentProps.interactionMode === "equipment" && equipment))) return;
+      if (!attachment || !attachmentBoneIds.has(slot.boneId)) return;
       const bone = world[slot.boneId];
       if (!bone) return;
       const anchor = transformPoint(bone.matrix, { x: attachment.offsetX, y: attachment.offsetY });
@@ -307,11 +345,10 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
             const sprite = current.renderer?.attachmentSprites.get(slot.id);
             if (!sprite) return;
             if (propsRef.current.hiddenBoneIds.has(slot.boneId)) { sprite.visible = false; return; }
-            const attachment = current.runtime?.definition.attachments.find((item) => item.id === slot.attachmentId);
-            const equipment = /weapon|shield|sword|staff|bow|helmet|armor|cape|tail|quiver/i.test(`${slot.id} ${attachment?.id ?? ""}`);
-            if (primary?.type === "bone") sprite.alpha = slot.boneId === primary.id ? 1 : chain?.relatedIds.has(slot.boneId) ? 0.7 : 0.28;
-            else if (selectedSlot) sprite.alpha = slot.id === selectedSlot.id ? 1 : slot.boneId === selectedSlot.boneId ? 0.62 : 0.28;
-            else if (propsRef.current.interactionMode === "equipment") sprite.alpha = equipment ? 1 : 0.28;
+            // Posing and playback show the whole character; dimming is a Rig-stage aid for reading one link at a time.
+            if (propsRef.current.poseMode || propsRef.current.previewMode || propsRef.current.authoringMode) sprite.alpha = 1;
+            else if (primary?.type === "bone") sprite.alpha = slot.boneId === primary.id ? 1 : chain?.relatedIds.has(slot.boneId) ? 0.78 : 0.42;
+            else if (selectedSlot) sprite.alpha = slot.id === selectedSlot.id ? 1 : slot.boneId === selectedSlot.boneId ? 0.7 : 0.42;
             else sprite.alpha = 1;
           });
         }
@@ -432,10 +469,10 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
     const tolerance = 9 / Math.max(0.1, state.view.scale.x);
     const candidates = [...state.runtime.definition.bones].reverse();
     return candidates.find((bone) => {
-      if (propsRef.current.hiddenBoneIds.has(bone.id)) return false;
+      if (propsRef.current.hiddenBoneIds.has(bone.id) || artlessLimbBones(propsRef.current.rig).has(bone.id)) return false;
       const transform = world[bone.id];
       if (!transform) return false;
-      const end = transformPoint(transform.matrix, { x: bone.length, y: 0 });
+      const end = boneDisplayEnd(state.runtime!.definition, world, bone, propsRef.current.activeSkinId);
       return distanceToSegment(point, { x: transform.x, y: transform.y }, end) <= tolerance;
     })?.id ?? null;
   };
@@ -477,8 +514,16 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
       dragRef.current = { mode: "pan", x: event.clientX, y: event.clientY, viewX: state.view.x, viewY: state.view.y };
       return;
     }
-    if (event.button !== 0) return;
     const point = screenToWorld(event.clientX, event.clientY);
+    if (event.button === 2) {
+      // Right-click selects what is under the cursor and asks the shell for that object's short menu.
+      const hitBone = props.showBones ? findBone(point) : null;
+      const hitSlot = hitBone ? null : findSlot(point);
+      const target: EditorSelection | null = hitBone ? { type: "bone", id: hitBone } : hitSlot ? { type: "slot", id: hitSlot } : null;
+      if (target) { props.onSelect(target, false); props.onContextMenu?.(target, event.clientX, event.clientY); }
+      return;
+    }
+    if (event.button !== 0) return;
     const currentBone = selectedBone();
     const canEditPose = !props.previewMode || (props.authoringMode && !props.animationPlaying);
     if (currentBone && canEditPose && !props.lockedBoneIds.has(currentBone) && rotationHandleHit(point, currentBone)) {
@@ -486,7 +531,7 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
       if (!bone) return;
       const pose = state.runtime?.bones.get(currentBone)?.readPose();
       props.onBoneDragStart(currentBone);
-      dragRef.current = { mode: "rotation", boneId: currentBone, startBoneX: pose?.x ?? bone.x, startBoneY: pose?.y ?? bone.y, localOffsetX: 0, localOffsetY: 0 };
+      dragRef.current = { mode: "rotation", boneId: currentBone, angleOffset: 0, startBoneX: pose?.x ?? bone.x, startBoneY: pose?.y ?? bone.y, localOffsetX: 0, localOffsetY: 0 };
       return;
     }
     const boneId = props.showBones ? findBone(point) : null;
@@ -501,8 +546,16 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
         const local = inverse ? transformPoint(inverse, point) : point;
         const pose = state.runtime?.bones.get(boneId)?.readPose();
         const poseX = pose?.x ?? bone.x; const poseY = pose?.y ?? bone.y;
-        props.onBoneDragStart(boneId);
-        dragRef.current = { mode: "position", boneId, startBoneX: poseX, startBoneY: poseY, localOffsetX: local.x - poseX, localOffsetY: local.y - poseY };
+        const transform = world?.[boneId];
+        if (props.poseMode && bone.parentId && transform) {
+          props.onBoneDragStart(boneId);
+          dragRef.current = { mode: "rotation", boneId, angleOffset: transform.rotation - Math.atan2(point.y - transform.y, point.x - transform.x), startBoneX: poseX, startBoneY: poseY, localOffsetX: 0, localOffsetY: 0 };
+        } else if (props.pivotEdit && !event.altKey) {
+          dragRef.current = { mode: "pivot", boneId, angleOffset: 0, startBoneX: poseX, startBoneY: poseY, localOffsetX: local.x - poseX, localOffsetY: local.y - poseY };
+        } else {
+          props.onBoneDragStart(boneId);
+          dragRef.current = { mode: "position", boneId, angleOffset: 0, startBoneX: poseX, startBoneY: poseY, localOffsetX: local.x - poseX, localOffsetY: local.y - poseY };
+        }
       }
     } else if (slotId) props.onSelect({ type: "slot", id: slotId }, event.shiftKey);
     else props.onSelect(null, false);
@@ -529,7 +582,7 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
     const runtime = state.runtime;
     if (!bone || !runtime) return;
     let patch: BoneAuthoringPatch;
-    if (drag.mode === "position") {
+    if (drag.mode === "position" || drag.mode === "pivot") {
       const world = runtime.getWorldTransforms();
       const parentMatrix = bone.parentId ? world[bone.parentId]?.matrix : null;
       const inverse = parentMatrix ? invertMatrix(parentMatrix) : null;
@@ -538,12 +591,17 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
       let y = local.y - drag.localOffsetY;
       if (props.snapToGrid) { x = Math.round(x / 8) * 8; y = Math.round(y / 8) * 8; }
       if (props.wholePixelSnap) { x = Math.round(x); y = Math.round(y); }
+      if (drag.mode === "pivot") {
+        // Only the marker moves while dragging; the art stays still so the new pivot can be judged against it.
+        pivotGhostRef.current = { boneId: bone.id, x, y, world: parentMatrix ? transformPoint(parentMatrix, { x, y }) : { x, y } };
+        return;
+      }
       patch = { x, y };
       runtime.updateBonePose(bone.id, { x, y });
     } else {
       const transform = runtime.getWorldTransforms()[bone.id];
       const parentRotation = bone.parentId && bone.inheritRotation ? runtime.getWorldTransforms()[bone.parentId]?.rotation ?? 0 : 0;
-      let rotation = radiansToDegrees(Math.atan2(point.y - transform.y, point.x - transform.x) - parentRotation);
+      let rotation = radiansToDegrees(Math.atan2(point.y - transform.y, point.x - transform.x) + drag.angleOffset - parentRotation);
       if (props.rotationSnap) rotation = Math.round(rotation / 15) * 15;
       patch = { rotation };
       runtime.updateBonePose(bone.id, { rotation: degreesToRadians(rotation) });
@@ -557,6 +615,11 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
     const drag = dragRef.current;
     dragRef.current = null;
     if (!drag || drag.mode === "pan") return;
+    if (drag.mode === "pivot") {
+      const ghost = pivotGhostRef.current; pivotGhostRef.current = null;
+      if (ghost && (Math.abs(ghost.x - drag.startBoneX) > 0.01 || Math.abs(ghost.y - drag.startBoneY) > 0.01)) props.onPivotCommit?.(ghost.boneId, ghost.x, ghost.y);
+      return;
+    }
     const pose = stateRef.current?.runtime?.bones.get(drag.boneId)?.readPose();
     if (!pose) return;
     props.onBoneDragCommit(drag.boneId, drag.mode === "position" ? { x: pose.x, y: pose.y } : { rotation: radiansToDegrees(pose.rotation) });
@@ -570,11 +633,11 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
     const bounds = mount.getBoundingClientRect();
     const screen = { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
     const world = { x: (screen.x - state.view.x) / state.view.scale.x, y: (screen.y - state.view.y) / state.view.scale.y };
-    const scale = Math.max(0.1, Math.min(4, state.view.scale.x * Math.exp(-event.deltaY * 0.0012)));
+    const scale = Math.max(0.1, Math.min(MAX_ZOOM, state.view.scale.x * Math.exp(-event.deltaY * 0.0012)));
     state.view.scale.set(scale);
     state.view.position.set(screen.x - world.x * scale, screen.y - world.y * scale);
     props.onZoom(scale);
   };
 
-  return <div ref={mountRef} className={`editor-viewport ${props.canvasTool === "pan" ? "is-pan-tool" : "is-select-tool"}`} data-interaction-mode={props.interactionMode ?? "body"} data-canvas-project-id={props.projectId ?? "browser-draft"} role="region" tabIndex={0} aria-label="Rig editor viewport" onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp} onPointerLeave={() => setHoveredSelection(null)} onWheel={wheel} onContextMenu={(event) => event.preventDefault()}>{hoveredSelection && props.canvasTool !== "pan" && <span className="viewport-semantic-hint">{hoveredSelection.type === "bone" ? "Joint" : "Part"} · {hoveredSelection.id.replaceAll("-", " ")}</span>}</div>;
+  return <div ref={mountRef} className={`editor-viewport ${props.canvasTool === "pan" ? "is-pan-tool" : "is-select-tool"}`} data-interaction-mode={props.interactionMode ?? "rig"} data-canvas-project-id={props.projectId ?? "browser-draft"} role="region" tabIndex={0} aria-label="Rig editor viewport" onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={pointerUp} onPointerLeave={() => setHoveredSelection(null)} onWheel={wheel} onContextMenu={(event) => event.preventDefault()}>{hoveredSelection && props.canvasTool !== "pan" && <span className="viewport-semantic-hint">{hoveredSelection.type === "bone" ? "Bone" : "Part"} · {hoveredSelection.id.replace(/-slot$/, "").replaceAll("-", " ")}</span>}</div>;
 });

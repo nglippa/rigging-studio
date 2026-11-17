@@ -265,3 +265,207 @@
   .project-hydration-shell>div::after { animation: none; }
   :is(.rig-editor-shell,.part-cutter-shell) button:active:not(:disabled) { transform: none; }
 }
+
+/* ── Workflow v2: Parts · Rig · Test · Animate ─────────────────────────────
+   One layout in every stage: what exists (left) · the work (centre) · what I clicked (right),
+   and a bottom strip that states the stage's context and its one next action. */
+
+/* Stage rail: each stage carries a real state, not a position. */
+:is(.rig-editor-shell, .part-cutter-shell) .studio-mode-nav button { min-width: 96px; text-transform: none; }
+:is(.rig-editor-shell, .part-cutter-shell) .studio-mode-nav button[data-status="todo"] i { border-style: dashed; }
+:is(.rig-editor-shell, .part-cutter-shell) .studio-mode-nav button.needs-attention { color: var(--ws-secondary); }
+:is(.rig-editor-shell, .part-cutter-shell) .studio-mode-nav button.needs-attention i { color: #1a1206; background: var(--ws-warning); border-color: transparent; font-weight: 700; }
+
+/* Centre column: viewport above, stage strip below. The strip never covers the character. */
+.workflow-v2 .editor-center { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+.workflow-v2 .editor-center > .editor-viewport { position: relative; inset: auto; grid-row: 1; width: 100%; height: 100%; min-height: 0; }
+.workflow-v2 .preview-notice { top: 60px; bottom: auto; border-radius: 4px; }
+
+.workflow-v2 .stage-strip { position: relative; z-index: 3; grid-row: 2; display: flex; align-items: center; gap: 14px; min-height: 56px; padding: 8px 12px 8px 16px; background: var(--ws-panel); border-top: 1px solid var(--ws-line); }
+.workflow-v2 .stage-strip-title { display: grid; gap: 1px; flex: 0 0 auto; min-width: 124px; }
+.workflow-v2 .stage-strip-title strong { color: var(--ws-text); font-size: 13px; font-weight: 600; }
+.workflow-v2 .stage-strip-title small { color: var(--ws-muted); font-size: 11px; }
+.workflow-v2 .rig-review-strip.is-ready .stage-strip-title small { color: var(--ws-success); }
+.workflow-v2 .rig-review-strip.needs-attention .stage-strip-title small { color: var(--ws-warning); }
+.workflow-v2 .stage-strip-hint { flex: 1; min-width: 0; margin: 0; color: var(--ws-muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.workflow-v2 .review-chains { display: flex; flex: 0 0 auto; align-self: stretch; }
+.workflow-v2 .review-chains button { display: flex; align-items: center; gap: 6px; height: auto; min-height: 36px; padding: 0 11px; color: var(--ws-secondary); background: transparent; border: 0; border-radius: 0; font-size: 12px; white-space: nowrap; box-shadow: inset 0 -2px transparent; }
+.workflow-v2 .review-chains button:hover { color: var(--ws-text); background: rgba(255, 255, 255, .035); }
+.workflow-v2 .review-chains button.is-active { color: var(--ws-text); background: var(--ws-selection); box-shadow: inset 0 -2px var(--ws-signal); }
+.workflow-v2 :is(.review-chains, .review-joints) i { font-style: normal; font-size: 11px; font-weight: 700; color: var(--ws-success); }
+.workflow-v2 :is(.review-chains, .review-joints) .has-problem i { color: var(--ws-warning); }
+
+.workflow-v2 .review-joints { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; padding-left: 14px; border-left: 1px solid var(--ws-line); overflow-x: auto; scrollbar-width: none; }
+.workflow-v2 .review-joints > button:not(.strip-tool) { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; height: 28px; padding: 0 9px; color: var(--ws-secondary); background: transparent; border: 1px solid var(--ws-line-soft); border-radius: 4px; font-size: 12px; white-space: nowrap; }
+.workflow-v2 .review-joints > button.has-problem { color: var(--ws-warning); border-color: rgba(239, 193, 126, .45); }
+.workflow-v2 .review-joints > button.is-selected { color: var(--ws-text); border-color: var(--ws-signal); background: var(--ws-selection); }
+.workflow-v2 .review-joints > .strip-tool { margin-left: 8px; }
+
+.workflow-v2 .pose-tests { display: flex; gap: 6px; flex: 1; min-width: 0; padding-left: 14px; border-left: 1px solid var(--ws-line); }
+.workflow-v2 .strip-tool { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; height: 32px; padding: 0 11px; color: var(--ws-text); background: var(--ws-raised); border: 1px solid var(--ws-line); border-radius: 4px; font-size: 12px; white-space: nowrap; }
+.workflow-v2 .strip-tool:hover:not(:disabled) { border-color: #46566b; }
+.workflow-v2 .strip-tool.is-active { color: var(--ws-signal); border-color: #426a79; background: var(--ws-selection); }
+.workflow-v2 .strip-tool:disabled { opacity: .4; }
+.workflow-v2 :is(.strip-tool, .canvas-context-menu) kbd { min-width: 16px; padding: 0 4px; color: var(--ws-muted); border: 1px solid var(--ws-line); border-radius: 3px; font: 10px/15px var(--ws-mono); text-align: center; }
+
+.workflow-v2 .stage-strip .stage-next-action { position: static !important; flex: 0 0 auto; margin-left: auto; height: 36px !important; min-height: 36px !important; gap: 8px; font-size: 13px; }
+.workflow-v2 .stage-strip .strip-tool + .stage-next-action { margin-left: 4px; }
+.workflow-v2 .stage-strip .stage-next-action.is-blocked { color: #1a1206; background: var(--ws-warning); border-color: transparent; box-shadow: none; }
+.is-focus-mode .stage-strip { display: none; }
+
+/* Structure: the skeleton as a tree, or the parts that ride on it. */
+.workflow-v2 .structure-tree { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.workflow-v2 .structure-advanced { flex: 1; min-height: 0; overflow: auto; }
+.workflow-v2 .structure-view-toggle { display: grid; grid-template-columns: 1fr 1fr; flex: 0 0 auto; border-bottom: 1px solid var(--ws-line); }
+.workflow-v2 .structure-view-toggle button { display: flex; align-items: center; justify-content: center; gap: 7px; height: 34px; color: var(--ws-muted); background: transparent; border: 0; border-radius: 0; font-size: 12px; font-weight: 550; box-shadow: inset 0 -2px transparent; }
+.workflow-v2 .structure-view-toggle button.is-active { color: var(--ws-text); box-shadow: inset 0 -2px var(--ws-signal); }
+.workflow-v2 .structure-view-toggle small { color: var(--ws-muted); font: 10px var(--ws-mono); }
+.workflow-v2 .structure-rows { flex: 1; min-height: 0; padding: 4px 0 8px; overflow: auto; }
+.workflow-v2 .structure-row { display: flex; align-items: center; gap: 8px; width: 100%; height: 28px; padding-right: 10px; color: var(--ws-secondary); background: transparent; border: 0; border-radius: 0; font-size: 13px; text-align: left; }
+.workflow-v2 .structure-row.is-part { padding-left: 12px; }
+.workflow-v2 .structure-row > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workflow-v2 .structure-row > small { flex: 0 0 auto; max-width: 46%; color: var(--ws-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workflow-v2 .structure-glyph { flex: 0 0 12px; color: var(--ws-muted); font-size: 9px; font-style: normal; text-align: center; }
+.workflow-v2 .structure-row.is-part .structure-glyph { color: var(--ws-accent); }
+.workflow-v2 .structure-row:hover { color: var(--ws-text); background: rgba(255, 255, 255, .035); }
+.workflow-v2 .structure-row.is-linked { color: var(--ws-text); box-shadow: inset 2px 0 var(--ws-accent); }
+.workflow-v2 .structure-row.is-selected { color: var(--ws-text); background: var(--ws-selection); box-shadow: inset 2px 0 var(--ws-signal); }
+.workflow-v2 .structure-row.is-selected .structure-glyph { color: var(--ws-signal); }
+.workflow-v2 .structure-flag { flex: 0 0 auto; color: var(--ws-warning); font-size: 12px; }
+.workflow-v2 .structure-row.is-broken > small { color: var(--ws-error); }
+.workflow-v2 .structure-group { display: flex; justify-content: space-between; margin: 0; padding: 10px 12px 4px; color: var(--ws-muted); font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
+.workflow-v2 .structure-group small { font: 10px var(--ws-mono); letter-spacing: 0; }
+.workflow-v2 .structure-empty { margin: 0; padding: 14px 12px; color: var(--ws-muted); font-size: 12px; }
+
+/* Right-click menu for the thing under the cursor. */
+.canvas-context-menu { position: fixed; z-index: 80; width: 216px; padding: 4px; background: var(--ws-glass); border: 1px solid #3b485b; border-radius: 7px; box-shadow: 0 14px 34px rgba(0, 0, 0, .55); }
+.canvas-context-menu header { padding: 6px 8px 7px; margin-bottom: 3px; color: var(--ws-muted); border-bottom: 1px solid var(--ws-line); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.canvas-context-menu button { display: flex; align-items: center; justify-content: space-between; width: 100%; height: 30px; padding: 0 8px; color: var(--ws-text); background: transparent; border: 0; border-radius: 4px; font-size: 13px; text-align: left; }
+.canvas-context-menu button:is(:hover, :focus-visible):not(:disabled) { background: var(--ws-selection); color: var(--ws-signal); outline: none; }
+.canvas-context-menu button:disabled { opacity: .38; }
+
+/* Inspector: a bone or a part, each naming the other half of the link. */
+.workflow-v2 .inspector-status { display: flex; gap: 8px; margin: 0; padding: 9px 14px; font-size: 12px; line-height: 1.4; border-bottom: 1px solid var(--ws-line); }
+.workflow-v2 .inspector-status.is-ok { color: var(--ws-success); }
+.workflow-v2 .inspector-status.has-problem { color: var(--ws-warning); background: rgba(239, 193, 126, .06); }
+.workflow-v2 .inspector-link-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 14px; color: var(--ws-secondary); font-size: 13px; }
+.workflow-v2 .inspector-link-row > span:first-child { flex: 0 0 96px; }
+.workflow-v2 .inspector-link { height: 26px; padding: 0 9px; color: var(--ws-signal); background: var(--ws-selection); border: 1px solid #2f4b58; border-radius: 4px; font-size: 12px; }
+.workflow-v2 .inspector-link:hover { border-color: var(--ws-signal); }
+.workflow-v2 .inspector-link-missing { color: var(--ws-muted); font-size: 12px; }
+.workflow-v2 .inspector-link-missing.is-broken { color: var(--ws-error); }
+.workflow-v2 .inspector-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 14px; border-top: 1px solid var(--ws-line); }
+.workflow-v2 .inspector-actions button { height: 30px; padding: 0 10px; color: var(--ws-text); background: var(--ws-raised); border: 1px solid var(--ws-line); border-radius: 4px; font-size: 12px; }
+.workflow-v2 .inspector-actions button:disabled { opacity: .4; }
+.workflow-v2 :is(.inspector-hint, .inspector-id) { margin: 0; padding: 6px 14px; color: var(--ws-muted); font-size: 11px; line-height: 1.45; }
+.workflow-v2 .inspector-id { font-family: var(--ws-mono); word-break: break-all; }
+.workflow-v2 .inspector-advanced { border-top: 1px solid var(--ws-line); }
+.workflow-v2 .inspector-advanced > summary { padding: 9px 14px; color: var(--ws-muted); font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; cursor: pointer; }
+.workflow-v2 .inspector-advanced[open] > summary { color: var(--ws-secondary); }
+.workflow-v2 .keyframe-facts { display: grid; grid-template-columns: 1fr 1fr; margin: 0; border-bottom: 1px solid var(--ws-line); }
+.workflow-v2 .keyframe-facts > div { padding: 10px 14px; }
+.workflow-v2 .keyframe-facts > div + div { border-left: 1px solid var(--ws-line); }
+.workflow-v2 .keyframe-facts dt { color: var(--ws-muted); font-size: 11px; }
+.workflow-v2 .keyframe-facts dd { display: flex; align-items: baseline; gap: 7px; margin: 2px 0 0; color: var(--ws-text); font-size: 15px; font-weight: 550; }
+.workflow-v2 .keyframe-facts dd small { color: var(--ws-muted); font: 11px var(--ws-mono); }
+
+/* Status messages sit at the top of the work area and clear themselves; errors stay until replaced. */
+.workflow-v2 .studio-toast { top: 112px; bottom: auto; animation: workflow-toast-out .3s 4s forwards; }
+.workflow-v2 .studio-toast.is-error { animation: none; color: var(--ws-error); border-color: rgba(255, 135, 156, .5); }
+@keyframes workflow-toast-out { to { opacity: 0; visibility: hidden; } }
+
+/* Animate: transport, clips, timeline menu. */
+.workflow-v2 .transport { display: flex; align-items: center; gap: 2px; }
+.workflow-v2 .transport .transport-icon { min-width: 34px; height: 32px; padding: 0 6px; font-size: 12px; letter-spacing: 0; white-space: nowrap; }
+.workflow-v2 .transport .transport-loop { font-size: 15px; letter-spacing: 0; }
+.workflow-v2 .transport .transport-loop.is-active { color: var(--ws-signal); background: var(--ws-selection); }
+.workflow-v2 .transport-readout { display: grid; gap: 1px; min-width: 132px; padding-left: 10px; border-left: 1px solid var(--ws-line); }
+.workflow-v2 .transport-readout .transport-time { min-width: 0; padding: 0; color: var(--ws-text); background: none; border: 0; font: 550 14px var(--ws-mono); text-align: left; }
+.workflow-v2 .transport-readout small { color: var(--ws-muted); font-size: 11px; white-space: nowrap; }
+.workflow-v2 .motion-review-entry.is-active { color: var(--ws-signal); border-color: #426a79; }
+
+.workflow-v2 .animation-library-heading { display: flex; align-items: center; gap: 6px; padding: 0 8px 0 14px; }
+.workflow-v2 .animation-library-heading > span { flex: 1; }
+.workflow-v2 .animation-library-heading > button { width: auto; height: 26px; padding: 0 9px; color: var(--ws-text); background: var(--ws-raised); border: 1px solid var(--ws-line); border-radius: 4px; font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; white-space: nowrap; }
+.workflow-v2 .animation-library-heading > button.is-active { color: var(--ws-signal); border-color: #426a79; }
+.workflow-v2 .animation-library-list { display: block; flex: 1; min-height: 0; max-height: none; padding: 4px 0; overflow: auto; }
+.workflow-v2 .clip-row { position: relative; display: flex; align-items: center; }
+.workflow-v2 .clip-select { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; height: 34px; padding: 0 10px 0 14px; color: var(--ws-secondary); background: transparent; border: 0; border-radius: 0; font-size: 13px; text-align: left; }
+.workflow-v2 .clip-select > i { flex: 0 0 10px; width: 10px; height: auto; margin: 0; color: var(--ws-signal); background: none; border: 0; border-radius: 0; box-shadow: none; font-size: 10px; font-style: normal; }
+.workflow-v2 .clip-select > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workflow-v2 .clip-select > small { color: var(--ws-muted); font: 10px var(--ws-mono); white-space: nowrap; }
+.workflow-v2 .clip-select:hover { color: var(--ws-text); background: rgba(255, 255, 255, .035); }
+.workflow-v2 .clip-entry.is-active > .clip-row { background: var(--ws-selection); box-shadow: inset 2px 0 var(--ws-signal); }
+.workflow-v2 .clip-select.is-active { color: var(--ws-text); font-weight: 550; }
+.workflow-v2 .clip-menu > summary { display: grid; place-items: center; width: 30px; height: 34px; color: var(--ws-muted); font-size: 15px; list-style: none; cursor: pointer; }
+.workflow-v2 .clip-menu > summary::-webkit-details-marker, .workflow-v2 .timeline-menu > summary::-webkit-details-marker { display: none; }
+.workflow-v2 .clip-menu > summary:hover { color: var(--ws-text); }
+.workflow-v2 :is(.clip-menu, .timeline-menu) > div { position: absolute; z-index: 30; display: grid; gap: 1px; width: 228px; padding: 5px; background: var(--ws-glass); border: 1px solid #3b485b; border-radius: 7px; box-shadow: 0 14px 34px rgba(0, 0, 0, .55); }
+.workflow-v2 .clip-menu > div { top: 100%; right: 4px; }
+.workflow-v2 .timeline-menu { position: relative; margin-left: auto; }
+.workflow-v2 .timeline-menu > summary { height: 26px; padding: 0 10px; color: var(--ws-secondary); border: 1px solid var(--ws-line); border-radius: 4px; font-size: 12px; line-height: 24px; list-style: none; cursor: pointer; white-space: nowrap; }
+.workflow-v2 .timeline-menu[open] > summary, .workflow-v2 .timeline-menu > summary:hover { color: var(--ws-text); border-color: #46566b; }
+.workflow-v2 .timeline-menu > div { right: 0; bottom: calc(100% + 6px); width: 264px; max-height: min(420px, calc(100vh - var(--timeline-height, 220px) - 200px)); overflow: auto; font-family: var(--ws-font); }
+.workflow-v2 :is(.clip-menu, .timeline-menu) > div :is(button, label) { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 30px; padding: 0 8px; color: var(--ws-text); background: transparent; border: 0; border-radius: 4px; font-size: 12px; font-weight: 400; letter-spacing: 0; text-align: left; text-transform: none; }
+.workflow-v2 :is(.clip-menu, .timeline-menu) > div button:hover:not(:disabled) { background: var(--ws-selection); color: var(--ws-signal); }
+.workflow-v2 :is(.clip-menu, .timeline-menu) > div button.is-active::after { content: "✓"; color: var(--ws-signal); }
+.workflow-v2 :is(.clip-menu, .timeline-menu) > div button:disabled { opacity: .38; }
+.workflow-v2 :is(.clip-menu, .timeline-menu) > div :is(input[type="number"], select) { flex: 0 0 auto; width: 118px; height: 26px; padding: 0 6px; color: var(--ws-text); background: var(--ws-recess); border: 1px solid var(--ws-line); border-radius: 4px; font: 12px var(--ws-mono); }
+.workflow-v2 .timeline-menu > div input[type="range"] { width: 110px; }
+.workflow-v2 .timeline-menu h4 { margin: 0; padding: 9px 8px 3px; color: var(--ws-muted); font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
+.workflow-v2 .timeline-menu h4:not(:first-child) { margin-top: 4px; border-top: 1px solid var(--ws-line); }
+
+.workflow-v2 .clip-bones { display: grid; padding: 2px 0 6px; border-bottom: 1px solid var(--ws-line-soft); }
+.workflow-v2 .clip-bones > button { display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 10px 0 30px; color: var(--ws-secondary); background: transparent; border: 0; border-radius: 0; font-size: 12px; text-align: left; }
+.workflow-v2 .clip-bones > button:hover { color: var(--ws-text); background: rgba(255, 255, 255, .035); }
+.workflow-v2 .clip-bones > button.selected { color: var(--ws-signal); background: var(--ws-selection); }
+.workflow-v2 .clip-bones > p { margin: 0; padding: 6px 12px 6px 30px; color: var(--ws-muted); font-size: 11px; line-height: 1.45; }
+
+.workflow-v2 .panel-task-header { display: flex; align-items: center; justify-content: space-between; height: 38px; padding: 0 6px 0 14px; border-bottom: 1px solid var(--ws-line); }
+.workflow-v2 .panel-task-header strong { color: var(--ws-text); font-size: 13px; font-weight: 600; }
+.workflow-v2 .panel-task-header button { width: 28px; height: 28px; color: var(--ws-muted); background: transparent; border: 0; border-radius: 4px; font-size: 16px; }
+.workflow-v2 .panel-task-header button:hover { color: var(--ws-text); background: rgba(255, 255, 255, .06); }
+
+.rig-editor-shell.workflow-v2 .animation-command-row .compact-track-toggle { display: none; }
+@media (max-width: 900px) {
+  .rig-editor-shell.workflow-v2 .animation-command-row .compact-track-toggle { display: flex; }
+}
+@media (max-width: 1100px) {
+  .workflow-v2 .stage-strip { flex-wrap: wrap; row-gap: 6px; }
+  .workflow-v2 .stage-strip-title small, .workflow-v2 .transport-readout small { display: none; }
+  .workflow-v2 :is(.review-joints, .pose-tests) { order: 5; flex: 1 0 100%; padding-left: 0; border-left: 0; overflow-x: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workflow-v2 .studio-toast { animation-duration: .01s; }
+}
+.workflow-v2 .inspector-link-row > div { display: flex; flex-wrap: wrap; gap: 5px; min-width: 0; }
+
+/* Parts canvas: the whole character fits the work area on load, whatever its proportions. */
+.part-cutter-shell .cutter-canvas-wrap { container-type: size; }
+.part-cutter-shell .cutter-canvas { width: min(100cqw, calc(100cqh * var(--source-ratio, 1))); height: auto; max-width: none; max-height: none; }
+
+/* Animate: which way the character faces. Decides the direction of every standard clip. */
+.workflow-v2 .clip-facing { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px 0 14px; border-bottom: 1px solid var(--ws-line); color: var(--ws-muted); font-size: 12px; }
+.workflow-v2 .clip-facing > span { flex: 1; }
+.workflow-v2 .clip-facing > select { height: 24px; max-width: 132px; padding: 0 6px; color: var(--ws-text); background: var(--ws-raised); border: 1px solid var(--ws-line); border-radius: 4px; font-size: 12px; }
+.workflow-v2 .facing-ask { padding: 10px 8px 10px 14px; border-bottom: 1px solid var(--ws-line); background: color-mix(in srgb, var(--ws-signal) 7%, transparent); }
+.workflow-v2 .facing-ask > p { margin: 0 0 8px; color: var(--ws-text); font-size: 12px; line-height: 1.4; }
+.workflow-v2 .facing-ask > div { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.workflow-v2 .facing-ask button { height: 26px; color: var(--ws-text); background: var(--ws-raised); border: 1px solid var(--ws-line); border-radius: 4px; font-size: 12px; }
+.workflow-v2 .facing-ask button.is-suggested { border-color: #426a79; color: var(--ws-signal); }
+
+/* Notices above the Rig canvas: rebuild an old rig, choose a facing. */
+.workflow-v2 .rig-notices:empty { display: none; }
+/* Floats over the top of the canvas, under the breadcrumb and toolbar row, so the canvas grid keeps its rows. */
+.workflow-v2 .rig-notices { position: absolute; top: 60px; left: 16px; right: 16px; z-index: 4; display: grid; gap: 6px; pointer-events: none; }
+.workflow-v2 .rig-notices > * { pointer-events: auto; border: 1px solid var(--ws-line); border-radius: 6px; box-shadow: 0 6px 18px rgb(0 0 0 / .28); }
+.workflow-v2 .rig-notices .facing-ask { background: color-mix(in srgb, var(--ws-signal) 10%, var(--ws-raised)); }
+.workflow-v2 .rig-notices .rebuild-notice { background: color-mix(in srgb, #f0b44c 12%, var(--ws-raised)); }
+.workflow-v2 .rig-notices .facing-ask { display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-bottom: 0; }
+.workflow-v2 .rig-notices .facing-ask > p { margin: 0; flex: 1; }
+.workflow-v2 .rig-notices .facing-ask > div { grid-template-columns: repeat(3, 84px); }
+.workflow-v2 .rebuild-notice { display: flex; align-items: center; gap: 12px; padding: 8px 14px; color: var(--ws-text); font-size: 12px; line-height: 1.4; background: color-mix(in srgb, #f0b44c 9%, transparent); }
+.workflow-v2 .rebuild-notice > span { flex: 1; }
+.workflow-v2 .rebuild-notice > button { height: 26px; padding: 0 12px; color: var(--ws-text); background: var(--ws-raised); border: 1px solid var(--ws-line); border-radius: 4px; font-size: 12px; }
+.workflow-v2 .animate-workspace .rebuild-notice, .workflow-v2 .editor-viewport ~ .rebuild-notice { position: absolute; left: 12px; right: 12px; top: 10px; z-index: 3; border: 1px solid var(--ws-line); border-radius: 6px; background: color-mix(in srgb, #f0b44c 12%, var(--ws-raised)); }

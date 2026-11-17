@@ -10,21 +10,26 @@ describe("stage-driven workspace shell", () => {
     expect(source("../../app/rig-editor/AnimateWorkspace.tsx")).toContain("Disk animations restored");
   });
 
-  it("keeps Prepare, Setup, and Animate as the single global progress path", () => {
+  it("keeps Parts, Rig, Test, and Animate as the single global progress path with real stage states", () => {
     const nav = source("../../app/studio-ui/StudioModeNav.tsx");
     const rail = source("../../app/studio-ui/TopCommandRail.tsx");
-    expect(nav).toContain('["prepare", "setup", "animate"]');
+    for (const stage of ['mode: "prepare", label: "Parts"', 'mode: "setup", label: "Rig"', 'mode: "test", label: "Test"', 'mode: "animate", label: "Animate"']) expect(nav).toContain(stage);
     expect(nav).toContain("is-complete");
+    expect(nav).toContain("needs-attention");
+    expect(source("../../app/rig-editor/RigEditor.tsx")).toContain("stageStatuses");
     expect(rail).toContain("studio-command-rail");
     expect(rail).toContain("connection-cluster");
     expect(rail).toContain("Search commands (⌘K)");
   });
 
-  it("uses semantic Setup navigation with the technical tree behind disclosure", () => {
-    const navigator = source("../../app/rig-editor/SemanticNavigator.tsx");
-    expect(navigator).toContain('["character", "body", "equipment", "layers"]');
-    expect(navigator).toContain("Advanced structure");
-    expect(navigator).toContain("<EditorHierarchy");
+  it("shows the real skeleton and its parts, with the raw document behind Advanced structure", () => {
+    const tree = source("../../app/rig-editor/SkeletonTree.tsx");
+    const rigEditor = source("../../app/rig-editor/RigEditor.tsx");
+    expect(tree).toContain('["skeleton", "parts"]');
+    expect(tree).toContain("skeletonRows(props.rig)");
+    expect(tree).toContain("Controlled by");
+    expect(rigEditor).toContain("Advanced structure");
+    expect(rigEditor).toContain("<EditorHierarchy");
   });
 
   it("groups persistent canvas toggles into View and Snap popovers", () => {
@@ -51,16 +56,15 @@ describe("stage-driven workspace shell", () => {
 
   it("persists the user-controlled workspace layout", () => {
     const rigEditor = source("../../app/rig-editor/RigEditor.tsx");
-    for (const preference of ["leftCollapsed", "rightCollapsed", "focusMode", "semanticSection", "leftPanelWidth", "rightPanelWidth"]) expect(rigEditor).toContain(preference);
+    for (const preference of ["leftCollapsed", "rightCollapsed", "focusMode", "structureView", "leftPanelWidth", "rightPanelWidth"]) expect(rigEditor).toContain(preference);
   });
 
-  it("keeps semantic body groups collapsible, remembered, and selection-aware", () => {
-    const navigator = source("../../app/rig-editor/SemanticNavigator.tsx");
-    expect(navigator).toContain("rigging-studio-semantic-groups-v1");
-    expect(navigator).toContain('aria-expanded={open}');
-    expect(navigator).toContain("toggleGroup(group.id)");
-    expect(navigator).toContain("selectedBoneId");
-    expect(navigator).toContain("...keys");
+  it("mirrors the canvas selection in the tree and links each part to its bone", () => {
+    const tree = source("../../app/rig-editor/SkeletonTree.tsx");
+    expect(tree).toContain("selectedBoneId === bone.id");
+    expect(tree).toContain("is-linked");
+    expect(tree).toContain("is-broken");
+    expect(tree).toContain("has-problem");
   });
 
   it("renders a primary bone with parent and child chain context", () => {
@@ -88,14 +92,38 @@ describe("stage-driven workspace shell", () => {
     expect(rail).toContain("Open diagnostics");
   });
 
-  it("models Setup as a meaningful four-state subflow with an integrated next action", () => {
+  it("replaces the Setup stepper with rig review and gives Test its own strip, each with one next action", () => {
     const rigEditor = source("../../app/rig-editor/RigEditor.tsx");
-    for (const step of ['"body"', '"pivots"', '"equipment"', '"validate"']) expect(rigEditor).toContain(step);
-    expect(rigEditor).toContain("setup-workflow-rail");
-    expect(rigEditor).toContain('data-state={state}');
-    expect(rigEditor).toContain("Setup valid");
-    expect(rigEditor).toContain("Ready for animation");
-    expect(rigEditor).toContain("Enter Animate");
+    const review = source("../../app/rig-editor/RigReviewStrip.tsx");
+    const test = source("../../app/rig-editor/TestPoseStrip.tsx");
+    expect(rigEditor).not.toContain("setup-workflow-rail");
+    expect(rigEditor).toContain("<RigReviewStrip");
+    expect(rigEditor).toContain("<TestPoseStrip");
+    expect(review).toContain("Rotate test");
+    expect(review).toContain("stage-next-action");
+    expect(test).toContain("Reset pose");
+    expect(test).toContain("Fix in Rig");
+    expect(test).toContain("stage-next-action");
+  });
+
+  it("keeps Test from editing the rig", () => {
+    const rigEditor = source("../../app/rig-editor/RigEditor.tsx");
+    expect(rigEditor).toContain("poseMode={testing}");
+    expect(rigEditor).toContain("pivotEdit={!testing}");
+    expect(rigEditor).toContain("onBoneDragCommit={testing ? () => { setPosed(true); markTested(); } : commitBoneDrag}");
+  });
+
+  it("gives Animate one clip chooser, one undo, and a full transport", () => {
+    const animate = source("../../app/rig-editor/AnimateWorkspace.tsx");
+    const rigEditor = source("../../app/rig-editor/RigEditor.tsx");
+    expect(animate).not.toContain("animation-picker");
+    expect(animate).not.toContain("Animated body");
+    expect(animate).not.toContain("inspector-mode-tabs");
+    expect(animate).not.toContain('aria-label="Undo animation change"');
+    for (const control of ["First frame", "Previous keyframe", "Next keyframe", "Last frame", 'aria-label="Loop"', "Generate…", "Timeline ⋯"]) expect(animate).toContain(control);
+    expect(animate).toContain('action === "undo"');
+    expect(rigEditor).toContain('animationCommand("undo")');
+    expect(rigEditor).toContain("initialBoneId={selectedBoneId}");
   });
 
   it("makes active canvas tools affect viewport behavior", () => {
@@ -107,7 +135,7 @@ describe("stage-driven workspace shell", () => {
 
   it("preserves focus layout and reduced-motion affordances", () => {
     const css = source("../../app/rig-editor/rig-editor.css");
-    expect(css).toContain(".is-focus-mode .setup-workflow-rail");
+    expect(source("../../app/studio-ui/workstation.css")).toContain(".is-focus-mode .stage-strip");
     expect(css).toContain("@media (prefers-reduced-motion:reduce)");
     expect(css).toContain("transition:none!important");
   });
@@ -158,6 +186,6 @@ describe("stage-driven workspace shell", () => {
     expect(behavior).toContain("other !== menu");
     expect(rail.match(/data-dismissible-menu/g)).toHaveLength(2);
     expect(canvas.match(/data-dismissible-menu/g)).toHaveLength(2);
-    expect(animate.match(/data-dismissible-menu/g)).toHaveLength(2);
+    expect(animate.match(/data-dismissible-menu/g)).toHaveLength(3);
   });
 });

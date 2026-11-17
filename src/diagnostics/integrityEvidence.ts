@@ -2,7 +2,7 @@ import type { ValidationIssue } from "../rigging/validation/issues";
 
 export type IntegrityEvidence = {
   readonly digest: string;
-  readonly stage: "prepare" | "setup" | "animate";
+  readonly stage: "prepare" | "setup" | "test" | "animate";
   readonly state: Readonly<Record<string, unknown>>;
   readonly problems: readonly Pick<ValidationIssue, "code" | "message" | "severity" | "objectId" | "mode">[];
 };
