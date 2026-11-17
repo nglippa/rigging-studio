@@ -1,3 +1,4 @@
+import { modelSetting } from "../../src/image-production/comfy/ComfyUIAdapter";
 import { copyFile, mkdir, mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -116,6 +117,20 @@ describe("real character pipeline contract over trusted Comfy workflows", () => 
     } finally {
       if (previousSam === undefined) delete process.env.COMFYUI_SAM2_MODEL; else process.env.COMFYUI_SAM2_MODEL = previousSam;
       if (previousDino === undefined) delete process.env.COMFYUI_GROUNDING_DINO_MODEL; else process.env.COMFYUI_GROUNDING_DINO_MODEL = previousDino;
+    }
+  });
+
+  it("uses the dedicated inpainting checkpoint when one is configured, and the general one otherwise", () => {
+    const keep = { general: process.env.COMFYUI_CHECKPOINT, inpaint: process.env.COMFYUI_INPAINT_CHECKPOINT };
+    try {
+      process.env.COMFYUI_CHECKPOINT = "general.safetensors"; delete process.env.COMFYUI_INPAINT_CHECKPOINT;
+      expect(modelSetting("COMFYUI_INPAINT_CHECKPOINT")).toBe("general.safetensors");
+      process.env.COMFYUI_INPAINT_CHECKPOINT = "inpaint.safetensors";
+      expect(modelSetting("COMFYUI_INPAINT_CHECKPOINT")).toBe("inpaint.safetensors");
+      expect(modelSetting("COMFYUI_CHECKPOINT")).toBe("general.safetensors");
+    } finally {
+      if (keep.general === undefined) delete process.env.COMFYUI_CHECKPOINT; else process.env.COMFYUI_CHECKPOINT = keep.general;
+      if (keep.inpaint === undefined) delete process.env.COMFYUI_INPAINT_CHECKPOINT; else process.env.COMFYUI_INPAINT_CHECKPOINT = keep.inpaint;
     }
   });
 

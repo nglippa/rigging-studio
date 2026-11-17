@@ -12,10 +12,10 @@
     "seed": { "nodeId": "8", "field": "seed", "required": true },
     "steps": { "nodeId": "8", "field": "steps", "required": false, "defaultValue": 28 },
     "guidance": { "nodeId": "8", "field": "cfg", "required": false, "defaultValue": 6.5 },
-    "denoise": { "nodeId": "8", "field": "denoise", "required": false, "defaultValue": 0.65 },
+    "denoise": { "nodeId": "8", "field": "denoise", "required": false, "defaultValue": 1.0 },
     "checkpoint": { "nodeId": "4", "field": "ckpt_name", "required": true }
   },
   "outputs": { "images": { "nodeId": "11" } },
   "requiredNodeClasses": ["LoadImage", "ImageToMask", "CheckpointLoaderSimple", "CLIPTextEncode", "VAEEncodeForInpaint", "KSampler", "VAEDecode", "ImageCompositeMasked", "SaveImage"],
-  "requiredModels": ["COMFYUI_CHECKPOINT"]
+  "requiredModels": ["COMFYUI_INPAINT_CHECKPOINT"]
 }

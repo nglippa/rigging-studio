@@ -59,7 +59,7 @@ export class ComfyUIAdapter implements ImageProductionProvider {
     const checkpoint = process.env.COMFYUI_CHECKPOINT;
     const objectInfoText = JSON.stringify(objectInfo);
     const missingModels = workflow.manifest.requiredModels.flatMap((environmentName) => {
-      const configured = process.env[environmentName];
+      const configured = modelSetting(environmentName);
       if (!configured) return [environmentName];
       return objectInfoText.includes(configured) ? [] : [`${environmentName}:${configured}`];
     });
@@ -171,4 +171,14 @@ export class ComfyUIAdapter implements ImageProductionProvider {
       throw error instanceof Error ? error : new Error(`ComfyUI ${pathname} failed`);
     } finally { clearTimeout(timer); }
   }
+}
+
+/**
+ * The configured model for a manifest's required-model name. Inpainting needs a model trained for it, so reconstruction
+ * reads COMFYUI_INPAINT_CHECKPOINT and falls back to the general COMFYUI_CHECKPOINT when that is not set.
+ */
+export function modelSetting(environmentName: string): string | undefined {
+  const value = process.env[environmentName];
+  if (value) return value;
+  return environmentName === "COMFYUI_INPAINT_CHECKPOINT" ? process.env.COMFYUI_CHECKPOINT || undefined : undefined;
 }

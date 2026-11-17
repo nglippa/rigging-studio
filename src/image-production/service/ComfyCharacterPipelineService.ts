@@ -8,6 +8,7 @@ import type { ImageCandidate, ImageProductionCapability, ImageProductionJson, Im
 import type { ImageProviderOutput } from "../providers/imageProductionProvider";
 import { ImageProductionService } from "./ImageProductionService";
 import { bindTrustedWorkflow } from "../workflows/workflowManifest";
+import { modelSetting } from "../comfy/ComfyUIAdapter";
 import {
   detectorCrop, detectorPhrases, detectionStage, foregroundCoverage, maskIntersectionOverUnion, reclassifySemantic,
   remapCropMask, resolveCharacterScreenSides, resolveConflictingOverlaps, scoreMaskCandidate, stagedTargets, summarizeMask,
@@ -210,8 +211,10 @@ export class ComfyCharacterPipelineService {
     const outputs = await this.execute("OCCLUSION_RECONSTRUCTION", {
       sourceImage: sourceName, maskImage: maskName, positivePrompt: prompt,
       negativePrompt: "new character, changed pose, changed scale, changed costume, detached limb, duplicate limb, full body replacement, background change",
-      seed, steps: 28, guidance: 6.5, denoise: 0.65,
-      checkpoint: requiredEnvironment("COMFYUI_CHECKPOINT"),
+      // VAEEncodeForInpaint blanks the masked area before sampling, so anything below full denoise leaves it grey (tested on
+      // SDXL inpainting 0.1: 0.65 returned flat grey, 1.0 repainted the area).
+      seed, steps: 28, guidance: 6.5, denoise: 1,
+      checkpoint: modelSetting("COMFYUI_INPAINT_CHECKPOINT") ?? requiredEnvironment("COMFYUI_INPAINT_CHECKPOINT"),
     });
     const output = outputs[0];
     if (!output) throw new Error("ComfyUI reconstruction returned no image");

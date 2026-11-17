@@ -66,6 +66,7 @@ python3 main.py --listen 127.0.0.1 --port 8188
 # Terminal 2 — configured Rigging Studio repository
 cd /Users/nicholaslippa/Projects/rigging-studio
 export COMFYUI_CHECKPOINT='your-installed-checkpoint.safetensors'
+export COMFYUI_INPAINT_CHECKPOINT='an-inpainting-checkpoint.safetensors'   # optional; reconstruction falls back to COMFYUI_CHECKPOINT
 export COMFYUI_SAM2_MODEL='exact SAM2 loader option'
 export COMFYUI_GROUNDING_DINO_MODEL='exact Grounding DINO loader option'
 npm run dev:agent
@@ -194,3 +195,8 @@ The contact sheet contains only candidates, IDs, seeds, true dimensions, and opt
 ## First agent prompt after setup
 
 > Inspect the current Rigging Studio and ComfyUI status. Create a new generated-character project for “Small stocky goblin alchemist with olive-green skin, leather apron, potion belt, oversized gloves, and a crooked wooden stirring staff. Stylized high-quality 2D fantasy game character, clean side view, neutral stance, modular body parts suitable for skeletal cutout animation.” Generate three candidates through `character_generate_with_comfy`, retrieve and visually inspect the contact sheet, submit a structured recommendation naming the best candidate and the suitability problems in every candidate, and stop at the manual approval boundary. Do not edit files or approve on score alone.
+
+
+## Inpainting checkpoint
+
+`OCCLUSION_RECONSTRUCTION` repaints hidden areas with `VAEEncodeForInpaint`, which needs a model trained for inpainting (9-channel UNet). A general text-to-image checkpoint such as Flux Schnell returns noise in the masked area. Set `COMFYUI_INPAINT_CHECKPOINT` to an inpainting checkpoint; when it is unset, reconstruction uses `COMFYUI_CHECKPOINT`. The workflow manifest lists `COMFYUI_INPAINT_CHECKPOINT` as its required model, so the provider status reports it missing until one is available.
