@@ -130,7 +130,7 @@ function pelvisOffset(phase: number, gait: GaitKind, value: Profile): Point {
   return { x: value.shift * wave, y: (gait === "run" ? -1 : 1) * value.bob * double };
 }
 
-function solveLeg(item: Leg, hip: Point, target: Point, hockRotation: number): { readonly upper: number; readonly lower: number; readonly hock: number; readonly foot: number; readonly clamped: boolean } {
+function solveLeg(item: Leg, hip: Point, target: Point, hockRotation: number, straightBendSign: 1 | -1): { readonly upper: number; readonly lower: number; readonly hock: number; readonly foot: number; readonly clamped: boolean } {
   const first = { x: item.lower.setup.x, y: item.lower.setup.y };
   const hockVector = item.hock ? { x: item.hock.setup.x, y: item.hock.setup.y } : { x: 0, y: 0 };
   const footVector = { x: item.foot.setup.x, y: item.foot.setup.y };
@@ -143,7 +143,8 @@ function solveLeg(item: Leg, hip: Point, target: Point, hockRotation: number): {
   const distance = clamp(requestedDistance, minimum, maximum);
   const targetAngle = Math.atan2(requested.y, requested.x);
   const setupDelta = Math.atan2(distal.y, distal.x) - Math.atan2(first.y, first.x);
-  const bendSign = Math.sin(setupDelta) < 0 ? -1 : 1;
+  // A leg that rests bent shows which way its knee folds; a straight one folds so the foot trails behind the facing direction.
+  const bendSign = Math.abs(Math.sin(setupDelta)) > .2 ? (Math.sin(setupDelta) < 0 ? -1 : 1) : straightBendSign;
   const cosine = clamp((distance * distance - l1 * l1 - l2 * l2) / (2 * l1 * l2), -1, 1);
   const delta = Math.acos(cosine) * bendSign;
   const firstAngle = targetAngle - Math.atan2(l2 * Math.sin(delta), l1 + l2 * Math.cos(delta));
@@ -180,7 +181,7 @@ export function buildLocomotionAnimation(context: AnimationGenerationContext, ga
       const target = { x: setupFoot.x + offset.x, y: setupFoot.y + offset.y };
       const hip = { x: setupHip.x + pelvisPoint.x, y: setupHip.y + pelvisPoint.y };
       const hock = item.hock ? rad(hockAmplitude * Math.sin(resolvedPhase * Math.PI * 2)) : 0;
-      const solved = solveLeg(item, hip, target, hock);
+      const solved = solveLeg(item, hip, target, hock, context.locomotionProfile.facing === "left" ? -1 : 1);
       appendRotation(item.upper.id, solved.upper); appendRotation(item.lower.id, solved.lower); appendRotation(item.foot.id, solved.foot);
       if (item.hock) appendRotation(item.hock.id, solved.hock);
       targets[item.side].push({ phase, x: Number(target.x.toFixed(4)), y: Number(target.y.toFixed(4)), clamped: solved.clamped });

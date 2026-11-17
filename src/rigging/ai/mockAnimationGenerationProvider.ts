@@ -4,6 +4,8 @@ import type { AnimationGenerationInput, AnimationGenerationProvider } from "./an
 import type { AnimationProposal } from "./animationProposalSchema";
 import { buildIdleAttackAnimation, type IdleAttackKind } from "./idleAttackEngine";
 import { buildLocomotionAnimation, type GaitKind } from "./locomotionEngine";
+import { buildMotionClip, motionForRequest } from "../motion/rigMotion";
+import type { RigDefinition } from "../schema/types";
 
 const setupValue = (context: AnimationGenerationContext, boneId: string, property: AnimatedProperty): number => {
   const bone = context.bones.find((candidate) => candidate.id === boneId);
@@ -33,6 +35,13 @@ const seamless = (animation: AnimationDefinition): AnimationDefinition => ({ ...
   if (!first) return track;
   return { ...track, keyframes: [...track.keyframes.filter((key) => Math.abs(key.time - animation.duration) > .0001), { ...first, time: animation.duration }] };
 }) });
+
+/** The context carries bones but no art, so the facing already read from the full rig is passed along as declared metadata. */
+const rigFromContext = (context: AnimationGenerationContext): RigDefinition => ({
+  schemaVersion: 1, id: "generation-context", canvas: { width: 1, height: 1 }, rootBoneId: context.bones.find((bone) => bone.parentId === null)?.id ?? "root",
+  bones: context.bones.map((bone) => ({ id: bone.id, parentId: bone.parentId, length: bone.length, ...bone.setup, inheritRotation: bone.inheritRotation, inheritScale: bone.inheritScale })),
+  slots: [], attachments: [], skins: [{ id: "base", name: "Base", slotAttachments: {} }], defaultSkinId: "base", metadata: { facing: context.locomotionProfile.facing },
+});
 
 const buildTemplate = (context: AnimationGenerationContext): AnimationDefinition => {
   const request = context.motionDescription.toLowerCase();
@@ -75,6 +84,18 @@ const buildTemplate = (context: AnimationGenerationContext): AnimationDefinition
         ...current.tracks.filter((track) => !allowed.has(`${track.boneId}:${track.property}`)),
         ...generated.tracks.filter((track) => allowed.has(`${track.boneId}:${track.property}`)),
       ],
+    };
+  }
+
+  // Every other named motion is resolved against this rig's rest pose and facing, so limbs travel the way that limb can.
+  const motion = motionForRequest(request);
+  const standard = motion ? buildMotionClip(rigFromContext(context), motion) : null;
+  if (standard) {
+    if (!current) return { ...standard, loop: context.loop };
+    const allowed = new Set(standard.tracks.filter((track) => context.mode !== "reviseSelectedBones" || context.selectedBoneIds.includes(track.boneId)).map((track) => `${track.boneId}:${track.property}`));
+    return {
+      ...current, duration: standard.duration, loop: context.loop,
+      tracks: [...current.tracks.filter((track) => !allowed.has(`${track.boneId}:${track.property}`)), ...standard.tracks.filter((track) => allowed.has(`${track.boneId}:${track.property}`))],
     };
   }
 

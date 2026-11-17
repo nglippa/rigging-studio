@@ -1,3 +1,4 @@
+import { analyzeRigAnatomy, type RigFacing } from "../motion/rigMotion";
 import type { AnimationDefinition, RigDefinition } from "../schema/types";
 
 export type AnimationGenerationMode = "create" | "revise" | "reviseSelectedBones";
@@ -19,6 +20,8 @@ export type LocomotionRigProfile = {
   readonly role: "fighter" | "doctor" | "mage" | "marine" | "rogue" | "beast";
   readonly equipment: { readonly leftHand: boolean; readonly rightHand: boolean; readonly torso: boolean; readonly head: boolean };
   readonly equipmentItems: readonly AnimationEquipmentItem[];
+  /** Which way the character faces on screen, read from the rig. Decides which way limbs swing and joints bend. */
+  readonly facing: RigFacing;
 };
 
 export type AnimationAuthoringConstraints = {
@@ -118,6 +121,7 @@ const locomotionProfile = (rig: RigDefinition): LocomotionRigProfile => {
       head: equipmentSlots.some((slot) => /head|neck/i.test(slot.boneId)),
     },
     equipmentItems,
+    facing: analyzeRigAnatomy(rig).facing,
   };
 };
 
