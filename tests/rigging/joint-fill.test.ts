@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fillPartArt } from "../../src/character-generation/rigging/jointFill";
+import { compositeBehind, mergeRepaint, repaintWorthwhile } from "../../src/character-generation/rigging/riggedPartArt";
 import { estimateZIndex } from "../../src/character-generation/rigging/zOrderEstimator";
 import type { PartType } from "../../src/character-generation/segmentation/partTaxonomy";
 import type { ProposedCharacterPart } from "../../src/character-generation/segmentation/segmentationSchema";
@@ -82,6 +83,31 @@ describe("gap filling for moving parts", () => {
     const row = 16; const reds = new Set<number>();
     for (let x = 22; x < 30; x += 1) { const at = ((row - torso.bounds.y) * torso.image.width + (x - torso.bounds.x)) * 4; reds.add(torso.image.data[at]); }
     expect(reds.size).toBeGreaterThanOrEqual(4);
+  });
+
+  it("marks exactly the invented pixels, and a repaint replaces only those", () => {
+    const torso = art("torso");
+    expect(torso.filledMask.reduce((sum, value) => sum + (value ? 1 : 0), 0)).toBe(torso.filledPixels);
+    // A repaint that returns solid magenta changes the hidden pixels and nothing the artist drew.
+    const magenta = { width: torso.image.width, height: torso.image.height, data: new Uint8ClampedArray(torso.image.data.length).fill(255).map((value, index) => index % 4 === 1 ? 0 : value) };
+    const merged = mergeRepaint(torso, magenta);
+    for (let index = 0; index < torso.filledMask.length; index += 1) {
+      const at = index * 4; const pixel = Array.from(merged.data.subarray(at, at + 4)); const original = Array.from(torso.image.data.subarray(at, at + 4));
+      expect(pixel, `pixel ${index}`).toEqual(torso.filledMask[index] ? [255, 0, 255, 255] : original);
+    }
+    expect(repaintWorthwhile(torso)).toBe(false); // 80 px is a sliver: not worth a minute of model time
+    expect(repaintWorthwhile({ filledPixels: 5000, bounds: { x: 0, y: 0, width: 200, height: 300 } })).toBe(true);
+  });
+
+  it("shows the repaint model the part with nothing in front of it", () => {
+    const context = compositeBehind({ width: W, height: H }, parts, filled, "torso");
+    const torso = art("torso");
+    // Where the shield was, the model sees the torso's own fill, not the shield.
+    const at = (16 * W + 25) * 4; const local = ((16 - torso.bounds.y) * torso.image.width + (25 - torso.bounds.x)) * 4;
+    expect(Array.from(context.data.subarray(at, at + 4))).toEqual(Array.from(torso.image.data.subarray(local, local + 4)));
+    // The shield itself is not drawn anywhere in the context.
+    const shield = art("shield"); const shieldPixel = (12 * W + 29) * 4; const shieldLocal = ((12 - shield.bounds.y) * shield.image.width + (29 - shield.bounds.x)) * 4;
+    expect(Array.from(context.data.subarray(shieldPixel, shieldPixel + 3))).not.toEqual(Array.from(shield.image.data.subarray(shieldLocal, shieldLocal + 3)));
   });
 
   it("does not join parts that merely touch", () => {

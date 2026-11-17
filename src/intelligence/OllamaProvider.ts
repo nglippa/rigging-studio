@@ -14,7 +14,7 @@ export class OllamaProvider implements IntelligenceProvider {
   readonly id = "ollama"; readonly label = "Ollama";
   private settings: OllamaSettings;
   private cachedModels: readonly IntelligenceModel[] = [];
-  constructor(settings: Partial<OllamaSettings> = {}, private readonly fetcher: typeof fetch = fetch) {
+  constructor(settings: Partial<OllamaSettings> = {}, private readonly fetcher: typeof fetch = (input, init) => fetch(input, init)) {
     this.settings = { ...DEFAULT_OLLAMA_SETTINGS, ...settings, endpoint: normalizeOllamaEndpoint(settings.endpoint ?? DEFAULT_OLLAMA_SETTINGS.endpoint) };
   }
   configure(settings: Partial<OllamaSettings>): void { this.settings = { ...this.settings, ...settings, ...(settings.endpoint ? { endpoint: normalizeOllamaEndpoint(settings.endpoint) } : {}) }; }

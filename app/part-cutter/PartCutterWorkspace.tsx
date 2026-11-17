@@ -12,9 +12,9 @@ import { writeRigEditorHandoffPointer } from "@/src/character-generation/project
 import { HttpCharacterPipelineProvider } from "@/src/character-generation/providers/httpCharacterPipelineProvider";
 import type { CharacterImageGenerationResult, CharacterPipelineCapabilities, CharacterPipelineProvider } from "@/src/character-generation/providers/characterPipelineProvider";
 import { buildCharacterConsistencyContext } from "@/src/character-generation/context/characterConsistencyContext";
-import { extractPartToDataUrl } from "@/src/character-generation/segmentation/partImageProcessor";
-import { prepareRiggedPartArt } from "@/src/character-generation/rigging/riggedPartArt";
-import { REBUILD_REQUEST_KEY } from "@/app/rig-editor/RigNotices";
+import { extractPartToDataUrl, pixelImageToDataUrl } from "@/src/character-generation/segmentation/partImageProcessor";
+import { prepareRiggedPartArt, type HiddenAreaRepaint } from "@/src/character-generation/rigging/riggedPartArt";
+import { REBUILD_REQUEST_KEY, parseRebuildRequest } from "@/app/rig-editor/RigNotices";
 import type { Rect, SegmentationMask } from "@/src/character-generation/segmentation/segmentationSchema";
 import { buildRigProposal } from "@/src/character-generation/rigging/rigProposalBuilder";
 import { validateRigProposal } from "@/src/character-generation/rigging/rigProposalValidator";
@@ -267,15 +267,41 @@ export function PartCutterWorkspace() {
   const completePolygon = () => { if (!source || !state) return; const selected = polygonSelection(path, source.width, source.height); if (selected) { const clipped = foreground ? { ...selected, mask: intersectSelectionWithForeground(selected.bounds, selected.mask, foreground, state.sourceCanvasSize) } : selected; const pixels = clipped.mask.alpha.filter(Boolean).length; setSelection(clipped); setMessage(pixels ? `Polygon selected ${pixels.toLocaleString()} foreground pixels` : "The polygon contained only transparent pixels."); } else setMessage("No pixels changed. Add at least three polygon points."); setPath([]); };
   const applySelection = (target: "selected" | "unresolved") => { if (!selection || !state || (target === "selected" && !selectedPart)) return; const result = assignOwnershipSelection(state, target === "selected" ? selectedPart!.partId : null, selection.bounds, selection.mask, { includeBackground: true }); if (!result.changedPixels) { setMessage("No foreground ownership changed."); return; } execute(`${target === "selected" ? `Assigned to ${selectedPart!.label}` : "Marked unresolved"} · ${result.changedPixels} pixels`, () => result.state); setPreparePhase("CUTTING"); setMessage(`${result.changedPixels.toLocaleString()} pixels transferred · one undo step`); setSelection(null); setPath([]); };
   const undo = () => { const history = historyRef.current; const next = history?.undo(); if (next && history) { setState(next); setHistoryUi({ canUndo: history.canUndo, canRedo: history.canRedo, undoLabel: history.getUndoLabel() }); setMessage("Undid part change"); recordBenchmark("undo"); } }; const redo = () => { const history = historyRef.current; const next = history?.redo(); if (next && history) { setState(next); setHistoryUi({ canUndo: history.canUndo, canRedo: history.canRedo, undoLabel: history.getUndoLabel() }); setMessage("Redid part change"); recordBenchmark("redo"); } };
-  const buildRig = (allowIncomplete = false, confirmed = false) => run("Rig built, saved, and opened for review", async () => {
+  // Repaints one part's hidden area through the reconstruction provider (ComfyUI inpainting on the Mac Studio).
+  const repaintHiddenArea = useCallback<HiddenAreaRepaint>(async ({ part, bounds, mask, context }) => {
+    if (!source) return null;
+    // The provider keeps the part's own pixels and paints only the mask, both placed within the art's bounds.
+    const visible = new Array<number>(bounds.width * bounds.height).fill(0);
+    if (part.mask) for (let y = 0; y < part.mask.height; y += 1) for (let x = 0; x < part.mask.width; x += 1) {
+      if (!part.mask.alpha[y * part.mask.width + x]) continue;
+      const tx = Math.round(part.bounds.x) + x - bounds.x; const ty = Math.round(part.bounds.y) + y - bounds.y;
+      if (tx >= 0 && ty >= 0 && tx < bounds.width && ty < bounds.height) visible[ty * bounds.width + tx] = 255;
+    }
+    const result = await provider.reconstructPart({
+      // The model sees the part with nothing in front of it, so it continues the part and not whatever covered it.
+      generationId: source.generationId, image: pixelImageToDataUrl(context), part: { ...part, bounds, mask: { width: bounds.width, height: bounds.height, alpha: visible } },
+      stylePrompt: projectRef.current.generationPrompt, reconstructionMask: mask, reconstructionMaskBounds: bounds,
+      expectedPivot: part.pivotHint, consistencyContext: buildCharacterConsistencyContext(projectRef.current),
+    });
+    return readImagePixels(result.image);
+  }, [provider, source]);
+
+  const buildRig = (allowIncomplete = false, confirmed = false, repaint = false) => run(repaint ? "Rig rebuilt with repainted hidden areas" : "Rig built, saved, and opened for review", async () => {
     if (projectRef.current.rigDefinition && !confirmed && !window.confirm("Rebuild from Prepare? This replaces the current rig. Choose Cancel to keep the current rig.")) { setMessage("Kept current rig"); return; }
     if (!state || !source) throw new Error("Prepare at least one source part");
     // Slivers of artwork left between hand-drawn loops join the nearest part, and each part's art is extended so the
     // character stays whole when its parts move. Shared with the agent build path.
-    const prepared = await prepareRiggedPartArt(source.image, { width: source.width, height: source.height }, state, { foreground });
+    let prepared = await prepareRiggedPartArt(source.image, { width: source.width, height: source.height }, state, { foreground });
     const canonical = prepared.state;
     const prepareValidation = validatePrepare(canonical, { foreground, profile: anatomyProfile, allowIncomplete });
     setPrepareIssues(prepareValidation.issues);
+    // Repainting takes minutes, so it only starts once the parts are known to build.
+    if (repaint && prepareValidation.canBuild) {
+      prepared = await prepareRiggedPartArt(source.image, { width: source.width, height: source.height }, state, {
+        foreground, repaint: repaintHiddenArea,
+        onRepaintProgress: (done, total) => setMessage(done < total ? `Repainting hidden areas on the Mac Studio · part ${done + 1} of ${total}` : "Repaint finished · building the rig"),
+      });
+    }
     if (!prepareValidation.canBuild) throw new Error(prepareValidation.canOverride ? "Some parts have not been drawn. Draw them, or choose “Build without the missing parts” in the panel on the right." : "Prepare contains invalid masks or geometry that cannot be overridden.");
     const segmentation = prepared.segmentation;
     if (!segmentation.parts.length) throw new Error("Accept or cut at least one part");
@@ -287,7 +313,9 @@ export function PartCutterWorkspace() {
     const reviews = detectOcclusionReviews(segmentation.parts);
     // A facing someone already chose survives a rebuild; it describes the art, which has not changed.
     const keptFacing = projectRef.current.rigDefinition?.metadata.facing;
-    const rig = { ...validated.data.rig, metadata: { ...validated.data.rig.metadata, anatomyProfile, prepareOverrideAccepted: allowIncomplete, exclusiveSourceOwnership: true, ...(typeof keptFacing === "string" ? { facing: keptFacing } : {}) } };
+    // Which parts have invented hidden areas, and whether a model repainted them, so Rig can offer (or stop offering) a repaint.
+    const hiddenAreaRepaint = prepared.repaint.length ? { model: "comfyui-inpainting", parts: prepared.repaint.map((outcome) => ({ partId: outcome.partId, status: outcome.status, ...(outcome.reason ? { reason: outcome.reason } : {}) })) } : null;
+    const rig = { ...validated.data.rig, metadata: { ...validated.data.rig.metadata, anatomyProfile, prepareOverrideAccepted: allowIncomplete, exclusiveSourceOwnership: true, filledParts: [...prepared.filledParts], ...(hiddenAreaRepaint ? { hiddenAreaRepaint } : {}), ...(typeof keptFacing === "string" ? { facing: keptFacing } : {}) } };
     const next = projectPatch(projectRef.current, { stage: "rig", partCutterState: finalized, segmentationData: segmentation, extractedParts: extracted, reconstructedParts: reviews, rigDefinition: rig, skins: rig.skins, warnings: [...projectRef.current.warnings, ...validated.data.warnings, ...(allowIncomplete ? prepareValidation.issues.filter((issue) => issue.severity === "error").map((issue) => `Prepare override: ${issue.message}`) : [])] });
     const contractProblems = blockingRigProjectProblems(validateRigProject({ storageVersion: LOCAL_PROJECT_STORAGE_VERSION, project: next, rig, animations: null, selectedSkinId: rig.defaultSkinId }));
     if (contractProblems.length) throw new Error(`Prepare → Setup contract failed: ${contractProblems.map((problem) => problem.message).join("; ")}`);
@@ -311,10 +339,11 @@ export function PartCutterWorkspace() {
   useEffect(() => {
     if (rebuildRequested.current || !state || !source || typeof window === "undefined") return;
     let requested: string | null = null; try { requested = window.sessionStorage.getItem(REBUILD_REQUEST_KEY); } catch { requested = null; }
-    if (requested === null || requested !== (hydrationIdentity.activeProjectId ?? "")) return;
+    const request = parseRebuildRequest(requested);
+    if (!request || request.projectId !== (hydrationIdentity.activeProjectId ?? "")) return;
     rebuildRequested.current = true; try { window.sessionStorage.removeItem(REBUILD_REQUEST_KEY); } catch { /* already consumed */ }
     // Not cancelled on re-render: the request is consumed above, so this is the only chance to run it.
-    window.setTimeout(() => { void buildRig(projectRef.current.rigDefinition?.metadata.prepareOverrideAccepted === true, true); }, 0);
+    window.setTimeout(() => { void buildRig(projectRef.current.rigDefinition?.metadata.prepareOverrideAccepted === true, true, request.repaint); }, 0);
   });
   const updateOllamaSettings = (patch: Partial<OllamaSettings>) => { const next = { ...ollamaSettings, ...patch }; setOllamaSettings(next); saveOllamaSettings(window.localStorage, next); };
   const askAssistant = () => run("Local assistant proposal ready", async () => { const status = await refreshOllama(); if (!status.reachable || !status.enabled) throw new Error("Local AI unavailable"); setAssistantProposal(await ollama.propose({ action: selectedPart ? "explain_region" : "check_partition", prompt: assistantPrompt, existingRegionNames: state?.parts.map((part) => part.label), targetPartId: selectedPart?.partId })); });

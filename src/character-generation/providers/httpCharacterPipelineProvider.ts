@@ -18,7 +18,8 @@ export class HttpCharacterPipelineProvider implements CharacterPipelineProvider 
   readonly name = "Configured provider";
   capabilities: CharacterPipelineCapabilities = initialCapabilities(this.id);
   private readonly pendingControllers = new Set<AbortController>();
-  constructor(private readonly endpoint: string, private readonly fetcher: typeof fetch = fetch) {}
+  // The default calls the global directly: a stored, unbound `fetch` called as this.fetcher() throws "Illegal invocation" in browsers.
+  constructor(private readonly endpoint: string, private readonly fetcher: typeof fetch = (input, init) => fetch(input, init)) {}
   private async request(capability: Capability, body: unknown): Promise<unknown> {
     const controller = new AbortController(); this.pendingControllers.add(controller);
     try {

@@ -44,7 +44,7 @@ import { loadAnimationDraft } from "@/src/tools/rig-editor/animation/draft";
 import { createAnimationLibrary } from "@/src/tools/rig-editor/animation/library";
 import { SAMPLE_ANIMATION_PATHS } from "@/src/tools/rig-editor/animation/samplePaths";
 import { useRouter } from "next/navigation";
-import { FacingQuestion, REBUILD_REQUEST_KEY, RebuildNotice } from "./RigNotices";
+import { FacingQuestion, RebuildNotice, RepaintNotice, writeRebuildRequest } from "./RigNotices";
 import type { RigFacing } from "@/src/rigging/motion/rigMotion";
 import { ImageProductionStatus } from "./ImageProductionStatus";
 import { PART_CUTTER_IMPORT_KEY, type PartCutterImportPayload } from "@/src/part-cutter/importBridge";
@@ -393,7 +393,8 @@ export function RigEditor() {
   // Which way the character faces decides the direction of every standard clip; stored with the rig.
   const setFacing = (facing: RigFacing | null): void => { run(facing ? `Face ${facing}` : "Detect facing automatically", (current) => { const metadata = { ...current.metadata }; if (facing) metadata.facing = facing; else delete metadata.facing; return { ...current, metadata }; }); };
   // Rebuilding happens in Parts, where the cut and the source image live.
-  const rebuildFromParts = (): void => { try { window.sessionStorage.setItem(REBUILD_REQUEST_KEY, hydrationIdentity.activeProjectId ?? ""); } catch { /* storage unavailable: Parts opens without rebuilding */ } router.push("/part-cutter"); };
+  const rebuildFromParts = (): void => { writeRebuildRequest({ projectId: hydrationIdentity.activeProjectId ?? "", repaint: false }); router.push("/part-cutter"); };
+  const repaintFromParts = (): void => { writeRebuildRequest({ projectId: hydrationIdentity.activeProjectId ?? "", repaint: true }); router.push("/part-cutter"); };
 
   const select = useCallback((selection: EditorSelection | null, additive: boolean): void => {
     if (!selection) { setSelections([]); return; }
@@ -813,7 +814,7 @@ export function RigEditor() {
       <section className="editor-center">
         {leftCollapsed && <button type="button" className="restore-panel restore-left" onClick={() => setLeftCollapsed(false)}>{testing ? "Skeleton" : "Structure"} ›</button>}
         {rightCollapsed && <button type="button" className="restore-panel restore-right" onClick={() => setRightCollapsed(false)}>‹ Inspector</button>}
-        {!testing && <div className="rig-notices"><RebuildNotice rig={rig} onRebuild={rebuildFromParts} /><FacingQuestion rig={rig} onFacing={setFacing} /></div>}
+        {!testing && <div className="rig-notices"><RebuildNotice rig={rig} onRebuild={rebuildFromParts} /><RepaintNotice rig={rig} onRepaint={repaintFromParts} /><FacingQuestion rig={rig} onFacing={setFacing} /></div>}
         <div className="viewport-context-row"><div className="selection-breadcrumb"><span>{testing ? "Test" : "Rig"}</span><i>›</i><strong>{primarySelection ? `${primarySelection.type === "bone" ? "Bone" : primarySelection.type === "slot" ? "Part" : humanizeTechnicalId(primarySelection.type)} · ${selectionLabel}` : testing ? "Drag a bone to pose" : "Click a bone or a part"}</strong></div><CanvasControls tool={canvasTool} onTool={setCanvasTool} showBones={showBones} showGrid={showGrid} showBounds={showBounds} snapToGrid={snapToGrid} wholePixelSnap={wholePixelSnap} rotationSnap={rotationSnap} onShowBones={() => setShowBones((value) => !value)} onShowGrid={() => setShowGrid((value) => !value)} onShowBounds={() => setShowBounds((value) => !value)} onSnapToGrid={() => setSnapToGrid((value) => !value)} onWholePixelSnap={() => setWholePixelSnap((value) => !value)} onRotationSnap={() => setRotationSnap((value) => !value)} onFit={() => viewportRef.current?.resetView()} /></div>
         <EditorViewport ref={viewportRef} rig={rig} animation={previewAnimation} previewMode={previewMode} poseMode={testing} pivotEdit={!testing} activeSkinId={effectiveSkinId} selections={selections} hiddenBoneIds={hiddenBoneIds} lockedBoneIds={new Set([...lockedIds].filter((key) => key.startsWith("bone:")).map((key) => key.slice(5)))} showGrid={showGrid} showBones={showBones} showBounds={showBounds} snapToGrid={snapToGrid} wholePixelSnap={wholePixelSnap} rotationSnap={testing ? false : rotationSnap} canvasTool={canvasTool} interactionMode={testing ? "test" : "rig"} onSelect={selectInStage} onCursor={(point) => setCursor(point)} onZoom={setZoom} onBoneDragStart={testing ? () => undefined : beginBoneDrag} onBoneDragPreview={() => undefined} onBoneDragCommit={testing ? () => { setPosed(true); markTested(); } : commitBoneDrag} onPivotCommit={movePivot} onContextMenu={(selection, x, y) => setContextMenu({ selection, x, y, items: contextItems(selection) })} onWarning={setError} />
         {previewMode && <div className="preview-notice" role="status">{testing ? "Quick test playing" : "Rotate test playing"} · the rig is not changed · Esc to stop</div>}

@@ -205,3 +205,13 @@ The Studio runs ComfyUI 0.44 on demand behind a gate (`10.77.77.2:8193` starts t
 
 - `OCCLUSION_RECONSTRUCTION`: Flux Schnell (the Studio's only image checkpoint) returned abstract smears. SDXL inpainting 0.1 (official `diffusers/stable-diffusion-xl-1.0-inpainting-0.1`, OpenRAIL++, fp16 parts verified by SHA-256) was installed on the Studio and joined into one file with ComfyUI's `CheckpointSave`: `/Volumes/Studio-AI/ComfyUI-Shared/models/checkpoints/sdxl-inpainting-0.1.safetensors`. Point `COMFYUI_INPAINT_CHECKPOINT` at it. Tested on the goblin's sword area: denoise 0.65 returns flat grey (the workflow default is now 1.0); at 1.0 the body under the blade is repainted convincingly, while mask area outside the body is filled with an invented object, which a rig never asks for. About 40 s per repaint on the Studio.
 - `CHARACTER_SEGMENTATION` / `MASK_REFINEMENT` need the ComfyUI-SAM2 custom nodes and SAM2 + Grounding DINO models; none are installed on the Studio.
+
+### Repainting hidden areas with the inpainting model
+
+After Build rig, Rig offers **Repaint** when parts have filled-in hidden areas (`metadata.filledParts`), the image is at least 256 px on its short side, the bridge reports `OCCLUSION_RECONSTRUCTION` available, and it has not been done (a failure offers **Try again**). It rebuilds through Parts with `prepareRiggedPartArt(..., { repaint })`: each worthwhile part (at least 200 filled pixels and 2% of its art) is sent to the provider one at a time, and only its filled-in pixels (`FilledPart.filledMask`) are replaced; the artist's pixels and joint caps never change. A failed part keeps the built-in fill. The outcome is recorded in `metadata.hiddenAreaRepaint`.
+
+The model is shown `compositeBehind(...)`: the part and everything drawn behind it, with the gap roughed in by the built-in fill and nothing in front. Shown the original image it repainted the occluder instead (a second sword fragment on the goblin's thigh).
+
+Results (2026-11-17, SDXL inpainting 0.1 on the Mac Studio, about 50 s per part): the ranger's two small hidden patches repainted with no visible change in motion; on the goblin, five parts repainted with no ghost sword, but the thigh under the sword came back as a pale, washed-out cloth patch that is not clearly better than the built-in fill. Repaint stays optional; the built-in fill is the default.
+
+The Parts screen's provider client also had a bug that broke every browser-side reconstruction call ("Illegal invocation" from a stored, unbound `fetch`); `HttpCharacterPipelineProvider` and `OllamaProvider` now wrap `fetch`.

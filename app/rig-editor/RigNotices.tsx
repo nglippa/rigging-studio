@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { needsArtRebuild } from "@/src/character-generation/rigging/rigProposalBuilder";
 import { analyzeRigAnatomy, type RigFacing } from "@/src/rigging/motion/rigMotion";
 import type { RigDefinition } from "@/src/rigging/schema/types";
@@ -38,3 +38,55 @@ export function RebuildNotice({ rig, onRebuild }: { readonly rig: RigDefinition;
 
 /** Asks Parts to rebuild this character's rig when it next opens. Session-scoped and tied to the project, so it cannot fire for another character. */
 export const REBUILD_REQUEST_KEY = "rigging-studio-rebuild-request";
+export type RebuildRequest = { readonly projectId: string; readonly repaint: boolean };
+export const writeRebuildRequest = (request: RebuildRequest): void => {
+  try { window.sessionStorage.setItem(REBUILD_REQUEST_KEY, JSON.stringify(request)); } catch { /* storage unavailable: Parts opens without rebuilding */ }
+};
+export function parseRebuildRequest(raw: string | null): RebuildRequest | null {
+  if (raw === null) return null;
+  try { const value = JSON.parse(raw) as Partial<RebuildRequest>; if (typeof value.projectId === "string") return { projectId: value.projectId, repaint: value.repaint === true }; } catch { /* an older plain project id */ }
+  return { projectId: raw, repaint: false };
+}
+
+const BRIDGE = (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_RIGGING_STUDIO_BRIDGE_URL : undefined) ?? "http://127.0.0.1:47831";
+/** Whether the bridge reports a working inpainting workflow. Checked once per mount; false while unknown. */
+function useRepaintAvailable(enabled: boolean): boolean {
+  const [available, setAvailable] = useState(false);
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    type Status = { readonly capabilities?: readonly { readonly capability?: string; readonly capabilityAvailable?: boolean }[] };
+    void fetch(`${BRIDGE}/image-production/status`).then((response) => response.ok ? response.json() as Promise<Status> : null).then((status) => {
+      if (!cancelled) setAvailable(Boolean(status?.capabilities?.some((item) => item.capability === "OCCLUSION_RECONSTRUCTION" && item.capabilityAvailable)));
+    }).catch(() => { if (!cancelled) setAvailable(false); });
+    return () => { cancelled = true; };
+  }, [enabled]);
+  return available;
+}
+
+type RepaintRecord = { readonly parts?: readonly { readonly partId: string; readonly status: string; readonly reason?: string }[] };
+const SECONDS_PER_REPAINT = 45;
+
+/**
+ * Offers to repaint the hidden areas the build filled in from surrounding art, using the inpainting model on the
+ * Mac Studio. Shown only when there is something to repaint, the image is large enough for the model, the model is
+ * reachable, and it has not been done (or it failed and can be retried).
+ */
+export function RepaintNotice({ rig, onRepaint }: { readonly rig: RigDefinition; readonly onRepaint: () => void }) {
+  const filled = Array.isArray(rig.metadata.filledParts) ? rig.metadata.filledParts.filter((value): value is string => typeof value === "string") : [];
+  const record = rig.metadata.hiddenAreaRepaint as RepaintRecord | undefined;
+  const failed = record?.parts?.filter((part) => part.status === "failed") ?? [];
+  const done = Boolean(record) && failed.length === 0;
+  const largeEnough = Math.min(rig.canvas.width, rig.canvas.height) >= 256;
+  const wanted = filled.length > 0 && !done && largeEnough && !needsArtRebuild(rig);
+  const available = useRepaintAvailable(wanted);
+  if (!wanted || !available) return null;
+  const count = failed.length || filled.length;
+  const minutes = Math.max(1, Math.round(count * SECONDS_PER_REPAINT / 60));
+  return <div className="rebuild-notice repaint-notice" role="status">
+    <span>{failed.length
+      ? `The repaint failed for ${failed.length === 1 ? "one part" : `${failed.length} parts`} (${failed[0].reason ?? "no reason given"}); the built-in fill is shown.`
+      : `${count === 1 ? "One part has" : `${count} parts have`} hidden areas filled in from the surrounding art. Repaint them with the inpainting model on the Mac Studio (about ${minutes} min)?`}</span>
+    <button type="button" onClick={onRepaint}>{failed.length ? "Try again" : "Repaint"}</button>
+  </div>;
+}

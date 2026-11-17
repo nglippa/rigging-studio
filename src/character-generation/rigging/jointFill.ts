@@ -17,7 +17,11 @@ import { estimateZIndex } from "./zOrderEstimator";
  * 2. Hidden-area fill. Where a part lies under something drawn in front of it, the covered area is painted outward from
  *    the part's own nearest pixels. It is a guess at art that was never drawn, and it only shows once the part in front moves.
  */
-export type FilledPart = { readonly partId: string; readonly bounds: Rect; readonly image: PixelImage; readonly capPixels: number; readonly filledPixels: number };
+export type FilledPart = {
+  readonly partId: string; readonly bounds: Rect; readonly image: PixelImage; readonly capPixels: number; readonly filledPixels: number;
+  /** 255 where the art was invented to continue the part under something in front of it (same size as `image`), else 0. */
+  readonly filledMask: Uint8Array;
+};
 
 const JOINTS: readonly (readonly [PartType, PartType])[] = [
   ["head", "torso"],
@@ -156,12 +160,14 @@ export function fillPartArt(source: PixelImage, parts: readonly ProposedCharacte
       data[target + 3] = opaque ? 255 : source.data[origin + 3];
     };
     for (let y = layer.top; y < layer.bottom; y += 1) for (let x = layer.left; x < layer.right; x += 1) if (labels[y * width + x] === own) put(y * width + x, y * width + x, false);
+    const filledMask = new Uint8Array(outWidth * outHeight);
     for (const [index, colour] of painted) {
       if (extra.has(index)) continue;
       const x = index % width; const y = (index - x) / width; const target = ((y - top) * outWidth + (x - left)) * 4;
+      filledMask[(y - top) * outWidth + (x - left)] = 255;
       data[target] = colour[0]; data[target + 1] = colour[1]; data[target + 2] = colour[2]; data[target + 3] = 255;
     }
     for (const [index, from] of extra) put(index, from, false);
-    return { partId: layer.part.id, bounds: { x: left, y: top, width: outWidth, height: outHeight }, image: { width: outWidth, height: outHeight, data }, capPixels, filledPixels };
+    return { partId: layer.part.id, bounds: { x: left, y: top, width: outWidth, height: outHeight }, image: { width: outWidth, height: outHeight, data }, capPixels, filledPixels, filledMask };
   });
 }
