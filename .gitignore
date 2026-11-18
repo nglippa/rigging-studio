@@ -46,5 +46,5 @@ next-env.d.ts
 /.rigging-studio/projects/*
 !/.rigging-studio/projects/.gitkeep
 
-# MediaPipe runtime and pose model, fetched by scripts/fetch-pose-model.sh
-/public/mediapipe/
+# Pose model weights, fetched by scripts/fetch-pose-model.sh (npm run setup:pose)
+/public/models/dwpose/

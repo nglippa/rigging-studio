@@ -228,3 +228,31 @@ export function guideAllBodyParts(state: PartCutterState, foreground: readonly n
   }
   return { state: current, cut, missed };
 }
+
+/**
+ * Re-cuts the given body parts from the current guide, replacing what they own now. Used after a joint is moved, for the
+ * parts that came from the guide and whose zone changed; parts the user edited by hand are not passed in, so they are
+ * never touched. A part whose zone no longer has any artwork keeps what it had.
+ */
+export function recutFromGuide(state: PartCutterState, semantics: readonly PartSemanticType[], foreground: readonly number[], at?: string): { readonly state: PartCutterState; readonly recut: readonly PartSemanticType[] } {
+  let current = initializeGuidedManual(state, at); const recut: PartSemanticType[] = [];
+  const progress = current.guidedManual!;
+  for (const semantic of semantics) {
+    const target = targetFor(current, semantic);
+    const withoutPart = target ? removeOwnershipRegion(current, target.partId, "human") : current;
+    const positioned: PartCutterState = { ...withoutPart, guidedManual: { ...withoutPart.guidedManual!, currentSemantic: semantic, intent: "replace" } };
+    const selection = guideSelectionForCurrent(positioned, foreground);
+    const result = selection ? commitGuidedSelection(positioned, selection, foreground, at) : null;
+    if (result?.ok) { current = result.state; recut.push(semantic); }
+  }
+  // Re-cutting must not move the user along the guided steps.
+  return { state: { ...current, guidedManual: { ...current.guidedManual!, phase: progress.phase, currentSemantic: progress.currentSemantic, intent: progress.intent } }, recut };
+}
+
+/** Body parts whose guide zone differs between two guides (a moved joint changes only its neighbours' zones). */
+export function changedZoneSemantics(before: PartCutterState["anatomicalGuide"], after: PartCutterState["anatomicalGuide"]): readonly PartSemanticType[] {
+  if (!before || !after) return [];
+  const key = (zone: NonNullable<PartCutterState["anatomicalGuide"]>["zones"][number]) => JSON.stringify([zone.bounds, zone.mask?.alpha.length ?? 0, zone.mask ? zone.mask.alpha.reduce((sum: number, value: number, index: number) => value ? (sum + index) % 2_147_483_647 : sum, 0) : 0]);
+  const old = new Map(before.zones.map((zone) => [zone.semanticType, key(zone)]));
+  return after.zones.filter((zone) => old.get(zone.semanticType) !== key(zone)).map((zone) => zone.semanticType);
+}

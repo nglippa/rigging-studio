@@ -1,17 +1,14 @@
 import type { PoseLandmarkPoint } from "../../part-cutter/adaptiveGuide";
 import type { AnatomicalLandmarkId } from "../../part-cutter/schema";
+import { DWPOSE_MIN_SCORE } from "./dwpose";
 import type { DetectedPose, PoseKeypoint, PoseKeypointName } from "./poseDetector";
 
 /**
- * The pose model is only consulted for images at least this large on their short side. On a 48 px pixel sprite it made
- * the joints worse (mean error 7.5% of height against 5.0% from the silhouette alone, tests/rigging/guide-accuracy.test.ts):
- * it is trained on photographs of people and reads a held shield as a shoulder.
+ * A keypoint is used only when the model scores it at least this high; every other joint keeps its silhouette estimate.
+ * This one rule replaces a size gate: on 48 px pixel sprites DWPose scores low exactly where it is wrong, so they fall back
+ * to the silhouette by themselves (see dwpose.ts for the measurements).
  */
-export const POSE_MODEL_MIN_SIDE = 256;
-export const poseModelSuitable = (width: number, height: number): boolean => Math.min(width, height) >= POSE_MODEL_MIN_SIDE;
-
-/** A keypoint is used only when the model is at least this sure it is in view. */
-export const MIN_KEYPOINT_VISIBILITY = .6;
+export const MIN_KEYPOINT_VISIBILITY = DWPOSE_MIN_SCORE;
 
 const usable = (pose: DetectedPose, point: PoseKeypoint): boolean =>
   point.visibility >= MIN_KEYPOINT_VISIBILITY

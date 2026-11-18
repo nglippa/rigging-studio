@@ -47,6 +47,8 @@ export default defineConfig(async () => {
     server: isCodexSeatbeltSandbox
       ? { watch: { useFsEvents: false, usePolling: true } }
       : undefined,
+    // onnxruntime-web (the pose model's runtime) locates and loads its own WASM files; pre-bundling breaks that.
+    optimizeDeps: { exclude: ["onnxruntime-web"] },
     plugins: [
       vinext(),
       sites(),

@@ -279,7 +279,7 @@ The gate stops the Studio engine after 30 minutes idle. With `COMFYUI_WAKE_URL` 
 Every character goes through the same steps, with nothing tuned for one sprite:
 
 1. **Proportions** are detected from the silhouette (`detectProportions`): median row width ÷ figure height under 0.4 is adult, otherwise chibi. Measured: chibi 0.55–0.80 (all ten benchmark sprites), adult 0.14–0.25 (goblin, courier); the median ignores the rows a weapon widens. `buildAdaptiveAnatomicalPartitionGuide` defaults to `"auto"`, so every caller gets it; Parts shows Auto / Chibi / Adult with Auto selected, and the result is recorded in the guide's `adaptiveMetadata.proportions`.
-2. **Joints** come from the pose model when the image is at least 256 px on its short side and the model finds a person, otherwise from the silhouette.
+2. **Joints** come from the pose model (DWPose) wherever it scores a joint at least 0.5, otherwise from the silhouette (see "Pose model: DWPose" below).
 3. **Silhouette joints are measured where the drawing allows**: legs from leg columns at knee and ankle height, arms from a run of silhouette beside the torso at elbow and wrist height (the run nearest the body; anything further out is held equipment). Adult wrists hang at the hips. Where nothing separate is drawn, the proportional guess stays.
 
 **Adding a character to the benchmark.** Add it to `tests/fixtures/rigging/joint-ground-truth.json` with its image, view, proportions and hand-marked joints (screen-side names), or only its image and proportions under `proportionsOnly`. `tests/rigging/guide-accuracy.test.ts` then checks it like every other: proportions detected correctly, mean joint error at most 10% of the figure's height, and no worse than its recorded baseline. Record a new sprite's baseline, or lower baselines after an improvement, with `UPDATE_GUIDE_BASELINE=1 npx vitest run tests/rigging/guide-accuracy.test.ts`; recording never raises a baseline.
@@ -287,3 +287,19 @@ Every character goes through the same steps, with nothing tuned for one sprite:
 Current baselines (mean / worst joint error): warrior 5.0% / 9.6%, goblin 6.2% / 10.0%, courier 5.95% / 12.7%, paladin 5.9% / 11.4%, rogue 3.8% / 8.2%.
 
 **Wrists are traced** (`traceWrist`): each arm is followed down from its elbow, row by row, along the run of silhouette beside the torso nearest the previous row's (at first, nearest the guessed elbow; a short stretch where the arm still joins the body is skipped), and the wrist is the narrowest row in the middle of the trace (the last rows are fingertips). The courier went from 6.3% to 5.95%. Starting the trace at the shoulder was tried and rejected by the benchmark: where the arm still joins the body, the first separate run is the held weapon (the paladin 5.9% → 7.0%, the rogue 3.8% → 5.3%). The paladin's wrists stay about 4 px high: in 48 px art its raised hands merge with the mace and shield, so the silhouette cannot say where the arm ends. Place them by hand, or let Build rig put the hand at the equipment it carries.
+
+## Pose model: DWPose, joint by joint (2026-11-18)
+
+MediaPipe is replaced by **DWPose** (`yzd-v/DWPose`, `dw-ll_ucoco_384.onnx`, Apache-2.0), run with `onnxruntime-web` 1.31.1 in the browser and, with the same code, in the benchmark under Node (`src/character-generation/pose/dwpose.ts`: crop around the silhouette with a 25% margin, nearest-neighbour fit to 288×384, decode the SimCC outputs). `npm run setup:pose` downloads the model to `public/models/dwpose/` (git-ignored, checksum-verified). The runtime is bundled: Vite will not load modules from `public/`, so `poseDetector.ts` imports `onnxruntime-web/wasm` and the `.wasm` binary as a `?url` asset, and `vite.config.ts` excludes `onnxruntime-web` from dependency pre-bundling.
+
+**One rule for every character: a joint comes from DWPose only when DWPose scores it at least 0.5; every other joint comes from the silhouette.** No size gate. Measured on the five hand-marked sprites (mean joint error, share of figure height):
+
+| Sprite | Outline only | Full pipeline | Joints from DWPose |
+| --- | --- | --- | --- |
+| courier (HD, front) | 5.9% | **1.9%** | 17 |
+| goblin (HD creature, profile) | 6.2% | **4.6%** | 9 |
+| warrior, paladin, rogue (48 px) | 5.0%, 5.9%, 3.8% | unchanged | 0 (low scores) |
+
+The 0.5 threshold and nearest-neighbour fitting were chosen on these five sprites (smooth upscaling and lower thresholds made the pixel sprites worse); the benchmark keeps checking them on every sprite added, and fails if the pose model ever makes a sprite worse than the outline alone.
+
+**Fixing what is still wrong is one drag.** Parts that Cut all parts (or Use Guide) made are remembered; moving a joint in the guide (View › Anatomical guide) re-cuts those whose zone changed, in the same undo step (`recutFromGuide`, `changedZoneSemantics`). A part edited by hand (lasso, Add, Remove, Click, brush, edge reshape) is never re-cut over.
