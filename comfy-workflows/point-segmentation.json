@@ -1,0 +1,19 @@
+{
+  "1": { "class_type": "LoadImage", "inputs": { "image": "" } },
+  "2": {
+    "class_type": "DownloadAndLoadSAM2Model",
+    "inputs": { "model": "sam2.1_hiera_base_plus.safetensors", "segmentor": "single_image", "device": "mps", "precision": "fp32" }
+  },
+  "3": {
+    "class_type": "Sam2Segmentation",
+    "inputs": {
+      "sam2_model": ["2", 0],
+      "image": ["1", 0],
+      "keep_model_loaded": true,
+      "coordinates_positive": "[]",
+      "individual_objects": false
+    }
+  },
+  "4": { "class_type": "MaskToImage", "inputs": { "mask": ["3", 0] } },
+  "5": { "class_type": "SaveImage", "inputs": { "filename_prefix": "RiggingStudio-PointMask", "images": ["4", 0] } }
+}

@@ -140,7 +140,9 @@ export class ProviderHealthService {
       return [{ provider, label, connected: item.connected, mode: stringValue(item.mode) ?? "unavailable", characterGeneration: { available: item.characterGeneration.available, ...(stringValue(item.characterGeneration.reason) ? { reason: stringValue(item.characterGeneration.reason)! } : {}) }, message: stringValue(item.message) ?? "Provider status unavailable" }];
     });
     const reachable = payload.provider.reachable;
-    const state: ProviderReadinessState = !reachable ? "OFFLINE" : segmentation?.available ? "READY" : "MISCONFIGURED";
+    // Reachable with some capabilities working is DEGRADED, not MISCONFIGURED: each capability is still offered on its own,
+    // so a missing optional install (Grounding DINO for text-prompted segmentation) does not switch off click to select or repaint.
+    const state: ProviderReadinessState = !reachable ? "OFFLINE" : segmentation?.available ? "READY" : capabilities.some((item) => item.available) ? "DEGRADED" : "MISCONFIGURED";
     const message = stringValue(payload.provider.message);
     return {
       ...initialSnapshot(), state, endpoint: stringValue(payload.provider.url), capabilities, generationProviders, lastCheckedAt: checkedAt,
@@ -172,11 +174,12 @@ export const automaticCutReadiness = (health: ProviderHealthSnapshot): { readonl
 });
 
 export function characterPipelineCapabilitiesFromHealth(health: ProviderHealthSnapshot): CharacterPipelineCapabilities {
+  const usable = health.state === "READY" || health.state === "DEGRADED";
   const capability = (id: string, modelFamily: string): CharacterPipelineCapability => {
     const found = health.capabilities.find((item) => item.id === id);
     return {
-      available: Boolean(health.state === "READY" && found?.available), imageConditioned: true,
-      mode: health.state === "READY" && found?.available ? "provider" : "unavailable", provider: "comfyui",
+      available: Boolean(usable && found?.available), imageConditioned: true,
+      mode: usable && found?.available ? "provider" : "unavailable", provider: "comfyui",
       ...(found?.workflowId ? { workflow: found.workflowId } : {}), modelFamily,
       confidenceSource: found?.available ? "provider" : "unavailable",
       ...(!found?.available ? { reason: found?.reason ?? health.lastError ?? "Capability is unavailable" } : {}),
@@ -186,6 +189,7 @@ export function characterPipelineCapabilitiesFromHealth(health: ProviderHealthSn
     segmentation: capability("CHARACTER_SEGMENTATION", "Grounding DINO + SAM2"),
     maskRefinement: capability("MASK_REFINEMENT", "Grounding DINO + SAM2"),
     reconstruction: capability("OCCLUSION_RECONSTRUCTION", "checkpoint inpainting"),
+    pointSegmentation: capability("POINT_SEGMENTATION", "SAM2 point prompts"),
     backgroundRemoval: capability("BACKGROUND_REMOVAL", "configured trusted workflow"),
     alphaCleanup: capability("ALPHA_EDGE_CLEANUP", "configured trusted workflow"),
   };

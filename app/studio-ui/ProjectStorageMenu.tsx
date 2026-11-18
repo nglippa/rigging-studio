@@ -1,9 +1,8 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- managed local project thumbnails are served by the trusted bridge */
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { getRiggingCommandService } from "@/src/agent-control";
 import { LocalProjectStorageClient, type ProjectStorageStatus } from "@/src/project-storage/client";
 import { projectSaveFailureState, type LocalProjectSummary, type ProjectSaveState } from "@/src/project-storage/types";
@@ -12,9 +11,30 @@ import { StudioDialog } from "./StudioDialog";
 import "./project-storage.css";
 
 const ACTIVE_DISK_PROJECT_KEY = "rig-studio:active-disk-project:v1";
+
+/**
+ * Called when a new character is started in the browser (an imported image). The project menu reopens the last active
+ * disk project whenever it mounts without one, and starting a character remounts the workspace, so without this the
+ * old project was reopened on top of the new character.
+ */
+export function forgetActiveDiskProject(): void {
+  try { window.localStorage.removeItem(ACTIVE_DISK_PROJECT_KEY); } catch { /* storage unavailable: nothing to forget */ }
+}
 const stateLabel: Record<ProjectSaveState, string> = { unsaved: "UNSAVED", saving: "SAVING…", opening: "OPENING…", validating: "VALIDATING…", saved: "SAVED TO DISK", "cache-only": "LOCAL CACHE ONLY", failed: "SAVE FAILED" };
 
-export function ProjectStorageMenu() {
+const shortState: Record<ProjectSaveState, string> = { unsaved: "Unsaved", saving: "Saving…", opening: "Opening…", validating: "Checking…", saved: "Saved", "cache-only": "Not on disk", failed: "Save failed" };
+
+type ProjectMenuProps = {
+  readonly projectName: string;
+  readonly dirty?: boolean;
+  readonly onRename?: () => void;
+  /** Ways to start or bring in a character, supplied by the current stage. */
+  readonly projectActions?: ReactNode;
+  readonly workspaceActions?: ReactNode;
+};
+
+/** The project menu, opened from the character's name: start, open, import and save projects in one place. */
+export function ProjectStorageMenu(props: ProjectMenuProps) {
   const router = useRouter();
   const service = useMemo(() => getRiggingCommandService(), []); const client = useMemo(() => new LocalProjectStorageClient(), []);
   const [status, setStatus] = useState<ProjectStorageStatus | null>(null); const [projects, setProjects] = useState<readonly LocalProjectSummary[]>([]);
@@ -132,27 +152,36 @@ export function ProjectStorageMenu() {
   const available = Boolean(status?.available && status.writable);
   return <>
     <details className="project-storage-menu" data-dismissible-menu data-state={saveState}>
-      <summary title={active ? `Saved · ${active.relativePath}` : available ? "Browser draft is not yet durable" : "Local bridge is unavailable"}><i />{stateLabel[saveState]}<b>⌄</b></summary>
+      <summary title={active ? `${stateLabel[saveState]} · ${active.relativePath}` : available ? "Browser draft is not yet saved to disk" : "Local bridge is unavailable"}>
+        <span className={`project-menu-name ${props.dirty ? "is-dirty" : ""}`}>{props.projectName}</span><i /><small>{shortState[saveState]}</small><b>⌄</b>
+      </summary>
       <div className="project-storage-popover">
-        <header><span><strong>Project storage</strong><small title={status?.root}>{status?.relativeRoot ?? ".rigging-studio/projects"}</small></span><button type="button" onClick={() => void chooseRoot()} disabled={!available}>Choose Folder</button><em data-state={available ? "ready" : "offline"}>{available ? "DISK READY" : "BRIDGE OFFLINE"}</em></header>
+        <header><span><strong>{props.projectName}</strong><small title={status?.root}>{active ? active.relativePath : available ? "Not saved to disk yet" : "Disk storage is offline"}</small></span>{props.onRename && <button type="button" onClick={props.onRename}>Rename</button>}</header>
         {message && <p className="project-storage-message">{message}</p>}
-        {!active && <div className="cache-migration"><b>Browser-only work detected</b><span>Persist it before this browser profile disappears.</span><button type="button" onClick={() => void save()} disabled={!available}>Persist to Disk</button></div>}
-        <div className="recent-projects"><div className="recent-projects-title"><strong>Recent projects</strong><button type="button" onClick={() => void refresh()}>↻</button></div>
-          {projects.length ? projects.slice(0, 8).map((project) => <article key={project.projectId} className={active?.projectId === project.projectId ? "is-active" : ""}>
+        {!active && <div className="cache-migration"><b>This work is only in the browser</b><span>Save it to disk so it isn't lost with this browser profile.</span><button type="button" onClick={() => void save()} disabled={!available}>Save to disk</button></div>}
+        <div className="project-menu-section" aria-label="New">
+          <strong>New</strong>
+          <div className="project-menu-actions">
+            {props.projectActions}
+            <button type="button" onClick={() => importInput.current?.click()} disabled={!available}>Import project…</button>
+          </div>
+        </div>
+        <div className="recent-projects"><div className="recent-projects-title"><strong>Recent</strong><button type="button" onClick={() => void refresh()} aria-label="Refresh recent projects">↻</button></div>
+          {projects.length ? projects.slice(0, 5).map((project) => <article key={project.projectId} className={active?.projectId === project.projectId ? "is-active" : ""}>
             {project.sourceThumbnail ? <img src={client.assetUrl(project.projectId, project.sourceThumbnail)} alt="" /> : <i>RS</i>}
             <span><b>{project.name}</b><small>{project.stage} · {project.partCount} parts · {project.animationCount} animations</small><time>{new Date(project.modifiedAt).toLocaleString()}</time></span>
-            <button type="button" onClick={() => void openProject(project)}>Open</button>
-          </article>) : <p className="no-projects">No disk projects yet.</p>}
+            <button type="button" onClick={() => void openProject(project)} disabled={active?.projectId === project.projectId}>{active?.projectId === project.projectId ? "Open now" : "Open"}</button>
+          </article>) : <p className="no-projects">No saved projects yet.</p>}
         </div>
         <footer>
           <button type="button" onClick={() => void save()} disabled={!available}>Save</button>
-          <button type="button" onClick={() => { setSaveAsName(active ? `${active.name} Copy` : "Project Copy"); setSaveAsOpen(true); }} disabled={!available}>Save As</button>
-          <button type="button" onClick={() => importInput.current?.click()} disabled={!available}>Import</button>
-          <button type="button" onClick={() => active && void client.exportSnapshot(active.projectId).then((result) => setMessage(`Snapshot · ${result.exportPath}`)).catch((error: unknown) => setMessage(error instanceof Error ? error.message : "Snapshot failed"))} disabled={!active}>Export Snapshot</button>
-          <button type="button" onClick={() => active && void client.reveal(active.projectId).catch((error: unknown) => setMessage(error instanceof Error ? error.message : "Reveal failed"))} disabled={!active}>Reveal</button>
-          <button type="button" onClick={() => active && setArchiveTarget(active)} disabled={!active}>Archive</button>
-          <Link href="/create-character">New project</Link>
+          <button type="button" onClick={() => { setSaveAsName(active ? `${active.name} Copy` : "Project Copy"); setSaveAsOpen(true); }} disabled={!available}>Save As…</button>
+          <button type="button" onClick={() => active && void client.exportSnapshot(active.projectId).then((result) => setMessage(`Snapshot · ${result.exportPath}`)).catch((error: unknown) => setMessage(error instanceof Error ? error.message : "Snapshot failed"))} disabled={!active}>Export snapshot</button>
+          <button type="button" onClick={() => active && void client.reveal(active.projectId).catch((error: unknown) => setMessage(error instanceof Error ? error.message : "Reveal failed"))} disabled={!active}>Show folder</button>
+          <button type="button" onClick={() => active && setArchiveTarget(active)} disabled={!active}>Archive…</button>
         </footer>
+        <div className="project-menu-storage"><span>Projects folder <code title={status?.root}>{status?.relativeRoot ?? ".rigging-studio/projects"}</code> · <em data-state={available ? "ready" : "offline"}>{available ? "ready" : "offline"}</em></span><button type="button" onClick={() => void chooseRoot()} disabled={!available}>Change…</button></div>
+        {props.workspaceActions && <div className="project-menu-workspace">{props.workspaceActions}</div>}
       </div>
     </details>
     <input ref={importInput} className="project-storage-file-input" type="file" accept=".project.zip,application/zip" onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void importProject(file); }} />

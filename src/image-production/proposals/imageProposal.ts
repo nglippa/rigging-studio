@@ -4,6 +4,7 @@ import { suitabilityReviewSchema } from "../../character-generation/providers/ch
 export const IMAGE_PRODUCTION_CAPABILITIES = [
   "CHARACTER_SEGMENTATION",
   "MASK_REFINEMENT",
+  "POINT_SEGMENTATION",
   "CHARACTER_GENERATION",
   "CHARACTER_VARIANT",
   "OCCLUSION_RECONSTRUCTION",

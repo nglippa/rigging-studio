@@ -22,9 +22,11 @@
     "test": "npm run test:unit && npm run build && node --test tests/rendered-html.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "ux:inspect": "tsx scripts/ux-inspection/inspect.mts",
-    "ux:compare": "tsx scripts/ux-inspection/compare.mts"
+    "ux:compare": "tsx scripts/ux-inspection/compare.mts",
+    "setup:pose": "sh scripts/fetch-pose-model.sh"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "1.2.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "next": "16.2.6",
     "pixi.js": "^8.19.0",

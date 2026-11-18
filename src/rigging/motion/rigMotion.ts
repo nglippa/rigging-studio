@@ -53,6 +53,12 @@ export type RigAnatomy = {
   readonly facing: RigFacing;
   readonly facingSource: FacingSource;
   readonly facingCertainty: FacingCertainty;
+  /**
+   * How much of a side-on swing shows on screen: 1 in profile, cos 45° for a three-quarter view (rig.metadata.characterView,
+   * set by the pose model at Build rig). Picture-plane angles are projected through it, so a turned character's stride is
+   * foreshortened instead of swinging as if drawn side-on.
+   */
+  readonly planeScale: number;
   readonly height: number;
   readonly groundY: number;
   readonly arms: readonly Limb[];
@@ -184,7 +190,7 @@ export function analyzeRigAnatomy(rig: RigDefinition): RigAnatomy {
   const above = head ?? neck;
   const torsoDir = torso && above && len(sub(world[above.id], world[torso.id])) >= 1 ? sub(world[above.id], world[torso.id]) : UP;
   return {
-    facing, facingSource: source, facingCertainty: certainty, height: Math.max(1, Math.max(...ys) - Math.min(...ys)), groundY: feetY.length ? Math.max(...feetY) : Math.max(...ys),
+    facing, facingSource: source, facingCertainty: certainty, planeScale: rig.metadata?.characterView === "three-quarter" && facing !== "front" ? Math.SQRT1_2 : 1, height: Math.max(1, Math.max(...ys) - Math.min(...ys)), groundY: feetY.length ? Math.max(...feetY) : Math.max(...ys),
     arms, legs, root, pelvis, torso, head, bodyBone, bodyCarriesLegs: pelvisCarriesLegs, torsoDir,
   };
 }
@@ -290,23 +296,25 @@ function gait(rig: RigDefinition, anatomy: RigAnatomy, kind: "walk" | "run", dur
     // as in the gait data, so a character drawn standing with its legs apart still walks with a normal stride
     // instead of having the stride added on top of its stance.
     const toward = turn(DOWN, forward);
+    // A turned (three-quarter) character swings its limbs in a plane at an angle to the screen: project each angle.
+    const seen = (degrees: number): number => anatomy.planeScale === 1 ? degrees : Math.atan(Math.tan(degrees * Math.PI / 180) * anatomy.planeScale) * 180 / Math.PI;
     for (const leg of anatomy.legs) {
       const restThigh = angleTo(DOWN, leg.upperDir); const restShin = angleTo(DOWN, leg.lowerDir);
-      const thigh = (index: number): number => cycle(table.hip, legPhase(leg, index)) * toward - restThigh;
-      const shinWorld = (index: number): number => (cycle(table.hip, legPhase(leg, index)) - cycle(table.knee, legPhase(leg, index))) * toward - restShin;
+      const thigh = (index: number): number => seen(cycle(table.hip, legPhase(leg, index))) * toward - restThigh;
+      const shinWorld = (index: number): number => seen(cycle(table.hip, legPhase(leg, index)) - cycle(table.knee, legPhase(leg, index))) * toward - restShin;
       clip.add(leg.upper, "rotation", thigh);
       if (leg.lower) clip.add(leg.lower, "rotation", (index) => shinWorld(index) - thigh(index));
       // The foot follows the shin's true angle plus the ankle, so it lies flat when the shin is upright.
-      clip.add(leg.end, "rotation", (index) => cycle(table.ankle, legPhase(leg, index)) * toward + (leg.lower ? restShin : restThigh));
+      clip.add(leg.end, "rotation", (index) => seen(cycle(table.ankle, legPhase(leg, index))) * toward + (leg.lower ? restShin : restThigh));
     }
     for (const arm of anatomy.arms) {
       const restraint = arm.carriesEquipment ? .4 : 1; const shoulder = forwardSign(arm.upperDir, forward);
-      clip.add(arm.upper, "rotation", (index) => shoulderAt(armPhase(arm, index)) * restraint * shoulder);
-      clip.add(arm.lower, "rotation", (index) => elbowDelta(arm, armPhase(arm, index)) * restraint * arm.bendSign);
+      clip.add(arm.upper, "rotation", (index) => seen(shoulderAt(armPhase(arm, index))) * restraint * shoulder);
+      clip.add(arm.lower, "rotation", (index) => seen(elbowDelta(arm, armPhase(arm, index))) * restraint * arm.bendSign);
     }
     const lean = turn(anatomy.torsoDir, forward);
-    clip.add(anatomy.torso, "rotation", (index) => (table.lean + (run ? 2.5 : 1.5) * Math.sin(TAU * 2 * phases[index])) * lean);
-    clip.add(anatomy.head, "rotation", () => -.7 * table.lean * lean);
+    clip.add(anatomy.torso, "rotation", (index) => seen(table.lean + (run ? 2.5 : 1.5) * Math.sin(TAU * 2 * phases[index])) * lean);
+    clip.add(anatomy.head, "rotation", () => -.7 * seen(table.lean) * lean);
   } else {
     // Seen from the front the same joint angles point toward the viewer. They cannot be drawn as rotations;
     // what the eye sees is each segment getting shorter by the cosine of its angle, which lifts the foot straight up.

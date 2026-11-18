@@ -27,13 +27,13 @@ export type RigProposalBuildInput = {
  * Version of the art preparation a generated rig was built with. 1: joint caps and hidden-area fill.
  * 2: texture-mirroring fill, joints across gaps, far leg for side views. Older rigs are offered a rebuild.
  */
-export const ART_PREPARATION_VERSION = 2;
+export const ART_PREPARATION_VERSION = 3;
 
-/** True for a rig built from cut parts before the current art preparation (gap filling, far leg). */
+/** True for a rig built from cut parts before the current art preparation (gap filling, far leg, far arm). */
 export const needsArtRebuild = (rig: RigDefinition): boolean =>
   rig.metadata.authoringSource === "generated-character-pipeline" && Number(rig.metadata.artPreparation ?? 0) < ART_PREPARATION_VERSION;
 
-/** The far leg of a side view is drawn in shadow: a darker copy of the near leg. */
+/** The far leg (and far arm) of a side view is drawn in shadow: a darker copy of the near one. */
 const FAR_LEG_TINT = 0x8a8a8a;
 
 export function buildRigProposal(input: RigProposalBuildInput): RigProposal {
@@ -64,20 +64,29 @@ export function buildRigProposal(input: RigProposalBuildInput): RigProposal {
   const visibleSlots = assignSlots(accepted, pivots);
   const requiredVisuals = ["head", "torso", "leftUpperArm", "leftForearm", "leftHand", "rightUpperArm", "rightForearm", "rightHand", "leftThigh", "leftLowerLeg", "leftFoot", "rightThigh", "rightLowerLeg", "rightFoot"] as const;
   const hiddenAnatomy = requiredVisuals.filter((semanticType) => !accepted.some((part) => part.semanticType === semanticType)).map((semanticType) => PART_RIGGING_SPECS[semanticType].boneId);
-  // A side view hides the far leg behind the near one. When a whole leg was not drawn but its twin was, the far leg is
-  // drawn as a darker copy of the near leg's art, behind the body, so a walk shows two legs instead of one. Its bones
-  // already sit on the near leg's joints, so at rest the copy is hidden exactly behind the original.
-  const LEGS = { left: ["leftThigh", "leftLowerLeg", "leftFoot"], right: ["rightThigh", "rightLowerLeg", "rightFoot"] } as const;
-  const farLeg = (["left", "right"] as const).find((side) => LEGS[side].every((semantic) => !accepted.some((part) => part.semanticType === semantic)) && LEGS[side === "left" ? "right" : "left"].some((semantic) => accepted.some((part) => part.semanticType === semantic)));
+  // A side view hides the far leg behind the near one, and often the far arm. When a whole limb was not drawn but its
+  // twin was, the far limb is drawn as a darker copy of the near limb's art, behind the body, so a walk shows two legs
+  // and two swinging arms instead of one. Its bones already sit on the near limb's joints, so at rest the copy is hidden
+  // exactly behind the original.
+  const LIMBS = [
+    { left: ["leftThigh", "leftLowerLeg", "leftFoot"], right: ["rightThigh", "rightLowerLeg", "rightFoot"] },
+    { left: ["leftUpperArm", "leftForearm", "leftHand"], right: ["rightUpperArm", "rightForearm", "rightHand"] },
+  ] as const;
+  const drawn = (semantic: string) => accepted.some((part) => part.semanticType === semantic);
   const backmost = Math.min(0, ...visibleSlots.map((slot) => slot.zIndex));
-  const farLegSlots: SlotDefinition[] = farLeg ? LEGS[farLeg].flatMap((semantic, index) => {
-    const twinSemantic = LEGS[farLeg === "left" ? "right" : "left"][index];
-    const twin = accepted.find((part) => part.semanticType === twinSemantic);
-    const twinSlot = twin ? visibleSlots.find((slot) => slot.attachmentId === twin.id) : undefined;
-    if (!twin || !twinSlot) return [];
-    const boneId = PART_RIGGING_SPECS[semantic].boneId;
-    return [{ ...twinSlot, id: `${boneId}-far-slot`, boneId, zIndex: backmost - 3 + index, tint: FAR_LEG_TINT }];
-  }) : [];
+  const farSide = (limb: typeof LIMBS[number]) => (["left", "right"] as const).find((side) => limb[side].every((semantic) => !drawn(semantic)) && limb[side === "left" ? "right" : "left"].some(drawn));
+  const farLeg = farSide(LIMBS[0]); const farArm = farSide(LIMBS[1]);
+  const farLegSlots: SlotDefinition[] = LIMBS.flatMap((limb, limbIndex) => {
+    const far = limbIndex === 0 ? farLeg : farArm;
+    if (!far) return [];
+    return limb[far].flatMap((semantic, index) => {
+      const twin = accepted.find((part) => part.semanticType === limb[far === "left" ? "right" : "left"][index]);
+      const twinSlot = twin ? visibleSlots.find((slot) => slot.attachmentId === twin.id) : undefined;
+      if (!twin || !twinSlot) return [];
+      const boneId = PART_RIGGING_SPECS[semantic].boneId;
+      return [{ ...twinSlot, id: `${boneId}-far-slot`, boneId, zIndex: backmost - 6 + limbIndex * 3 + index, tint: FAR_LEG_TINT }];
+    });
+  });
   const drawnFar = new Set(farLegSlots.map((slot) => slot.boneId));
   const hiddenSlots = hiddenAnatomy.filter((boneId) => !drawnFar.has(boneId)).map((boneId) => ({ id: `${boneId}-hidden-slot`, boneId, attachmentId: null, zIndex: -20, visible: false, blendMode: "normal" as const, tint: 0xffffff, pivotX: 0, pivotY: 0 }));
   const slots = [...farLegSlots, ...visibleSlots, ...hiddenSlots];
@@ -93,7 +102,7 @@ export function buildRigProposal(input: RigProposalBuildInput): RigProposal {
       anatomyProfile: hierarchy.topology.topology, topologySource: hierarchy.topology.source, topologySupported: hierarchy.topology.supported,
       pivotSources: Object.fromEntries(Object.entries(hierarchy.pivotSources).map(([boneId, pivot]) => [boneId, { source: pivot.source, confidence: pivot.confidence, detail: pivot.detail, point: pivot.point }])),
       // The far leg was still not drawn; it is a stand-in, so it stays listed as hidden anatomy.
-      attachmentPivotSources, bindingSources, hiddenAnatomy, farLegFrom: farLeg ? (farLeg === "left" ? "right" : "left") : null, artPreparation: input.artBounds ? ART_PREPARATION_VERSION : 0, expectedAnimationTargets: hierarchy.bones.map((bone) => bone.id), manualOverrides: { bones: {}, slots: {}, attachments: {} },
+      attachmentPivotSources, bindingSources, hiddenAnatomy, farLegFrom: farLeg ? (farLeg === "left" ? "right" : "left") : null, farArmFrom: farArm ? (farArm === "left" ? "right" : "left") : null, artPreparation: input.artBounds ? ART_PREPARATION_VERSION : 0, expectedAnimationTargets: hierarchy.bones.map((bone) => bone.id), manualOverrides: { bones: {}, slots: {}, attachments: {} },
     },
   };
   return { proposalVersion: 1, rig, confidence: hierarchy.confidence, warnings };

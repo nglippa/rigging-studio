@@ -141,3 +141,31 @@ const affectedZones: Readonly<Record<AnatomicalLandmarkId, readonly PartSemantic
 export function moveAdaptiveLandmark(guide: AnatomicalPartitionGuide, landmarkId: AnatomicalLandmarkId, point: Point, foreground: readonly number[], timestamp = new Date().toISOString()): AnatomicalPartitionGuide {
   if (!guide.adaptiveMetadata) throw new Error("Legacy guides must be explicitly regenerated before adaptive landmark editing"); const { width, height } = guide.sourceCanvasSize; const landmarks = guide.landmarks.map((landmark) => landmark.landmarkId === landmarkId ? { ...landmark, point: roundPoint(point, width, height), source: "manual" as const, visibility: "manual" as const, confidence: 1, method: "direct landmark drag" } : landmark); const rebuilt = adaptiveZones(foreground, width, height, landmarks, guide.adaptiveMetadata.proportionDescriptor); const affected = new Set(affectedZones[landmarkId]); const zones = guide.zones.map((zone) => affected.has(zone.semanticType) ? rebuilt.find((candidate) => candidate.semanticType === zone.semanticType) ?? zone : zone); return { ...guide, landmarks, zones, adaptiveMetadata: { ...guide.adaptiveMetadata, inferredLandmarkIds: guide.adaptiveMetadata.inferredLandmarkIds.filter((id) => id !== landmarkId), needsReviewLandmarkIds: guide.adaptiveMetadata.needsReviewLandmarkIds.filter((id) => id !== landmarkId) }, updatedAt: timestamp };
 }
+
+/** A joint found by a pose model, in source pixels, with the model's 0–1 confidence. */
+export type PoseLandmarkPoint = { readonly point: Point; readonly confidence: number };
+
+/**
+ * Replaces the silhouette's guesses with joints found by a pose model and rebuilds every zone from them. Joints the
+ * model did not supply keep their silhouette estimate, and joints a person has placed by hand are never replaced.
+ */
+export function applyPoseLandmarks(guide: AnatomicalPartitionGuide, points: Partial<Readonly<Record<AnatomicalLandmarkId, PoseLandmarkPoint>>>, foreground: readonly number[]): AnatomicalPartitionGuide {
+  if (!guide.adaptiveMetadata) return guide;
+  const { width, height } = guide.sourceCanvasSize;
+  const landmarks = guide.landmarks.map((landmark) => {
+    const found = points[landmark.landmarkId];
+    if (!found || landmark.source === "manual") return landmark;
+    return { ...landmark, point: roundPoint(found.point, width, height), source: "pose_model" as const, visibility: "visible" as const, confidence: Math.max(0, Math.min(1, found.confidence)), method: "pose model keypoint" };
+  });
+  const alpha = foreground.map((value) => value > 0 ? 255 : 0);
+  const zones = adaptiveZones(alpha, width, height, landmarks, guide.adaptiveMetadata.proportionDescriptor);
+  const moved = landmarks.filter((landmark) => landmark.source === "pose_model").map((landmark) => landmark.landmarkId);
+  return {
+    ...guide, landmarks, zones,
+    adaptiveMetadata: {
+      ...guide.adaptiveMetadata,
+      inferredLandmarkIds: guide.adaptiveMetadata.inferredLandmarkIds.filter((id) => !moved.includes(id)),
+      needsReviewLandmarkIds: guide.adaptiveMetadata.needsReviewLandmarkIds.filter((id) => !moved.includes(id)),
+    },
+  };
+}

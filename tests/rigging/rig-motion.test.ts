@@ -246,3 +246,29 @@ describe("rig-aware standard motions", () => {
     expect(refreshStandardClips(second, [knightWalk], turned).animations.some((clip) => clip.id === "death")).toBe(false);
   });
 });
+
+describe("three-quarter characters", () => {
+  /** The largest thigh rotation over a walk cycle, in degrees. */
+  const thighSwing = (source: RigDefinition): number => {
+    const clip = clipFor(source, "walk");
+    const track = clip.tracks.find((candidate) => candidate.boneId === "left-upper-leg" && candidate.property === "rotation");
+    if (!track) throw new Error("no thigh track");
+    const values = track.keyframes.map((key) => Number(key.value));
+    return Math.max(...values) - Math.min(...values);
+  };
+
+  it("foreshortens the stride of a turned character instead of swinging it as if drawn side-on", () => {
+    const profile = rig("right");
+    const turned = { ...profile, metadata: { ...profile.metadata, characterView: "three-quarter" } };
+    expect(analyzeRigAnatomy(turned).planeScale).toBeCloseTo(Math.SQRT1_2, 6);
+    expect(analyzeRigAnatomy(profile).planeScale).toBe(1);
+    const side = thighSwing(profile); const quarter = thighSwing(turned);
+    expect(quarter).toBeLessThan(side * .85);
+    expect(quarter).toBeGreaterThan(side * .55);
+  });
+
+  it("leaves front-facing characters alone even when the view says three-quarter", () => {
+    const front = { ...rig("front"), metadata: { facing: "front", characterView: "three-quarter" } };
+    expect(analyzeRigAnatomy(front).planeScale).toBe(1);
+  });
+});

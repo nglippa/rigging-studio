@@ -26,11 +26,20 @@ describe("central provider health", () => {
     expect(characterPipelineCapabilitiesFromHealth(health).segmentation.available).toBe(true);
   });
 
-  it("classifies a reachable endpoint with missing nodes/models as MISCONFIGURED", async () => {
+  it("classifies a reachable endpoint missing the segmentation nodes as DEGRADED: no automatic cut, other capabilities still usable", async () => {
     const health = await service(payload({ segmentation: false })).probe();
-    expect(health.state).toBe("MISCONFIGURED");
+    expect(health.state).toBe("DEGRADED");
     expect(health.lastError).toContain("Missing ComfyUI-SAM2 nodes");
     expect(automaticCutReadiness(health)).toMatchObject({ allowed: false, manualFallbackAvailable: true });
+    const capabilities = characterPipelineCapabilitiesFromHealth(health);
+    expect(capabilities.segmentation.available).toBe(false);
+    expect(capabilities.reconstruction.available).toBe(true);
+  });
+
+  it("classifies a reachable endpoint with no working capability as MISCONFIGURED", async () => {
+    const health = await service({ ...payload({ segmentation: false }), capabilities: [capability("CHARACTER_SEGMENTATION", false, "Missing ComfyUI-SAM2 nodes"), capability("OCCLUSION_RECONSTRUCTION", false, "Missing model")] }).probe();
+    expect(health.state).toBe("MISCONFIGURED");
+    expect(characterPipelineCapabilitiesFromHealth(health).reconstruction.available).toBe(false);
   });
 
   it("classifies a required provider outage as OFFLINE without disabling manual fallback", async () => {

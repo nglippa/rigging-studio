@@ -1,6 +1,6 @@
 import { partTypeToBoneId, partTypeToSlotId, type PartType } from "../segmentation/partTaxonomy";
 import type { CharacterSegmentationResponse, ProposedCharacterPart, Rect } from "../segmentation/segmentationSchema";
-import type { CharacterGenerationRequest, CharacterImageGenerationResult, CharacterPipelineProvider, OcclusionReconstructionRequest, OcclusionReconstructionResult, SuitabilityRequest, SuitabilityReview } from "./characterPipelineProvider";
+import type { CharacterGenerationRequest, CharacterImageGenerationResult, CharacterPipelineProvider, OcclusionReconstructionRequest, OcclusionReconstructionResult, PointSegmentationRequest, PointSegmentationResult, SuitabilityRequest, SuitabilityReview } from "./characterPipelineProvider";
 
 type FixturePart = { readonly type: PartType; readonly bounds: Rect; readonly path: string; readonly z: number; readonly warnings?: readonly string[] };
 const fixtureParts: readonly FixturePart[] = [
@@ -39,6 +39,7 @@ export class MockCharacterPipelineProvider implements CharacterPipelineProvider 
     reconstruction: { available: false, imageConditioned: false, mode: "mock" as const, provider: this.id, reason: "Development fixture is not a reconstruction model" },
     backgroundRemoval: { available: false, imageConditioned: false, mode: "unavailable" as const, provider: this.id, reason: "No background-removal workflow is configured" },
     alphaCleanup: { available: false, imageConditioned: false, mode: "unavailable" as const, provider: this.id, reason: "No alpha-cleanup workflow is configured" },
+    pointSegmentation: { available: true, imageConditioned: false, mode: "mock" as const, provider: this.id, confidenceSource: "mock-fixture" as const, reason: "Development fixture returns a disc around the first point" },
   };
   private sequence = 0;
   private imageResult(request: CharacterGenerationRequest, mode: string): CharacterImageGenerationResult {
@@ -63,6 +64,18 @@ export class MockCharacterPipelineProvider implements CharacterPipelineProvider 
     const scaledRect = (bounds: Rect): Rect => { const x = Math.max(0, Math.floor(bounds.x * scaleX)); const y = Math.max(0, Math.floor(bounds.y * scaleY)); return { x, y, width: Math.max(1, Math.min(request.width - x, Math.round(bounds.width * scaleX))), height: Math.max(1, Math.min(request.height - y, Math.round(bounds.height * scaleY))) }; };
     const parts = fixtureParts.map(proposedPart).map((part) => { const bounds = scaledRect(part.bounds); return { ...part, bounds, sourceImageRegion: bounds, pivotHint: { x: Math.min(bounds.x + bounds.width, Math.max(bounds.x, part.pivotHint.x * scaleX)), y: Math.min(bounds.y + bounds.height, Math.max(bounds.y, part.pivotHint.y * scaleY)) } }; });
     return { segmentationId: `segment-${request.generationId}`, imageWidth: request.width, imageHeight: request.height, parts, warnings: ["MOCK FIXTURE: these regions are not image-conditioned", "2 fixture parts need occlusion review"], providerMetadata: { provider: this.id, deterministic: true, mock: true, imageConditioned: false, confidenceSource: "mock-fixture" } };
+  }
+  async segmentAtPoints(request: PointSegmentationRequest): Promise<PointSegmentationResult> {
+    const first = request.positive[0];
+    if (!first) throw new Error("At least one positive point is required");
+    const radius = Math.max(2, Math.round(Math.min(request.width, request.height) * .12));
+    const alpha = new Array<number>(request.width * request.height).fill(0);
+    for (let y = Math.max(0, Math.floor(first.y - radius)); y <= Math.min(request.height - 1, Math.ceil(first.y + radius)); y += 1) {
+      for (let x = Math.max(0, Math.floor(first.x - radius)); x <= Math.min(request.width - 1, Math.ceil(first.x + radius)); x += 1) {
+        if ((x - first.x) ** 2 + (y - first.y) ** 2 <= radius ** 2) alpha[y * request.width + x] = 255;
+      }
+    }
+    return { width: request.width, height: request.height, alpha, runtimeMs: 0 };
   }
   async reconstructPart(request: OcclusionReconstructionRequest): Promise<OcclusionReconstructionResult> {
     return { reconstructionId: `repair-${request.generationId}-${request.part.id}`, partId: request.part.id, image: request.part.fixtureImagePath ?? request.image, width: Math.round(request.part.bounds.width), height: Math.round(request.part.bounds.height), providerMetadata: { provider: this.id, offline: true }, warnings: ["Mock reconstruction uses the clean fixture part and must still be accepted"] };

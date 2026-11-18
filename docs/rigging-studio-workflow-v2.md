@@ -215,3 +215,51 @@ The model is shown `compositeBehind(...)`: the part and everything drawn behind 
 Results (2026-11-17, SDXL inpainting 0.1 on the Mac Studio, about 50 s per part): the ranger's two small hidden patches repainted with no visible change in motion; on the goblin, five parts repainted with no ghost sword, but the thigh under the sword came back as a pale, washed-out cloth patch that is not clearly better than the built-in fill. Repaint stays optional; the built-in fill is the default.
 
 The Parts screen's provider client also had a bug that broke every browser-side reconstruction call ("Illegal invocation" from a stored, unbound `fetch`); `HttpCharacterPipelineProvider` and `OllamaProvider` now wrap `fetch`.
+
+## Top bar (2026-11-17)
+
+- The character's name opens the **project menu**: New from image…, Generate with AI…, Load rig file… (Rig), Import project…, five recent projects, Save, Save As…, Export snapshot, Show folder, Archive…, the projects folder, and rare workspace resets. It replaced both the save pill on the right and the ••• overflow. A small dot and word beside the name give the save state.
+- On the right there is one **status chip** (`connection-cluster`): rig issues first, then systems. Then ⌘K, Export (Rig/Animate) and focus.
+- Stage-only tools live in the stage: Parts keeps Check and View › Clean source preview.
+- Importing an image calls `forgetActiveDiskProject()` first. The project menu reopens the last active disk project whenever it mounts without one, and an import remounts the workspace, so before this the old project was reopened over the new character.
+
+## Cut all parts and the pose model (2026-11-17)
+
+- Parts has **Cut all parts**. It cuts every body part that is not done from the guide (`guideAllBodyParts` in `src/part-cutter/guidedManual.ts`) as one undo step. Hand-cut parts are never changed. When it cut every part itself, slivers between zones join the nearest part (`adoptStrayArtwork`, 15% of the diagonal).
+- The joints come from **MediaPipe Pose Landmarker** (`@mediapipe/tasks-vision` 1.2.0, Apache-2.0, `src/character-generation/pose/`) when it finds the character, otherwise from the silhouette guide. `npm run setup:pose` copies the WASM runtime and downloads `pose_landmarker_full.task` into `public/mediapipe/` (git-ignored). Nothing loads from a CDN.
+  - Keypoints are used at visibility ≥ 0.6 and inside the image; at least 8 joints must be found. The model names limbs by the character's own side and the guide by screen side, so `poseToLandmarks` matches chains by screen position.
+  - `applyPoseLandmarks` swaps them in (source `pose_model`), never over hand-placed joints, and rebuilds every zone.
+  - Measured 2026-11-17: an HD front illustration (Silkline Courier, 1024×1536) gets every joint at ≥ 0.82; three 48 px pixel sprites (paladin, rogue, warrior) get shoulders but unreliable legs (the warrior's ankles fell below the image, so they are dropped); the goblin, dwarf, warden and doomsmith find no person. Small sprites are upscaled with smoothing and padded with a 25% margin, which is what made the pixel sprites detectable at all.
+- The Parts screen used a private copy of `readImagePixels` without `crossOrigin`. Source images come from the bridge (127.0.0.1:47831), another origin, so the canvas was tainted, foreground analysis always failed and Use Guide stayed disabled. It now uses the shared reader.
+- Finished parts are drawn in their own overlay colour and names scale with the image, so a cut can be checked at a glance.
+
+## Orientation (2026-11-17)
+
+- At Build rig, when no facing has been chosen, `estimateView` sets `metadata.facing`, `characterView` (front, back, three-quarter or profile) and `facingSource: "pose-model"`. It reads shoulder and hip width against torso length, shoulder depth, nose direction, and, to tell front from back, which of the character's own shoulders is on the viewer's left.
+- `analyzeRigAnatomy` gives three-quarter side-facing rigs `planeScale = cos 45°`. The side-view gait projects every angle through it (`atan(tan α · cos θ)`), so a turned character's stride is foreshortened instead of swinging as if side-on.
+- Back views use the front gait on purpose: in 2D a figure walking away lifts its feet exactly as one walking toward the viewer, and arms pair with legs by bone, not by screen side.
+- A wholly hidden far arm is now treated like the far leg: its bones sit on the near arm's joints and it is drawn as a darker copy behind the body (`farArmFrom` in rig metadata). `ART_PREPARATION_VERSION` is 3, so older rigs are offered a rebuild.
+
+## Repaint finding (2026-11-17)
+
+On the goblin thigh, with the same input and seed, `InpaintModelConditioning` (keeps the original pixels, so denoise can drop below 1) was compared with the current `VAEEncodeForInpaint` at denoise 1.0, 0.8 and 0.6. Every result turned the red cloth strips pale; 0.6 kept the most colour but invented a metal plate. None beat the built-in fill, so the graph is unchanged and repaint stays optional.
+
+## Click to select with SAM2 on the Mac Studio (2026-11-17)
+
+- Installed in the Studio's playground ComfyUI (Command Center's engine, `/Volumes/Studio-AI/cc-comfy-playground/engine`): `kijai/ComfyUI-segment-anything-2` at commit `0c35fff5f382` in `custom_nodes`, and `sam2.1_hiera_base_plus.safetensors` (323 MB) in `engine/models/sam2`. No pip packages were added or upgraded. Grounding DINO was not installed, so text-prompted `CHARACTER_SEGMENTATION` stays unavailable.
+- Capability `POINT_SEGMENTATION` (`comfy-workflows/point-segmentation.json`): source image plus click points in, one mask out, about 1–2 s per click. The node crashes on an empty negative-point list, so the input is left out when there are none.
+- `COMFYUI_WAKE_URL=http://10.77.77.2:8193/` (in `.env.local`) lets the bridge start the Studio engine through its gate when it has been stopped for idleness. The tunnel is `ssh -N -L 127.0.0.1:8188:10.77.77.2:8192 studio`.
+- Parts has a **Click** tool in the guided toolbar: a click applies SAM2's outline of the item to the current part with the chosen Replace / Add / Remove, and the tool stays on.
+- What SAM2 is good and bad at, measured on Silkline Courier: separate objects come out whole from one click (grapple 8,967 px, belt pouch with strap). Body parts do not: it cuts by material (face without hair, shirt without jacket, wristband instead of hand, scattered straps on black leggings), so body parts stay with Cut all parts.
+- Provider health is DEGRADED, not MISCONFIGURED, when ComfyUI is reachable and some capabilities work; each capability is then offered on its own. The automatic text-prompted cut is still refused until segmentation is available.
+
+## Joint accuracy benchmark (2026-11-17)
+
+`tests/rigging/guide-accuracy.test.ts` scores the guide's joints against joints marked by hand (`tests/fixtures/rigging/joint-ground-truth.json`), as a share of character height:
+
+| Sprite | View | Silhouette guide (mean / worst) | With pose model |
+| --- | --- | --- | --- |
+| warrior, 48 px | front | 5.0% / 9.6% (left hip) | 7.5%: worse; its right shoulder lands on the shield |
+| goblin, 1024×1536 | profile | 12.1% / 23.8% (left hip) | pose model finds no person |
+
+The ceilings are today's numbers plus a margin; lower them when the guide improves. Because of the warrior result, the pose model is only consulted for images at least 256 px on the short side (`POSE_MODEL_MIN_SIDE`). The profile result is the clearest next improvement: the silhouette guide still assumes a front view.

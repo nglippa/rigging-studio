@@ -1,0 +1,205 @@
+{
+  "note": "MediaPipe pose_landmarker_full via @mediapipe/tasks-vision 1.2.0 on Final Gate 10 Silkline Courier (1024x1536, front-facing, slight turn)",
+  "width": 1024,
+  "height": 1536,
+  "keypoints": {
+    "nose": {
+      "x": 555.387,
+      "y": 195.235,
+      "z": -0.432,
+      "visibility": 1
+    },
+    "leftEyeInner": {
+      "x": 557.836,
+      "y": 167.478,
+      "z": -0.407,
+      "visibility": 1
+    },
+    "leftEye": {
+      "x": 563.308,
+      "y": 167.075,
+      "z": -0.407,
+      "visibility": 1
+    },
+    "leftEyeOuter": {
+      "x": 567.97,
+      "y": 166.513,
+      "z": -0.407,
+      "visibility": 1
+    },
+    "rightEyeInner": {
+      "x": 535.951,
+      "y": 168.361,
+      "z": -0.431,
+      "visibility": 1
+    },
+    "rightEye": {
+      "x": 525.569,
+      "y": 169.307,
+      "z": -0.431,
+      "visibility": 1
+    },
+    "rightEyeOuter": {
+      "x": 514.411,
+      "y": 170.79,
+      "z": -0.431,
+      "visibility": 1
+    },
+    "leftEar": {
+      "x": 557.615,
+      "y": 172.497,
+      "z": -0.218,
+      "visibility": 1
+    },
+    "rightEar": {
+      "x": 485.634,
+      "y": 180.339,
+      "z": -0.326,
+      "visibility": 1
+    },
+    "mouthLeft": {
+      "x": 557.983,
+      "y": 217.89,
+      "z": -0.354,
+      "visibility": 1
+    },
+    "mouthRight": {
+      "x": 531.319,
+      "y": 224.103,
+      "z": -0.386,
+      "visibility": 1
+    },
+    "leftShoulder": {
+      "x": 606.816,
+      "y": 323.807,
+      "z": -0.038,
+      "visibility": 1
+    },
+    "rightShoulder": {
+      "x": 418.931,
+      "y": 308.676,
+      "z": -0.229,
+      "visibility": 1
+    },
+    "leftElbow": {
+      "x": 664.764,
+      "y": 501.9,
+      "z": 0.09,
+      "visibility": 0.914
+    },
+    "rightElbow": {
+      "x": 358.442,
+      "y": 477.01,
+      "z": -0.175,
+      "visibility": 0.981
+    },
+    "leftWrist": {
+      "x": 740.408,
+      "y": 682.552,
+      "z": -0.036,
+      "visibility": 0.934
+    },
+    "rightWrist": {
+      "x": 290.166,
+      "y": 638.414,
+      "z": -0.249,
+      "visibility": 0.95
+    },
+    "leftPinky": {
+      "x": 757.151,
+      "y": 732.537,
+      "z": -0.06,
+      "visibility": 0.878
+    },
+    "rightPinky": {
+      "x": 265.729,
+      "y": 684.834,
+      "z": -0.281,
+      "visibility": 0.908
+    },
+    "leftIndex": {
+      "x": 749.639,
+      "y": 734.441,
+      "z": -0.125,
+      "visibility": 0.894
+    },
+    "rightIndex": {
+      "x": 276.558,
+      "y": 691.677,
+      "z": -0.333,
+      "visibility": 0.913
+    },
+    "leftThumb": {
+      "x": 737.513,
+      "y": 710.373,
+      "z": -0.066,
+      "visibility": 0.89
+    },
+    "rightThumb": {
+      "x": 288.242,
+      "y": 679.279,
+      "z": -0.271,
+      "visibility": 0.899
+    },
+    "leftHip": {
+      "x": 611.064,
+      "y": 671.687,
+      "z": 0.056,
+      "visibility": 1
+    },
+    "rightHip": {
+      "x": 482.731,
+      "y": 659.401,
+      "z": -0.056,
+      "visibility": 0.999
+    },
+    "leftKnee": {
+      "x": 651.389,
+      "y": 972.06,
+      "z": -0.057,
+      "visibility": 0.959
+    },
+    "rightKnee": {
+      "x": 408.598,
+      "y": 929.462,
+      "z": -0.094,
+      "visibility": 0.951
+    },
+    "leftAnkle": {
+      "x": 645.948,
+      "y": 1285.784,
+      "z": 0.035,
+      "visibility": 0.962
+    },
+    "rightAnkle": {
+      "x": 337.798,
+      "y": 1199.599,
+      "z": 0.071,
+      "visibility": 0.95
+    },
+    "leftHeel": {
+      "x": 630.589,
+      "y": 1329.14,
+      "z": 0.03,
+      "visibility": 0.797
+    },
+    "rightHeel": {
+      "x": 335.418,
+      "y": 1232.925,
+      "z": 0.074,
+      "visibility": 0.596
+    },
+    "leftFootIndex": {
+      "x": 689.229,
+      "y": 1372.978,
+      "z": -0.176,
+      "visibility": 0.942
+    },
+    "rightFootIndex": {
+      "x": 316.899,
+      "y": 1295.231,
+      "z": -0.135,
+      "visibility": 0.923
+    }
+  }
+}

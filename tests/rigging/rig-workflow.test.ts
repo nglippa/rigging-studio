@@ -248,4 +248,21 @@ describe("bones for parts that were not cut", () => {
     expect(validateRigDefinition(rig).filter((issue) => issue.code === "missing_required_semantic_attachment")).toEqual([]);
     expect([...artlessLimbBones(rig)]).not.toContain("left-upper-leg");
   });
+
+  it("draws a wholly hidden far arm as a darker copy of the near arm, on the near arm's joints, behind the body", () => {
+    const { rig } = buildRigProposal({ name: "Profile arm", imageWidth: 400, imageHeight: 600, parts: [
+      partAt("head", "head", 160, 40, 80, 80), partAt("torso", "torso", 150, 120, 100, 200),
+      partAt("right-upper-arm", "rightUpperArm", 230, 130, 40, 90), partAt("right-forearm", "rightForearm", 232, 220, 36, 80), partAt("right-hand", "rightHand", 230, 300, 40, 40),
+      partAt("left-thigh", "leftThigh", 150, 320, 45, 110), partAt("left-lower-leg", "leftLowerLeg", 150, 430, 45, 100), partAt("left-foot", "leftFoot", 150, 530, 60, 40),
+      partAt("right-thigh", "rightThigh", 200, 320, 45, 110), partAt("right-lower-leg", "rightLowerLeg", 200, 430, 45, 100), partAt("right-foot", "rightFoot", 200, 530, 60, 40),
+    ] });
+    const world = worldAnchors(rig);
+    for (const bone of ["upper-arm", "lower-arm", "hand"]) expect(world[`bone:left-${bone}`]).toEqual(world[`bone:right-${bone}`]);
+    const far = rig.slots.filter((slot) => slot.id.endsWith("-far-slot"));
+    expect(far.map((slot) => [slot.boneId, slot.attachmentId])).toEqual([["left-upper-arm", "right-upper-arm"], ["left-lower-arm", "right-forearm"], ["left-hand", "right-hand"]]);
+    expect(far.every((slot) => slot.visible && slot.tint < 0xffffff)).toBe(true);
+    expect(Math.max(...far.map((slot) => slot.zIndex))).toBeLessThan(Math.min(...rig.slots.filter((slot) => !slot.id.endsWith("-far-slot") && slot.visible).map((slot) => slot.zIndex)));
+    expect(rig.metadata.farArmFrom).toBe("right"); expect(rig.metadata.farLegFrom).toBeNull();
+    expect([...artlessLimbBones(rig)]).not.toContain("left-upper-arm");
+  });
 });

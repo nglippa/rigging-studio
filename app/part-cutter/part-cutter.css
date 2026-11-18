@@ -489,3 +489,14 @@
   .cutter-left .parts-checklist .part-group h4~.part-row { padding-left:20px; }
 }
 @media (prefers-reduced-motion:reduce) { .cutter-left .parts-checklist .part-row { transition:none; } }
+/* Cut all parts: the fast path through Parts. One click cuts every part from the suggested outlines; the per-part
+   tools below are then for fixing. */
+.guided-cut-all { display:grid;gap:6px;padding:10px;border:1px solid rgba(104,225,239,.28);border-radius:7px;background:rgba(104,225,239,.05); }
+.guided-cut-all-button { min-height:38px;color:#071216;border:1px solid var(--space-cyan);border-radius:6px;background:var(--space-cyan);font-weight:750;cursor:pointer; }
+.guided-cut-all-button:disabled { opacity:.45;cursor:default; }
+.guided-cut-all small { color:#8f8aa8;font-size:var(--font-micro);line-height:1.35; }
+/* Finished parts keep their own colour, so after Cut all parts you can see where each one ends. */
+.part-cutter-shell .cutter-canvas g[data-region-id][data-guided-state="complete"]:not(.selected) path { fill:color-mix(in srgb,var(--part-color,#60e7a2) 30%,transparent);stroke:var(--part-color,#60e7a2);stroke-width:1.5;stroke-opacity:.9; }
+.cutter-canvas g[data-region-id] text { paint-order:stroke;stroke:#05080d;stroke-width:3px;fill:#f2f6fb;font-weight:700; }
+/* Click to select (SAM2): a crosshair says the click picks a spot, not a loop. */
+.cutter-canvas svg[data-tool="click"] { cursor:crosshair; }

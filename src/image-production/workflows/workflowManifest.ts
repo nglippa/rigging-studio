@@ -51,7 +51,7 @@ export function validateWorkflowCompatibility(manifest: TrustedWorkflowManifest,
   for (const [name, binding] of Object.entries(manifest.inputs)) {
     const node = workflow[binding.nodeId];
     if (!node) errors.push(`Input ${name} references missing node ${binding.nodeId}`);
-    else if (!(binding.field in node.inputs) && binding.defaultValue === undefined) errors.push(`Input ${name} references missing field ${binding.nodeId}.inputs.${binding.field}`);
+    else if (binding.required && !(binding.field in node.inputs) && binding.defaultValue === undefined) errors.push(`Input ${name} references missing field ${binding.nodeId}.inputs.${binding.field}`);
   }
   if (!workflow[manifest.outputs.images.nodeId]) errors.push(`Image output references missing node ${manifest.outputs.images.nodeId}`);
   const classes = new Set(Object.values(workflow).map((node) => node.class_type));

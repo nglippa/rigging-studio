@@ -3,20 +3,28 @@ import { partTypeToBoneId, partTypeToSlotId, type PartType } from "../../charact
 import { validateSegmentationResponse } from "../../character-generation/segmentation/segmentationValidator";
 import type { CharacterSegmentationRequest } from "../../character-generation/segmentation/segmentationProvider";
 import type { CharacterSegmentationResponse, ProposedCharacterPart, Rect, SegmentationMask } from "../../character-generation/segmentation/segmentationSchema";
-import type { CharacterMaskRefinementRequest, CharacterPipelineCapabilities, CharacterPipelineCapability, OcclusionReconstructionRequest, OcclusionReconstructionResult } from "../../character-generation/providers/characterPipelineProvider";
+import type { CharacterMaskRefinementRequest, CharacterPipelineCapabilities, CharacterPipelineCapability, OcclusionReconstructionRequest, OcclusionReconstructionResult, PointSegmentationRequest, PointSegmentationResult, SegmentationPoint } from "../../character-generation/providers/characterPipelineProvider";
 import type { ImageCandidate, ImageProductionCapability, ImageProductionJson, ImageProposal } from "../proposals/imageProposal";
-import type { ImageProviderOutput } from "../providers/imageProductionProvider";
+import type { ImageProviderOutput, ImageProviderStatus } from "../providers/imageProductionProvider";
 import { ImageProductionService } from "./ImageProductionService";
 import { bindTrustedWorkflow } from "../workflows/workflowManifest";
-import { modelSetting } from "../comfy/ComfyUIAdapter";
+import { DEFAULT_SAM2_POINT_MODEL, modelSetting } from "../comfy/ComfyUIAdapter";
 import {
   detectorCrop, detectorPhrases, detectionStage, foregroundCoverage, maskIntersectionOverUnion, reclassifySemantic,
   remapCropMask, resolveCharacterScreenSides, resolveConflictingOverlaps, scoreMaskCandidate, stagedTargets, summarizeMask,
   type CandidateQuality, type MaskSummary, type SemanticReclassification, type TrustedSemanticRegion,
 } from "./stagedSegmentation";
 
+export type ComfyWakeOptions = {
+  /** Defaults to COMFYUI_WAKE_URL, read at call time. Unset means ComfyUI is never woken. */
+  readonly wakeUrl?: string;
+  readonly wakeTimeoutMs?: number;
+  readonly wakePollMs?: number;
+  readonly fetcher?: typeof fetch;
+};
+
 export class ComfyCharacterPipelineService {
-  constructor(private readonly production: ImageProductionService) {}
+  constructor(private readonly production: ImageProductionService, private readonly wake: ComfyWakeOptions = {}) {}
 
   async status(): Promise<{ readonly capabilities: CharacterPipelineCapabilities }> {
     const status = await this.production.status();
@@ -35,6 +43,7 @@ export class ComfyCharacterPipelineService {
       reconstruction: capability("OCCLUSION_RECONSTRUCTION", "checkpoint inpainting", "unavailable"),
       backgroundRemoval: capability("BACKGROUND_REMOVAL", "configured trusted workflow"),
       alphaCleanup: capability("ALPHA_EDGE_CLEANUP", "configured trusted workflow"),
+      pointSegmentation: pointSegmentationCapability(capability("POINT_SEGMENTATION", "SAM2 point prompts", "unavailable")),
     } };
   }
 
@@ -229,8 +238,47 @@ export class ComfyCharacterPipelineService {
     };
   }
 
+  async segmentAtPoints(request: PointSegmentationRequest): Promise<PointSegmentationResult> {
+    const started = Date.now();
+    assertCanvas(request.width, request.height);
+    const positive = validatePoints("positive", request.positive, request.width, request.height);
+    const negative = validatePoints("negative", request.negative ?? [], request.width, request.height);
+    if (!positive.length) throw new Error("At least one positive point is required");
+    const source = await readSourceImage(request.image);
+    if (source.mimeType === "image/png") {
+      const header = Buffer.from(source.bytes.subarray(0, 24));
+      if (header.length === 24 && (header.readUInt32BE(16) !== request.width || header.readUInt32BE(20) !== request.height)) throw new Error(`Source image is ${header.readUInt32BE(16)}×${header.readUInt32BE(20)} but the request declares ${request.width}×${request.height}`);
+    }
+    const sourceName = await this.production.provider.uploadImage?.(`rigging-${safeId(request.generationId ?? "points")}-point-source.${source.mimeType === "image/png" ? "png" : "jpg"}`, source.bytes, source.mimeType);
+    if (!sourceName) throw new Error("ComfyUI image upload is unavailable");
+    const outputs = await this.execute("POINT_SEGMENTATION", {
+      sourceImage: sourceName, sam2Model: modelSetting("COMFYUI_SAM2_POINT_MODEL") ?? DEFAULT_SAM2_POINT_MODEL,
+      positivePoints: JSON.stringify(positive),
+      // The node crashes on "[]", so the manifest leaves this input out of the graph when there are no negative points.
+      ...(negative.length ? { negativePoints: JSON.stringify(negative) } : {}),
+    });
+    const mask = combineMaskOutputs(outputs, request.width, request.height);
+    return { width: mask.width, height: mask.height, alpha: Array.from(mask.alpha, (value) => value >= 128 ? 255 : 0), runtimeMs: Date.now() - started };
+  }
+
+  private async wakeEngine(): Promise<ImageProviderStatus | null> {
+    const wakeUrl = this.wake.wakeUrl ?? process.env.COMFYUI_WAKE_URL;
+    if (!wakeUrl) return null;
+    const fetcher = this.wake.fetcher ?? ((input: Parameters<typeof fetch>[0], init?: RequestInit) => fetch(input, init));
+    try { await fetcher(wakeUrl, { method: "GET", signal: AbortSignal.timeout(15_000) }); } catch { /* the engine may still be starting; polling decides */ }
+    const deadline = Date.now() + (this.wake.wakeTimeoutMs ?? 90_000);
+    let latest: ImageProviderStatus | null = null;
+    do {
+      await new Promise((resolve) => setTimeout(resolve, this.wake.wakePollMs ?? 2_000));
+      latest = await this.production.provider.status();
+      if (latest.reachable) return latest;
+    } while (Date.now() < deadline);
+    return latest;
+  }
+
   private async execute(capability: ImageProductionCapability, values: Readonly<Record<string, ImageProductionJson>>): Promise<readonly ImageProviderOutput[]> {
-    const providerStatus = await this.production.provider.status();
+    let providerStatus = await this.production.provider.status();
+    if (!providerStatus.reachable) providerStatus = (await this.wakeEngine()) ?? providerStatus;
     if (!providerStatus.reachable) throw new Error(`ComfyUI is offline at ${providerStatus.url}: ${providerStatus.message}`);
     const workflow = await this.production.registry.require(capability);
     const dependencies = await this.production.provider.inspectDependencies(workflow);
@@ -449,6 +497,19 @@ function semanticZ(type: PartType, index: number): number {
   if (/left|cape|back/i.test(type)) return -10 + index;
   if (/right|Equipment|helmet|hair|face|accessory/i.test(type)) return 10 + index;
   return index;
+}
+
+function validatePoints(label: string, points: readonly SegmentationPoint[], width: number, height: number): { x: number; y: number }[] {
+  return points.map((point, index) => {
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) throw new Error(`The ${label} point ${index + 1} is not a number pair`);
+    if (point.x < 0 || point.y < 0 || point.x >= width || point.y >= height) throw new Error(`The ${label} point ${index + 1} (${point.x}, ${point.y}) is outside the ${width}×${height} image`);
+    return { x: Math.round(point.x), y: Math.round(point.y) };
+  });
+}
+
+function pointSegmentationCapability(base: CharacterPipelineCapability): CharacterPipelineCapability {
+  if (base.available || !base.reason?.includes("Missing ComfyUI node classes")) return base;
+  return { ...base, reason: "Click to select needs the ComfyUI-segment-anything-2 custom nodes (Sam2Segmentation, DownloadAndLoadSAM2Model). " + base.reason };
 }
 
 function requiredEnvironment(name: string): string {

@@ -1,0 +1,16 @@
+{
+  "manifestVersion": 1,
+  "id": "point_segmentation_v1",
+  "capability": "POINT_SEGMENTATION",
+  "workflowFile": "point-segmentation.json",
+  "description": "One SAM2 mask from positive and optional negative click points in source pixels (kijai/ComfyUI-segment-anything-2). The negative-points input is left out of the graph when there are none.",
+  "inputs": {
+    "sourceImage": { "nodeId": "1", "field": "image", "required": true },
+    "sam2Model": { "nodeId": "2", "field": "model", "required": true },
+    "positivePoints": { "nodeId": "3", "field": "coordinates_positive", "required": true },
+    "negativePoints": { "nodeId": "3", "field": "coordinates_negative", "required": false }
+  },
+  "outputs": { "images": { "nodeId": "5" } },
+  "requiredNodeClasses": ["LoadImage", "DownloadAndLoadSAM2Model", "Sam2Segmentation", "MaskToImage", "SaveImage"],
+  "requiredModels": ["COMFYUI_SAM2_POINT_MODEL"]
+}

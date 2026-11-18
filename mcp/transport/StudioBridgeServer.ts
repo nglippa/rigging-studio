@@ -157,7 +157,7 @@ export class StudioBridgeServer {
 
   async approveImageCandidate(proposalId: string, candidateId: string, source: "agent" | "human"): Promise<unknown> {
     const pending = await this.imageProduction.getProposal(proposalId);
-    if (pending.operationType === "CHARACTER_SEGMENTATION" || pending.operationType === "MASK_REFINEMENT" || pending.operationType === "OCCLUSION_RECONSTRUCTION") throw new Error(`${pending.operationType} must be accepted through the part-review tools, not generation ingress`);
+    if (pending.operationType === "CHARACTER_SEGMENTATION" || pending.operationType === "MASK_REFINEMENT" || pending.operationType === "POINT_SEGMENTATION" || pending.operationType === "OCCLUSION_RECONSTRUCTION") throw new Error(`${pending.operationType} must be accepted through the part-review tools, not generation ingress`);
     const approved = await this.imageProduction.approve(proposalId, candidateId, source);
     const port = await this.waitUntilListening();
     const normalized = await this.generationStorage.ingest({
@@ -305,6 +305,7 @@ export class StudioBridgeServer {
         if (record.capability === "status") result = await this.characterPipeline.status();
         else if (record.capability === "segment") result = await this.characterPipeline.segmentCharacter(record.body as import("../../src/character-generation/segmentation/segmentationProvider").CharacterSegmentationRequest);
         else if (record.capability === "refine-mask") result = await this.characterPipeline.refinePartMasks(record.body as import("../../src/character-generation/providers/characterPipelineProvider").CharacterMaskRefinementRequest);
+        else if (record.capability === "segment-points") result = await this.characterPipeline.segmentAtPoints(record.body as import("../../src/character-generation/providers/characterPipelineProvider").PointSegmentationRequest);
         else if (record.capability === "reconstruct") result = await this.characterPipeline.reconstructPart(record.body as import("../../src/character-generation/providers/characterPipelineProvider").OcclusionReconstructionRequest);
         else throw new Error(`Unsupported trusted character-pipeline capability ${String(record.capability)}`);
         response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(result));

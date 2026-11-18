@@ -1,6 +1,6 @@
 import type { Rect, SegmentationMask } from "../character-generation/segmentation/segmentationSchema";
 import { createManualRegionFromSelection, intersectSelectionWithForeground } from "./manualPartition";
-import { assignOwnershipSelection, decodeOwnership, ensureOwnershipPartition, removeOwnershipRegion } from "./ownership";
+import { adoptStrayArtwork, assignOwnershipSelection, decodeOwnership, ensureOwnershipPartition, removeOwnershipRegion } from "./ownership";
 import type { GuidedManualIntent, GuidedManualProgress, PartCutterState } from "./schema";
 import { SEMANTIC_TAXONOMY, type PartSemanticType } from "./semanticTaxonomy";
 
@@ -200,4 +200,31 @@ export function unresolvedComponents(state: PartCutterState, foreground: readonl
     pixels.forEach((index) => { const x = index % ownership.width; const y = Math.floor(index / ownership.width); alpha[(y - bounds.y) * bounds.width + x - bounds.x] = 255; });
     return { bounds, mask: { width: bounds.width, height: bounds.height, alpha } };
   });
+}
+
+export type GuideAllResult = { readonly state: PartCutterState; readonly cut: readonly PartSemanticType[]; readonly missed: readonly PartSemanticType[] };
+
+/**
+ * Cuts every body part that is not done yet from the suggested outline, in the usual order, as if Use Guide had been
+ * pressed on each one. Parts already cut are left alone, so it is safe after some hand cutting. A part with no outline,
+ * or whose outline is already taken by other parts, is reported as missed and left for the user.
+ */
+export function guideAllBodyParts(state: PartCutterState, foreground: readonly number[], at?: string): GuideAllResult {
+  let current = initializeGuidedManual(state, at);
+  const cut: PartSemanticType[] = []; const missed: PartSemanticType[] = [];
+  for (const semantic of GUIDED_BODY_ORDER) {
+    if (current.guidedManual!.completedSemantics.includes(semantic) && targetFor(current, semantic)) continue;
+    const positioned: PartCutterState = { ...current, guidedManual: { ...current.guidedManual!, phase: "body", currentSemantic: semantic, intent: "replace" } };
+    const selection = guideSelectionForCurrent(positioned, foreground);
+    const result = selection ? commitGuidedSelection(positioned, selection, foreground, at) : null;
+    if (result?.ok) { current = result.state; cut.push(semantic); } else missed.push(semantic);
+  }
+  // The outlines do not quite meet, so slivers of artwork fall between them. When every part came from the outlines,
+  // give each sliver to the nearest part now, so the result is complete when the user looks at it. After hand cutting
+  // this is skipped, because it would grow the hand-cut parts; Build rig still adopts slivers then, with a smaller reach.
+  if (cut.length === GUIDED_BODY_ORDER.length) {
+    const { width, height } = current.sourceCanvasSize;
+    current = adoptStrayArtwork(current, foreground, Math.max(2, Math.round(Math.hypot(width, height) * .15))).state;
+  }
+  return { state: current, cut, missed };
 }

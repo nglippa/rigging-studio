@@ -36,7 +36,10 @@ type Props = {
   readonly connections?: readonly StudioConnection[];
   readonly onConnections?: () => void;
   readonly focus?: { readonly active: boolean; readonly onToggle: () => void };
-  readonly overflow?: ReactNode;
+  /** Ways to start or bring in a character (new from image, generate, load rig). Shown at the top of the project menu. */
+  readonly projectActions?: ReactNode;
+  /** Rarely used workspace resets. Shown at the bottom of the project menu. */
+  readonly workspaceActions?: ReactNode;
   readonly children?: ReactNode;
 };
 
@@ -45,11 +48,17 @@ export function TopCommandRail(props: Props) {
   const readySystems = props.connections?.filter((item) => item.state === "ready").length ?? 0;
   const totalSystems = props.connections?.length ?? 0;
   const systemsState = readySystems === totalSystems ? "ready" : props.connections?.some((item) => item.state === "offline") ? "offline" : "degraded";
+  const issues = props.validity?.count ?? 0;
+  const statusState = issues ? "degraded" : systemsState;
+  const statusLabel = issues ? `${issues} ${issues === 1 ? "issue" : "issues"}` : readySystems === totalSystems ? "All systems" : `${readySystems}/${totalSystems} systems`;
   return <header className="studio-command-rail" data-stage={props.active}>
     <div className="studio-brand-cluster">
       <Link href="/" className="studio-mark" aria-label="Rig Studio home"><b><StudioIcon name="rig" /></b><span>Rig Studio</span></Link>
+      {/* The character's name opens the project menu: new, open, import, save. Renaming happens in place. */}
       <div className="studio-project-identity">
-        {props.editingName && props.onCommitName ? <input autoFocus defaultValue={props.projectName} aria-label="Character name" onBlur={(event) => { props.onCommitName?.(event.currentTarget.value); props.onEditingName?.(false); }} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); if (event.key === "Escape") props.onEditingName?.(false); }} /> : <><span className={props.dirty ? "is-dirty" : ""}>{props.projectName}</span>{props.onEditingName && <button type="button" className="rail-icon-button" onClick={() => props.onEditingName?.(true)} aria-label="Rename character" title="Rename character">✎</button>}</>}
+        {props.editingName && props.onCommitName
+          ? <input autoFocus defaultValue={props.projectName} aria-label="Character name" onBlur={(event) => { props.onCommitName?.(event.currentTarget.value); props.onEditingName?.(false); }} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); if (event.key === "Escape") props.onEditingName?.(false); }} />
+          : <ProjectStorageMenu projectName={props.projectName} dirty={props.dirty} onRename={props.onEditingName ? () => props.onEditingName?.(true) : undefined} projectActions={props.projectActions} workspaceActions={props.workspaceActions} />}
       </div>
       {(props.onUndo || props.onRedo) && <div className="rail-history" aria-label="History">
         <button type="button" className="rail-icon-button" onClick={props.onUndo} disabled={!props.canUndo} aria-label="Undo" title={props.undoTitle ?? "Undo"}><StudioIcon name="undo" /></button>
@@ -58,16 +67,19 @@ export function TopCommandRail(props: Props) {
     </div>
     <StudioModeNav active={props.active} statuses={props.stageStatuses} onSelect={props.onSelect} />
     <div className="studio-rail-actions">
-      <ProjectStorageMenu />
-      {props.validity && <button type="button" data-ux-role="status" className={`rail-validity ${props.validity.count ? "has-issues" : "is-valid"}`} onClick={props.validity.onOpen}><i />{props.validity.count ? `${props.validity.count} Issues` : "Valid"}</button>}
-      {props.connections?.length ? <details className="connection-cluster" data-state={systemsState} data-dismissible-menu>
-        <summary aria-label={`${readySystems} of ${totalSystems} systems ready`} title={props.connections.map((item) => `${item.label}: ${item.title}`).join("\n")}><i />{readySystems === totalSystems ? "Systems" : `${readySystems}/${totalSystems} Systems`}<b>⌄</b></summary>
-        <div className="systems-popover"><header><strong>System status</strong><span>{readySystems}/{totalSystems} ready</span></header>{props.connections.map((item) => <div className="system-status-row" key={item.id} data-state={item.state}><i /><span><b>{item.label}</b><small>{item.title}</small></span><em>{item.state}</em></div>)}{props.children}<button type="button" className="systems-diagnostics" onClick={props.onConnections}>Open diagnostics</button></div>
+      {/* One status chip: problems with the rig first, then systems that are offline. */}
+      {props.connections?.length || props.validity ? <details className="connection-cluster" data-state={statusState} data-dismissible-menu>
+        <summary aria-label={statusLabel} title={props.connections?.map((item) => `${item.label}: ${item.title}`).join("\n")}><i />{statusLabel}<b>⌄</b></summary>
+        <div className="systems-popover">
+          {props.validity && <button type="button" className={`status-issues ${issues ? "has-issues" : "is-valid"}`} onClick={props.validity.onOpen}><i /><span><b>{issues ? `${issues} ${issues === 1 ? "issue" : "issues"} in the rig` : "Rig is valid"}</b><small>{issues ? "Show what needs fixing" : "Nothing needs fixing"}</small></span></button>}
+          {props.connections?.length ? <><header><strong>Systems</strong><span>{readySystems}/{totalSystems} ready</span></header>{props.connections.map((item) => <div className="system-status-row" key={item.id} data-state={item.state}><i /><span><b>{item.label}</b><small>{item.title}</small></span><em>{item.state}</em></div>)}</> : null}
+          {props.children}
+          <button type="button" className="systems-diagnostics" onClick={props.onConnections}>Open diagnostics</button>
+        </div>
       </details> : props.children}
       <button type="button" data-ux-role="tool" className="rail-icon-button command-search-button" onClick={props.onCommand} aria-label="Search commands" title="Search commands (⌘K)"><StudioIcon name="search" /><kbd>⌘K</kbd></button>
       {props.onExport && <button type="button" data-ux-role="secondary-action" className="rail-export" onClick={props.onExport} disabled={props.exportDisabled}>Export</button>}
       {props.focus && <button type="button" className={`rail-icon-button ${props.focus.active ? "is-active" : ""}`} onClick={props.focus.onToggle} aria-label={props.focus.active ? "Exit focus mode" : "Enter focus mode"} title={props.focus.active ? "Exit focus mode" : "Focus canvas"}>{props.focus.active ? "↙" : "↗"}</button>}
-      {props.overflow && <details className="rail-overflow" data-dismissible-menu><summary aria-label="More project actions">•••</summary><div>{props.overflow}</div></details>}
     </div>
   </header>;
 }

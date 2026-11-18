@@ -184,7 +184,9 @@ describe("stage-driven workspace shell", () => {
     expect(behavior).toContain('event.key !== "Escape"');
     expect(behavior).toContain("!menu.contains(target)");
     expect(behavior).toContain("other !== menu");
-    expect(rail.match(/data-dismissible-menu/g)).toHaveLength(2);
+    // The rail's status chip and the project menu (opened from the character's name) both close on click-away.
+    expect(rail.match(/data-dismissible-menu/g)).toHaveLength(1);
+    expect(source("../../app/studio-ui/ProjectStorageMenu.tsx").match(/data-dismissible-menu/g)).toHaveLength(1);
     expect(canvas.match(/data-dismissible-menu/g)).toHaveLength(2);
     expect(animate.match(/data-dismissible-menu/g)).toHaveLength(3);
   });

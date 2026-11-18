@@ -87,7 +87,7 @@ export const ANATOMICAL_LANDMARK_IDS = [
   "leftHock", "rightHock",
 ] as const;
 export type AnatomicalLandmarkId = (typeof ANATOMICAL_LANDMARK_IDS)[number];
-export const LANDMARK_EVIDENCE_SOURCES = ["silhouette", "centerline", "equipment_anchor", "symmetry", "inferred_hidden", "fallback_prior", "manual"] as const;
+export const LANDMARK_EVIDENCE_SOURCES = ["silhouette", "centerline", "equipment_anchor", "symmetry", "inferred_hidden", "fallback_prior", "manual", "pose_model"] as const;
 export type LandmarkEvidenceSource = (typeof LANDMARK_EVIDENCE_SOURCES)[number];
 export const LANDMARK_VISIBILITY_STATES = ["visible", "inferred", "needs-review", "manual"] as const;
 export type LandmarkVisibilityState = (typeof LANDMARK_VISIBILITY_STATES)[number];

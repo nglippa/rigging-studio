@@ -83,7 +83,21 @@ export type CharacterPipelineCapabilities = {
   readonly reconstruction: CharacterPipelineCapability;
   readonly backgroundRemoval: CharacterPipelineCapability;
   readonly alphaCleanup: CharacterPipelineCapability;
+  /** Click-to-select: one SAM2 mask from click points. Absent on providers that predate it. */
+  readonly pointSegmentation?: CharacterPipelineCapability;
 };
+export type SegmentationPoint = { readonly x: number; readonly y: number };
+/** Points are in SOURCE image pixels; width/height are the source canvas. At least one positive point is required. */
+export type PointSegmentationRequest = {
+  readonly image: string;
+  readonly width: number;
+  readonly height: number;
+  readonly positive: readonly SegmentationPoint[];
+  readonly negative?: readonly SegmentationPoint[];
+  readonly generationId?: string;
+};
+/** Full-canvas mask: alpha is width*height values, 0 or 255. */
+export type PointSegmentationResult = { readonly width: number; readonly height: number; readonly alpha: readonly number[]; readonly runtimeMs: number };
 export type CharacterMaskRefinementRequest = {
   readonly generationId: string;
   readonly image: string;
@@ -110,6 +124,10 @@ export const occlusionReconstructionResultSchema: z.ZodType<OcclusionReconstruct
   reconstructionId: z.string().min(1), partId: z.string().min(1), image: z.string().min(1), width: z.number().int().positive(), height: z.number().int().positive(), providerMetadata: metadataSchema, warnings: z.array(z.string()), runtimeMs: z.number().nonnegative().optional(),
 }).strict();
 
+export const pointSegmentationResultSchema: z.ZodType<PointSegmentationResult> = z.object({
+  width: z.number().int().positive(), height: z.number().int().positive(), alpha: z.array(z.number().min(0).max(255)), runtimeMs: z.number().nonnegative(),
+}).strict().refine((mask) => mask.alpha.length === mask.width * mask.height, "alpha length must equal width * height");
+
 export interface CharacterImageGenerationProvider {
   generateCharacter(request: CharacterGenerationRequest): Promise<CharacterImageGenerationResult>;
   regenerateCharacter(request: CharacterGenerationRequest): Promise<CharacterImageGenerationResult>;
@@ -127,6 +145,7 @@ export interface CharacterPipelineProvider extends CharacterImageGenerationProvi
   cancelPending?(): void;
   segmentCharacter(request: CharacterSegmentationRequest): Promise<CharacterSegmentationResponse>;
   refinePartMasks?(request: CharacterMaskRefinementRequest): Promise<CharacterSegmentationResponse>;
+  segmentAtPoints?(request: PointSegmentationRequest): Promise<PointSegmentationResult>;
 }
 
 export function validateProviderResult<T>(schema: z.ZodType<T>, input: unknown, label: string): T {

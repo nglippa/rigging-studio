@@ -200,3 +200,24 @@ The contact sheet contains only candidates, IDs, seeds, true dimensions, and opt
 ## Inpainting checkpoint
 
 `OCCLUSION_RECONSTRUCTION` repaints hidden areas with `VAEEncodeForInpaint`, which needs a model trained for inpainting (9-channel UNet). A general text-to-image checkpoint such as Flux Schnell returns noise in the masked area. Set `COMFYUI_INPAINT_CHECKPOINT` to an inpainting checkpoint; when it is unset, reconstruction uses `COMFYUI_CHECKPOINT`. The workflow manifest lists `COMFYUI_INPAINT_CHECKPOINT` as its required model, so the provider status reports it missing until one is available.
+
+## Click to select (`POINT_SEGMENTATION`)
+
+Returns one SAM2 mask for click points on the source image, for equipment such as a sword or pouch. The provider call is `segmentAtPoints({ image, width, height, positive, negative? })` with points in source pixels. The bridge route is `POST /character-pipeline` with `capability: "segment-points"`. The result is `{ width, height, alpha, runtimeMs }`, a full-canvas mask of 0 and 255.
+
+Install on the engine machine:
+
+1. Clone `kijai/ComfyUI-segment-anything-2` into `<engine>/custom_nodes/` and check out commit `0c35fff5f382`.
+2. Put the SAM2 weights in `<engine>/models/sam2/` (for example `sam2.1_hiera_base_plus.safetensors`).
+3. Restart ComfyUI. The capability reports available only when `/object_info` lists `Sam2Segmentation` and `DownloadAndLoadSAM2Model`; otherwise the status reason says which nodes are missing.
+
+Environment:
+
+```bash
+export COMFYUI_SAM2_POINT_MODEL='sam2.1_hiera_base_plus.safetensors'   # optional; this is the default
+export COMFYUI_WAKE_URL='http://10.77.77.2:8193/'                       # optional; see below
+```
+
+`COMFYUI_WAKE_URL`: when set and ComfyUI is unreachable, the bridge sends one GET to that URL, then polls ComfyUI for up to 90 seconds before failing. This applies to every trusted workflow, not only click-to-select. Leave it unset for no wake behaviour. Status checks never wake the engine.
+
+The workflow leaves `coordinates_negative` out of the graph when there are no negative points, because the node crashes on `"[]"`. A manifest input with `"required": false` and no default is left out of the graph unless a value is given, and its field does not have to exist in the checked-in workflow.

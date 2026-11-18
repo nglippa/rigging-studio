@@ -6,3 +6,36 @@
 .project-storage-menu>summary{min-height:40px;height:40px;padding:0 12px;gap:9px;border-radius:9px;font-size:12px}.project-storage-menu>summary i{width:9px;height:9px}.project-storage-popover{top:47px;width:460px;padding:16px;gap:13px;border-radius:12px;transform-origin:100% 0;animation:workstation-popover-in var(--motion-normal,160ms) var(--ease-standard,cubic-bezier(.2,.8,.2,1))}.project-storage-popover>header strong{font-size:15px}.project-storage-popover>header small{font-size:12px}.project-storage-popover>header em{padding:6px 8px;border-radius:6px;font-size:11px}.project-storage-popover>header>button{min-height:34px;height:34px;padding-inline:10px;border-radius:7px;font-size:12px}.project-storage-message{padding:10px 11px;font-size:13px;line-height:1.45}.cache-migration{padding:12px;gap:5px 12px}.cache-migration b{font-size:14px}.cache-migration span{font-size:12px}.cache-migration button{min-height:38px;padding-inline:12px}.recent-projects{gap:7px}.recent-projects-title strong{font-size:13px}.recent-projects-title button{width:34px;height:34px}.recent-projects article{min-height:68px;padding:8px;grid-template-columns:50px minmax(0,1fr) auto;gap:11px;border-radius:8px}.recent-projects article img,.recent-projects article>i{width:50px;height:50px;border-radius:6px;font-size:14px}.recent-projects article span{gap:4px}.recent-projects article span b{font-size:14px}.recent-projects article span small,.recent-projects article span time{font-size:11px}.recent-projects article>button{min-height:38px;height:38px;padding-inline:12px}.no-projects{padding:18px;font-size:13px}.project-storage-popover>footer{gap:7px;padding-top:11px}.project-storage-popover>footer button,.project-storage-popover>footer a{min-height:38px;height:38px;padding:0 11px;border-radius:7px;font-size:12px}
 @media (max-width:560px){.project-storage-popover{top:64px;padding:13px}.recent-projects article{grid-template-columns:44px minmax(0,1fr) auto}.recent-projects article img,.recent-projects article>i{width:44px;height:44px}}
 @media (max-width:900px){.rig-editor-shell .connection-cluster,.part-cutter-shell .connection-cluster{display:block!important}.rig-editor-shell .studio-rail-actions>.command-search-button,.part-cutter-shell .studio-rail-actions>.command-search-button{display:grid!important}.rig-editor-shell .studio-rail-actions>.rail-icon-button:not(.command-search-button),.part-cutter-shell .studio-rail-actions>.rail-icon-button:not(.command-search-button){display:none!important}}
+
+/* Project menu (2026-11-17): the character's name in the top bar opens it. It replaces the save pill on the right and
+   the ••• overflow, so new, open, import and save live in one place. */
+:is(.rig-editor-shell,.part-cutter-shell) .studio-project-identity{max-width:none;overflow:visible}
+:is(.rig-editor-shell,.part-cutter-shell) .studio-project-identity .project-storage-menu>summary{width:auto!important;max-width:250px;height:34px!important;min-height:34px!important;padding:0 10px!important;gap:8px;justify-content:flex-start;border:1px solid transparent!important;border-radius:6px!important;background:transparent!important;color:var(--ws-text,#e9edf5);font:600 13px/1 var(--ws-sans,inherit)!important;letter-spacing:0;text-transform:none}
+:is(.rig-editor-shell,.part-cutter-shell) .studio-project-identity .project-storage-menu>summary:hover,:is(.rig-editor-shell,.part-cutter-shell) .studio-project-identity .project-storage-menu[open]>summary{border-color:var(--ws-line,#2c3646)!important;background:var(--ws-panel,#121a24)!important}
+.project-storage-menu .project-menu-name{min-width:0;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.project-storage-menu>summary small{color:var(--ws-muted,#8a95a8);font:500 11px/1 var(--ws-mono,ui-monospace,monospace);white-space:nowrap}
+.project-storage-menu>summary i{flex:none;width:7px!important;height:7px!important}
+.project-storage-menu[data-state="saved"]>summary i{background:#5af0ae}
+.project-storage-menu:is([data-state="unsaved"],[data-state="saving"],[data-state="cache-only"])>summary i{background:#ffc76a}
+.project-storage-menu[data-state="failed"]>summary i{background:#ff6f88}
+.studio-project-identity .project-storage-popover{left:0;right:auto;top:44px;width:440px;max-height:calc(100vh - 72px);overflow:auto}
+.project-storage-popover>header strong{font-size:14px}
+.project-menu-section{display:grid;gap:6px}
+.project-menu-section>strong,.recent-projects-title strong{color:var(--ws-muted,#8a95a8);font:600 10px/1 var(--ws-mono,ui-monospace,monospace);letter-spacing:.06em;text-transform:uppercase}
+.project-menu-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:5px}
+.project-menu-actions>:is(button,a){height:32px;padding:0 10px;display:flex;align-items:center;color:var(--ws-text,#e9edf5);border:1px solid var(--ws-line,#2c3646);border-radius:5px;background:var(--ws-panel,#121a24);font-size:12px;text-decoration:none;cursor:pointer}
+.project-menu-actions>:is(button,a):hover:not(:disabled){border-color:#426a79}
+.project-menu-actions>button:disabled{opacity:.4;cursor:default}
+.project-storage-popover>footer button{font-size:11px!important}
+.project-menu-storage{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--ws-muted,#8a95a8);font-size:11px}
+.project-menu-storage code{font:10px var(--ws-mono,ui-monospace,monospace)}
+.project-menu-storage em{font-style:normal}.project-menu-storage em[data-state="ready"]{color:#5af0ae}.project-menu-storage em[data-state="offline"]{color:#ff8697}
+.project-menu-storage button,.project-menu-workspace button{height:26px;padding:0 8px;color:var(--ws-secondary,#c6cede);border:1px solid var(--ws-line,#2c3646);border-radius:5px;background:transparent;font-size:11px;cursor:pointer}
+.project-menu-workspace{display:flex;gap:6px;padding-top:8px;border-top:1px solid var(--ws-line-soft,#202836)}
+.project-menu-workspace button{color:var(--ws-muted,#8a95a8)}
+/* The merged status chip: issues first, then systems. */
+.systems-popover .status-issues{width:100%;display:flex;align-items:center;gap:10px;padding:9px 10px;text-align:left;color:inherit;border:1px solid var(--ws-line,#2c3646);border-radius:6px;background:transparent;cursor:pointer}
+.systems-popover .status-issues i{width:8px;height:8px;border-radius:50%;background:#5af0ae}.systems-popover .status-issues.has-issues i{background:#ffc76a}
+.systems-popover .status-issues span{display:grid;gap:3px}.systems-popover .status-issues small{color:var(--ws-muted,#8a95a8)}
+.studio-project-identity .project-storage-popover>footer{position:sticky;bottom:-12px;margin:0 -12px;padding:8px 12px 12px;background:var(--ws-glass,#0d1219)}
+:is(.rig-editor-shell,.part-cutter-shell) .studio-command-rail{grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)}

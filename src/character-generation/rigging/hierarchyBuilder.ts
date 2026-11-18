@@ -86,9 +86,11 @@ export function buildProposedHierarchy(parts: readonly ProposedCharacterPart[], 
     const carriedPivot = carried ? pivots.get(carried.semanticType) : undefined;
     if (carriedPivot) { resolved[entry.id] = inferredJoint(carriedPivot.point, "geometry", `${entry.id} placed at ${carried!.semanticType}`, .62); settled.add(entry.id); continue; }
     const twin = entry.id.startsWith("left-") ? entry.id.replace(/^left-/, "right-") : entry.id.replace(/^right-/, "left-");
-    // Only a whole unseen leg is treated as hidden behind its twin; a missing piece of an otherwise visible limb folds instead.
-    const wholeLegUnseen = /-(upper-leg|lower-leg|foot)$/.test(entry.id) && unseen.has(entry.id.replace(/-(upper-leg|lower-leg|foot)$/, "-upper-leg"));
-    if (wholeLegUnseen && resolved[twin] && !unseen.has(twin)) { resolved[entry.id] = inferredJoint(resolved[twin].point, "geometry", `${entry.id} mirrors visible ${twin}`, .6); settled.add(entry.id); }
+    // Only a whole unseen limb is treated as hidden behind its twin (a side view hides the far leg and often the far arm);
+    // a missing piece of an otherwise visible limb folds instead.
+    const wholeLimbUnseen = (/-(upper-leg|lower-leg|foot)$/.test(entry.id) && unseen.has(entry.id.replace(/-(upper-leg|lower-leg|foot)$/, "-upper-leg")))
+      || (/-(upper-arm|lower-arm|hand)$/.test(entry.id) && unseen.has(entry.id.replace(/-(upper-arm|lower-arm|hand)$/, "-upper-arm")));
+    if (wholeLimbUnseen && resolved[twin] && !unseen.has(twin)) { resolved[entry.id] = inferredJoint(resolved[twin].point, "geometry", `${entry.id} mirrors visible ${twin}`, .6); settled.add(entry.id); }
   }
   const knownBelow = (id: string, depth = 0): Point | null => {
     if (depth > graph.length) return null;

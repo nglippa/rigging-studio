@@ -1,8 +1,8 @@
 import type { CharacterSegmentationRequest } from "../segmentation/segmentationProvider";
-import { characterImageGenerationResultSchema, occlusionReconstructionResultSchema, suitabilityReviewSchema, validateProviderResult, validateSegmentationProviderResult, type CharacterGenerationRequest, type CharacterImageGenerationResult, type CharacterMaskRefinementRequest, type CharacterPipelineCapabilities, type CharacterPipelineCapability, type CharacterPipelineProvider, type OcclusionReconstructionRequest, type OcclusionReconstructionResult, type SuitabilityRequest, type SuitabilityReview } from "./characterPipelineProvider";
+import { characterImageGenerationResultSchema, pointSegmentationResultSchema, type PointSegmentationRequest, type PointSegmentationResult, occlusionReconstructionResultSchema, suitabilityReviewSchema, validateProviderResult, validateSegmentationProviderResult, type CharacterGenerationRequest, type CharacterImageGenerationResult, type CharacterMaskRefinementRequest, type CharacterPipelineCapabilities, type CharacterPipelineCapability, type CharacterPipelineProvider, type OcclusionReconstructionRequest, type OcclusionReconstructionResult, type SuitabilityRequest, type SuitabilityReview } from "./characterPipelineProvider";
 import type { CharacterSegmentationResponse } from "../segmentation/segmentationSchema";
 
-type Capability = "status" | "generate" | "regenerate" | "variant" | "suitability" | "segment" | "refine-mask" | "reconstruct";
+type Capability = "status" | "generate" | "regenerate" | "variant" | "suitability" | "segment" | "refine-mask" | "reconstruct" | "segment-points";
 
 const unavailable = (provider: string, reason: string): CharacterPipelineCapability => ({ available: false, imageConditioned: false, mode: "unavailable", provider, confidenceSource: "unavailable", reason });
 const initialCapabilities = (provider: string): CharacterPipelineCapabilities => ({
@@ -50,5 +50,6 @@ export class HttpCharacterPipelineProvider implements CharacterPipelineProvider 
   async checkSuitability(request: SuitabilityRequest): Promise<SuitabilityReview> { return validateProviderResult(suitabilityReviewSchema, await this.request("suitability", request), "Suitability provider"); }
   async segmentCharacter(request: CharacterSegmentationRequest): Promise<CharacterSegmentationResponse> { return validateSegmentationProviderResult(await this.request("segment", request)); }
   async refinePartMasks(request: CharacterMaskRefinementRequest): Promise<CharacterSegmentationResponse> { return validateSegmentationProviderResult(await this.request("refine-mask", request)); }
+  async segmentAtPoints(request: PointSegmentationRequest): Promise<PointSegmentationResult> { return validateProviderResult(pointSegmentationResultSchema, await this.request("segment-points", request), "Point segmentation provider"); }
   async reconstructPart(request: OcclusionReconstructionRequest): Promise<OcclusionReconstructionResult> { return validateProviderResult(occlusionReconstructionResultSchema, await this.request("reconstruct", request), "Reconstruction provider"); }
 }

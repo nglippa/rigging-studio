@@ -173,6 +173,7 @@ export class ComfyUIAdapter implements ImageProductionProvider {
   }
 }
 
+export const DEFAULT_SAM2_POINT_MODEL = "sam2.1_hiera_base_plus.safetensors";
 /**
  * The configured model for a manifest's required-model name. Inpainting needs a model trained for it, so reconstruction
  * reads COMFYUI_INPAINT_CHECKPOINT and falls back to the general COMFYUI_CHECKPOINT when that is not set.
@@ -180,5 +181,6 @@ export class ComfyUIAdapter implements ImageProductionProvider {
 export function modelSetting(environmentName: string): string | undefined {
   const value = process.env[environmentName];
   if (value) return value;
+  if (environmentName === "COMFYUI_SAM2_POINT_MODEL") return DEFAULT_SAM2_POINT_MODEL;
   return environmentName === "COMFYUI_INPAINT_CHECKPOINT" ? process.env.COMFYUI_CHECKPOINT || undefined : undefined;
 }
