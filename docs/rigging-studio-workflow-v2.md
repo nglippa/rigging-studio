@@ -303,3 +303,15 @@ MediaPipe is replaced by **DWPose** (`yzd-v/DWPose`, `dw-ll_ucoco_384.onnx`, Apa
 The 0.5 threshold and nearest-neighbour fitting were chosen on these five sprites (smooth upscaling and lower thresholds made the pixel sprites worse); the benchmark keeps checking them on every sprite added, and fails if the pose model ever makes a sprite worse than the outline alone.
 
 **Fixing what is still wrong is one drag.** Parts that Cut all parts (or Use Guide) made are remembered; moving a joint in the guide (View › Anatomical guide) re-cuts those whose zone changed, in the same undo step (`recutFromGuide`, `changedZoneSemantics`). A part edited by hand (lasso, Add, Remove, Click, brush, edge reshape) is never re-cut over.
+
+## Motion rebuilt from sources (2026-11-18)
+
+Sources are in the `human-motion-rigging` skill, new chapters ch07 (shoulder: scapulohumeral rhythm), ch08 (anticipation → action → recovery; kinetic chain proximal to distal; follow-through and overlap) and ch09 (RotSprite, nearest-neighbour, pixel snapping).
+
+- **Timing**: action clips are sampled densely (`sampled`) and every part follows its own eased, keyed `curve` with its own delay, so parts overlap and drag instead of all hitting their keys together. Every curve is back at rest by 88% of the clip, so delayed parts still end exactly at rest.
+- **Raise Arms**: the shoulder rises and draws in toward the neck as the arm passes 30° (1:2 below 90°, 1:1 above), the forearm straightens a beat after the upper arm, and the chest lifts and leans back. `torsoDir` points up the spine (waist to neck); a sign error there once made the shoulders drop.
+- **Melee Attack**: side views strike forward with the chain hips → chest → shoulder → elbow (extends last) → wrist, a wind-up away from the target, weight back then forward, the front knee taking the blow, and the free arm countering. Front views chop instead (`frontChop`): the arm rises up and back over the lifting shoulder and cuts diagonally down across the body, because a front view cannot show the torso's twist.
+- **Walk / run**: arm swing is exaggerated over the measured values (×1.6 walk, ×1.35 run), the elbow drags 6% of a cycle behind, the chest lean oscillates ±3° walk / ±4.5° run, and the head counters it 5% later.
+- **Shoulder pivots**: a hand-cut upper arm pivots at the ball of the shoulder (`humeralHead`: from the seam, half the arm's width into the arm), not at the seam.
+- **Pixel art rendering** (`RigRenderer`, canvases of 256 px or less, or `metadata.pixelArt`): nearest-neighbour sampling, parts on whole pixels, and parts that are only rotated are drawn as RotSprite copies (`src/rigging/rendering/rotsprite.ts`) at the nearest 5°, cached per part and angle. Quarter turns are copied exactly.
+- **Known issue**: on 48 px chibis whose arms hang against the body (rogue), the torso's art carries hand-coloured patches at its sides, which stay behind when the arms rise. It comes from the cut or the hidden-area fill on tiny sprites, not from the motion.

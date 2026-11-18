@@ -99,7 +99,7 @@ export function CreateCharacterWorkspace() {
       const normalized = restored?.success ? normalizeProjectWarnings(restored.data) : null;
       if (normalized && commandService.restoreProjectFromDraft(normalized)) {
         setSelectedPartId(normalized.segmentationData?.parts[0]?.id ?? null);
-        setMessage("Local character project restored from IndexedDB");
+        setMessage("Restored your character from this browser");
       } else if (restored && !restored.success) setPersistenceWarning(restored.message);
     }); }, 0);
     return () => { cancelled = true; window.clearTimeout(timer); };

@@ -56,6 +56,7 @@ import { StudioDialog } from "@/app/studio-ui/StudioDialog";
 import { presentAgentStatus } from "@/app/studio-ui/agentStatus";
 import { TopCommandRail, type StudioConnection } from "@/app/studio-ui/TopCommandRail";
 import { forgetActiveDiskProject } from "@/app/studio-ui/ProjectStorageMenu";
+import { STAGE_NOTICE_KEY } from "@/app/studio-ui/stageNotice";
 import { CanvasControls } from "./CanvasControls";
 import { SkeletonTree, partName, type StructureView } from "./SkeletonTree";
 import { EditorHierarchy } from "./EditorHierarchy";
@@ -233,6 +234,14 @@ export function RigEditor() {
           if (!restoredFromDurable) commandService.activateProjectFromUi(generatedProject);
           restored = true;
         }
+        // The character being worked on has no rig yet: never show a different one (an old draft or the sample knight).
+        // Send the user to Parts with a note instead.
+        if (!generatedProject && !restoredFromDurable && !handoff && storedProject?.success && storedProject.data.sourceImage && !storedProject.data.rigDefinition) {
+          if (cancelled) return;
+          try { window.sessionStorage.setItem(STAGE_NOTICE_KEY, `${storedProject.data.name || "This character"} has no rig yet: cut its parts, then press Build rig.`); } catch { /* the redirect still happens */ }
+          router.replace("/part-cutter");
+          return;
+        }
         if (localDraft && !generatedProject && !restoredFromDurable) {
           const draft = parseDraft(localDraft);
           if (draft.success) { initialRig = draft.data.rig; restored = true; }
@@ -303,11 +312,11 @@ export function RigEditor() {
         generatedProjectRef.current = next;
         setGeneratedProjectState(next);
         void characterStorage.save(next).then((result) => {
-          if (result.success) setMessage(`Generated rig autosaved · ${(result.approximateBytes / 1_048_576).toFixed(1)} MB in IndexedDB`);
+          if (result.success) setMessage("Changes kept in this browser");
           else setError(`Rig remains in memory. ${result.layer} failed: ${result.message}`);
         });
       } else {
-        try { window.localStorage.setItem(RIG_EDITOR_DRAFT_KEY, serializeDraft(rig)); setMessage("Browser cache updated · not yet confirmed on disk"); }
+        try { window.localStorage.setItem(RIG_EDITOR_DRAFT_KEY, serializeDraft(rig)); setMessage("Changes kept in this browser"); }
         catch (reason: unknown) { setError(`Rig remains in memory. Local draft failed: ${reason instanceof Error ? reason.message : "storage unavailable"}`); }
       }
     }, 350);
@@ -821,7 +830,7 @@ export function RigEditor() {
         <EditorViewport ref={viewportRef} rig={rig} animation={previewAnimation} previewMode={previewMode} poseMode={testing} pivotEdit={!testing} activeSkinId={effectiveSkinId} selections={selections} hiddenBoneIds={hiddenBoneIds} lockedBoneIds={new Set([...lockedIds].filter((key) => key.startsWith("bone:")).map((key) => key.slice(5)))} showGrid={showGrid} showBones={showBones} showBounds={showBounds} snapToGrid={snapToGrid} wholePixelSnap={wholePixelSnap} rotationSnap={testing ? false : rotationSnap} canvasTool={canvasTool} interactionMode={testing ? "test" : "rig"} onSelect={selectInStage} onCursor={(point) => setCursor(point)} onZoom={setZoom} onBoneDragStart={testing ? () => undefined : beginBoneDrag} onBoneDragPreview={() => undefined} onBoneDragCommit={testing ? () => { setPosed(true); markTested(); } : commitBoneDrag} onPivotCommit={movePivot} onContextMenu={(selection, x, y) => setContextMenu({ selection, x, y, items: contextItems(selection) })} onWarning={setError} />
         {previewMode && <div className="preview-notice" role="status">{testing ? "Quick test playing" : "Rotate test playing"} · the rig is not changed · Esc to stop</div>}
         {testing
-          ? <TestPoseStrip available={poseTestAvailability} activeTest={sweep?.kind === "test" ? sweep.id : null} posed={posed || sweep !== null} onTest={(id) => runSweep(id ? { kind: "test", id } : null)} onReset={resetPose} onFix={() => enterMode("setup")} onNext={() => modeSelect("animate")} />
+          ? <TestPoseStrip available={poseTestAvailability} activeTest={sweep?.kind === "test" ? sweep.id : null} posed={posed || sweep !== null} onTest={(id) => runSweep(id ? { kind: "test", id } : null)} onReset={resetPose} onFix={() => enterMode("setup")} onNext={() => { markTested(); modeSelect("animate"); }} />
           : <RigReviewStrip chains={review} activeChainId={reviewChainId} selectedBoneId={selectedBoneId} testing={sweep?.kind === "chain"} blockingCount={blockingValidationIssues.length} onChain={selectChain} onJoint={(boneId) => { setSweep(null); select({ type: "bone", id: boneId }, false); }} onRotateTest={() => runSweep(sweep?.kind === "chain" || !reviewChainId ? null : { kind: "chain", id: reviewChainId })} onShowProblems={showProblems} onNext={() => modeSelect("test")} />}
       </section>
 
@@ -834,7 +843,7 @@ export function RigEditor() {
     {focusMode && inAnimate && <div className="focus-playback-controls" aria-label="Focus playback controls"><button type="button" onClick={() => animationCommand("play")}>▶ Play</button><button type="button" onClick={() => animationCommand("pause")}>Ⅱ Pause</button><button type="button" onClick={() => animationCommand("restart")}>↺ Restart</button><button type="button" onClick={() => setFocusMode(false)}>Exit Focus</button></div>}
 
     {contextMenu && <CanvasContextMenu title={contextMenu.selection.type === "bone" ? `Bone · ${humanizeTechnicalId(contextMenu.selection.id)}` : `Part · ${partName(contextMenu.selection.id)}`} x={contextMenu.x} y={contextMenu.y} items={contextMenu.items} onClose={() => setContextMenu(null)} />}
-    {(error || message) && <output key={error ?? message} className={`studio-toast ${error ? "is-error" : ""}`}><span>{error ? "!" : "●"}</span>{agentSession.lastOperation ? `${agentSession.lastOperation} · ` : ""}{error ?? message}<small>{(zoom * 100).toFixed(0)}%</small></output>}
+    {(error || message) && <output key={error ?? message} className={`studio-toast ${error ? "is-error" : ""}`}><span>{error ? "!" : "●"}</span>{agentSession.lastOperation ? `${agentSession.lastOperation} · ` : ""}{error ?? message}</output>}
     <StudioUtilityDrawer open={utilityOpen} tab={utilityTab} problems={problems} activity={agentActivity} onTab={setUtilityTab} onClose={() => setUtilityOpen(false)} />
     <StudioCommandPalette commands={commands} mode={editorMode} selection={selectionLabel} open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
     <StudioDialog open={confirmDiscard} title="Discard local rig draft?" description="The bundled test rig will replace the current local setup document. This action intentionally clears the local draft." confirmLabel="Discard draft" danger onCancel={() => setConfirmDiscard(false)} onConfirm={confirmDiscardDraft} />

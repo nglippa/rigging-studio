@@ -297,9 +297,9 @@
 .workflow-v2 :is(.review-chains, .review-joints) .has-problem i { color: var(--ws-warning); }
 
 .workflow-v2 .review-joints { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; padding-left: 14px; border-left: 1px solid var(--ws-line); overflow-x: auto; scrollbar-width: none; }
-.workflow-v2 .review-joints > button:not(.strip-tool) { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; height: 28px; padding: 0 9px; color: var(--ws-secondary); background: transparent; border: 1px solid var(--ws-line-soft); border-radius: 4px; font-size: 12px; white-space: nowrap; }
-.workflow-v2 .review-joints > button.has-problem { color: var(--ws-warning); border-color: rgba(239, 193, 126, .45); }
-.workflow-v2 .review-joints > button.is-selected { color: var(--ws-text); border-color: var(--ws-signal); background: var(--ws-selection); }
+.workflow-v2 .review-joint-list > button { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; height: 28px; padding: 0 9px; color: var(--ws-secondary); background: transparent; border: 1px solid var(--ws-line-soft); border-radius: 4px; font-size: 12px; white-space: nowrap; }
+.workflow-v2 .review-joint-list > button.has-problem { color: var(--ws-warning); border-color: rgba(239, 193, 126, .45); }
+.workflow-v2 .review-joint-list > button.is-selected { color: var(--ws-text); border-color: var(--ws-signal); background: var(--ws-selection); }
 .workflow-v2 .review-joints > .strip-tool { margin-left: 8px; }
 
 .workflow-v2 .pose-tests { display: flex; gap: 6px; flex: 1; min-width: 0; padding-left: 14px; border-left: 1px solid var(--ws-line); }
@@ -371,7 +371,8 @@
 .workflow-v2 .keyframe-facts dd small { color: var(--ws-muted); font: 11px var(--ws-mono); }
 
 /* Status messages sit at the top of the work area and clear themselves; errors stay until replaced. */
-.workflow-v2 .studio-toast { top: 112px; bottom: auto; animation: workflow-toast-out .3s 4s forwards; }
+/* Messages sit at the bottom of the canvas, above the stage strip, where they never cover the character. */
+.workflow-v2 .studio-toast { top: auto; bottom: 76px; animation: workflow-toast-out .3s 4s forwards; }
 .workflow-v2 .studio-toast.is-error { animation: none; color: var(--ws-error); border-color: rgba(255, 135, 156, .5); }
 @keyframes workflow-toast-out { to { opacity: 0; visibility: hidden; } }
 
@@ -469,3 +470,9 @@
 .workflow-v2 .rebuild-notice > span { flex: 1; }
 .workflow-v2 .rebuild-notice > button { height: 26px; padding: 0 12px; color: var(--ws-text); background: var(--ws-raised); border: 1px solid var(--ws-line); border-radius: 4px; font-size: 12px; }
 .workflow-v2 .animate-workspace .rebuild-notice, .workflow-v2 .editor-viewport ~ .rebuild-notice { position: absolute; left: 12px; right: 12px; top: 10px; z-index: 3; border: 1px solid var(--ws-line); border-radius: 6px; background: color-mix(in srgb, #f0b44c 12%, var(--ws-raised)); }
+
+/* Rig review joints: the joint chips scroll on their own, with a fade where more are hidden; Rotate test and the next
+   action never get cut off. */
+.workflow-v2 .review-joint-list { display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
+.workflow-v2 .review-joint-list::-webkit-scrollbar { display: none; }
+.workflow-v2 .review-joints > .strip-tool, .workflow-v2 .stage-strip > .stage-next-action { flex: none; }

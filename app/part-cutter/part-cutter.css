@@ -504,3 +504,9 @@
 .guided-proportions { display:grid;grid-template-columns:repeat(3,1fr);gap:2px;padding:2px;border:1px solid rgba(255,255,255,.08);border-radius:6px; }
 .guided-proportions button { min-height:28px;color:#a7a2bd;border:0;border-radius:4px;background:transparent;font-weight:650;cursor:pointer; }
 .guided-proportions button.active { color:#071216;background:var(--space-cyan); }
+/* The message toast sits above the "parts ready" chip at the bottom of the canvas instead of covering it. */
+.part-cutter-shell .part-cutter-toast { bottom:132px; }
+/* An unassigned piece pointed at in the side panel. */
+.cutter-canvas .piece-preview { fill:rgba(255,193,94,.45);stroke:#ffc15e;stroke-width:2;vector-effect:non-scaling-stroke;pointer-events:none; }
+/* Messages wrap instead of being cut off mid-sentence. */
+.part-cutter-shell .part-cutter-toast { max-width:min(560px,60vw); padding:6px 10px; white-space:normal; line-height:1.35; }

@@ -89,7 +89,12 @@ export function resolvePartPivot(part: ProposedCharacterPart, parts: readonly Pr
   const joint = adjacent && state ? jointBetween(state, part.id, adjacent.id) : null;
   const seam = joint?.point ?? null;
   const handCut = prepared?.provenance === "manual";
-  if (handCut && joint) return { point: joint.point, source: "boundary", confidence: joint.touching ? .8 : .7, detail: `${adjacent!.id}${joint.touching ? "↔" : "⋯"}${part.id}` };
+  if (handCut && joint) {
+    // An upper arm turns about the ball of the shoulder, not the edge of its cut: from the seam, go into the arm by half its
+    // width (skill ch07). Rotating about the seam swings the deltoid round its own edge and tears the shoulder open.
+    const point = part.semanticType === "leftUpperArm" || part.semanticType === "rightUpperArm" ? humeralHead(part, joint.point) : joint.point;
+    return { point, source: "boundary", confidence: joint.touching ? .8 : .7, detail: `${adjacent!.id}${joint.touching ? "↔" : "⋯"}${part.id}` };
+  }
   if (handCut && part.semanticType === "torso" && state) {
     // The torso bends at the waist, so it pivots where it meets the legs, not at the chest.
     // Where the torso meets each thigh, or comes closest to it when a weapon or belt piece was cut out between them.
@@ -110,6 +115,22 @@ export function resolvePartPivot(part: ProposedCharacterPart, parts: readonly Pr
   }
   if (Number.isFinite(part.pivotHint.x) && Number.isFinite(part.pivotHint.y)) return { point: clampPointToBounds(part.pivotHint, part.bounds), source: "geometry", confidence: Math.max(.45, part.confidence ?? .55), detail: "attachment geometry" };
   return { point: center(part), source: "fallback", confidence: .35, detail: "part center topology prior" };
+}
+
+/**
+ * The centre of the ball of the shoulder: from the seam toward the middle of the upper arm, by half the arm's width
+ * (its area over its length), and never more than 45% of the way to the middle.
+ */
+function humeralHead(part: ProposedCharacterPart, seam: Point): Point {
+  const mask = part.mask; if (!mask) return seam;
+  let count = 0; let sumX = 0; let sumY = 0;
+  for (let y = 0; y < mask.height; y += 1) for (let x = 0; x < mask.width; x += 1) if (mask.alpha[y * mask.width + x]) { count += 1; sumX += x; sumY += y; }
+  if (!count) return seam;
+  const middle = { x: part.bounds.x + sumX / count, y: part.bounds.y + sumY / count };
+  const distance = Math.hypot(middle.x - seam.x, middle.y - seam.y); if (distance < 1) return seam;
+  const halfWidth = count / (2 * distance) / 2;
+  const step = Math.min(halfWidth, distance * .45);
+  return { x: seam.x + (middle.x - seam.x) / distance * step, y: seam.y + (middle.y - seam.y) / distance * step };
 }
 
 export function inferredJoint(point: Point, source: AutoRigPivotSource, detail: string, confidence = .55): ResolvedPivot {

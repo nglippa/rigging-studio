@@ -17,7 +17,7 @@ export function TestPoseStrip(props: Props) {
   return <div className="stage-strip test-pose-strip" aria-label="Pose tests">
     <div className="stage-strip-title"><strong>Pose test</strong><small>Drag any bone. The rig is not changed.</small></div>
     <div className="pose-tests" role="group" aria-label="Quick tests">
-      {POSE_TESTS.map((test) => <button key={test.id} type="button" className={`strip-tool ${props.activeTest === test.id ? "is-active" : ""}`} aria-pressed={props.activeTest === test.id} disabled={!props.available[test.id]} title={props.available[test.id] ? test.hint : "This rig has no bones for this test"} onClick={() => props.onTest(props.activeTest === test.id ? null : test.id)}>{props.activeTest === test.id ? "■ " : "▶ "}{test.label}</button>)}
+      {POSE_TESTS.map((test) => <button key={test.id} type="button" className={`strip-tool ${props.activeTest === test.id ? "is-active" : ""}`} aria-pressed={props.activeTest === test.id} disabled={!props.available[test.id]} title={props.available[test.id] ? test.hint : test.id === "equipment" ? "No equipment was cut for this character. Cut a weapon or shield in Parts to test it." : "This rig has no bones for this test"} onClick={() => props.onTest(props.activeTest === test.id ? null : test.id)}>{props.activeTest === test.id ? "■ " : "▶ "}{test.label}</button>)}
     </div>
     <button type="button" className="strip-tool" disabled={!props.posed && !props.activeTest} title="Return every bone to its rest pose  (0)" onClick={props.onReset}>Reset pose<kbd>0</kbd></button>
     <button type="button" className="strip-tool" title="Go back to Rig with the same bone selected  (2)" onClick={props.onFix}>Fix in Rig</button>
