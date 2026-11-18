@@ -121,6 +121,33 @@ const armEvidence = (alpha: readonly number[], profile: SilhouetteProfile, y: nu
   return beside.sort((a, b) => (side === "left" ? b.right - a.right : a.left - b.left))[0].centroid;
 };
 
+/**
+ * The wrist, by tracing one arm down from its elbow: row by row, follow the run of silhouette beside the torso that is
+ * nearest the previous row's, and take the narrowest row in the middle of the trace, where the forearm pinches before the
+ * hand widens (the last rows are fingertips, also narrow, so they are left out). Null when the arm cannot be followed far
+ * enough apart from the body, so the proportional guess stays.
+ */
+const traceWrist = (alpha: readonly number[], profile: SilhouetteProfile, side: "left" | "right", start: Point, bodyX: number, maxY: number): Point | null => {
+  const bounds = profile.foregroundBounds; const step = Math.max(1, bounds.width * .06);
+  const rows: { y: number; x: number; width: number }[] = []; let previous = start.x;
+  // Rows where the arm still joins the body are skipped; the trace begins where it separates.
+  for (let y = Math.round(start.y); y <= Math.min(maxY, bounds.y + bounds.height - 1); y += 1) {
+    const segments = massSegments(alpha, profile, y, 0, 1);
+    const torso = segments.find((segment) => segment.left <= bodyX && segment.right >= bodyX);
+    const beside = segments.filter((segment) => segment !== torso && (!torso || (side === "left" ? segment.right < torso.left : segment.left > torso.right)));
+    // The arm is the run nearest where it was last (at first: the guessed elbow). Until it is found, a short stretch of
+    // rows where it still joins the body is skipped; a run far from the guess is held equipment, not the arm.
+    const next = beside.sort((a, b) => Math.abs(a.centroid - previous) - Math.abs(b.centroid - previous))[0];
+    if (!next || Math.abs(next.centroid - previous) > step) { if (rows.length || y - start.y > bounds.height * .06) break; continue; }
+    rows.push({ y, x: next.centroid, width: next.right - next.left + 1 }); previous = next.centroid;
+  }
+  if (rows.length < Math.max(3, bounds.height * .06)) return null;
+  const middle = rows.slice(Math.floor(rows.length * .4), Math.ceil(rows.length * .8));
+  if (!middle.length) return null;
+  const narrowest = middle.reduce((best, row) => row.width <= best.width ? row : best);
+  return { x: narrowest.x, y: narrowest.y };
+};
+
 function descriptorFor(alpha: readonly number[], profile: SilhouetteProfile, requestedProfile: AnatomicalPartitionGuide["profile"], proportions: "chibi" | "adult" = "chibi"): { descriptor: ChibiProportionDescriptor; neckY: number; hiddenLegs: boolean; armorLikely: boolean } {
   const bounds = profile.foregroundBounds; const bottom = bounds.y + bounds.height - 1; const bboxCenter = bounds.x + bounds.width / 2; const bodyCenterX = clamp(bboxCenter + (profile.centerOfMass.x - bboxCenter) * .4, bounds.x, bounds.x + bounds.width - 1);
   const compactSource = bounds.height < profile.height * .82; const tall = bounds.height / bounds.width > 1.42; const foregroundCenterYRatio = (profile.centerOfMass.y - bounds.y) / bounds.height;
@@ -156,6 +183,12 @@ function inferLandmarks(alpha: readonly number[], profile: SilhouetteProfile, de
   const rightWristX = armEvidence(alpha, profile, wristY, "right", center) ?? (center + armReach) * (1 - evidenceWeight) + rightWristEvidence * evidenceWeight;
   const leftElbowFallback = (center - shoulderHalf + leftWristX) / 2; const rightElbowFallback = (center + shoulderHalf + rightWristX) / 2; const leftElbowEvidence = rowCentroidOnSide(alpha, profile, elbowY, "left", center, leftElbowFallback); const rightElbowEvidence = rowCentroidOnSide(alpha, profile, elbowY, "right", center, rightElbowFallback); const leftElbowX = armEvidence(alpha, profile, elbowY, "left", center) ?? leftElbowFallback * .85 + leftElbowEvidence * .15;
   const rightElbowX = armEvidence(alpha, profile, elbowY, "right", center) ?? rightElbowFallback * .85 + rightElbowEvidence * .15;
+  // Follow each arm down from its elbow to find where the wrist really is.
+  const traceLimit = pelvisY + bounds.height * .15;
+  // Starting at the shoulder was tried and made the chibi sprites much worse: where the arm still joins the body, the first
+  // separate run is the held weapon, and the trace follows it. Starting at the elbow, the arm is already apart.
+  const leftTracedWrist = traceWrist(alpha, profile, "left", { x: leftElbowX, y: elbowY }, center, traceLimit);
+  const rightTracedWrist = traceWrist(alpha, profile, "right", { x: rightElbowX, y: elbowY }, center, traceLimit);
   const kneeHalf = digitigrade ? bounds.width * .15 : wideBroad ? bounds.width * .13 : extreme ? bounds.width * .06 : bounds.width * .085; const ankleHalf = digitigrade ? bounds.width * .18 : wideBroad ? bounds.width * .15 : extreme ? bounds.width * .08 : bounds.width * .105;
   let leftKneeX = center - kneeHalf; let rightKneeX = center + kneeHalf; let leftAnkleX = center - ankleHalf; let rightAnkleX = center + ankleHalf;
   let leftHipX = center - hipHalf; let rightHipX = center + hipHalf; let pelvisX = center;
@@ -180,10 +213,10 @@ function inferLandmarks(alpha: readonly number[], profile: SilhouetteProfile, de
     { id: "head", point: headCenter, source: "silhouette", visibility: "visible", confidence: .88, method: "oversized upper foreground mass" },
     { id: "leftShoulder", point: { x: center - shoulderHalf, y: shoulderY }, source: armorLikely ? "symmetry" : "silhouette", visibility: armorLikely ? "needs-review" : "visible", confidence: armorLikely ? .58 : .77, method: armorLikely ? "inner attachment below armor extent" : "upper-body widening" },
     { id: "leftElbow", point: { x: leftElbowX, y: elbowY }, source: "centerline", visibility: "visible", confidence: .7, method: "limb branch centerline bend" },
-    { id: "leftWrist", point: { x: leftWristX, y: wristY }, source: "centerline", visibility: "visible", confidence: .72, method: "distal branch narrowing" },
+    { id: "leftWrist", point: leftTracedWrist ?? { x: leftWristX, y: wristY }, source: "centerline", visibility: "visible", confidence: leftTracedWrist ? .8 : .72, method: leftTracedWrist ? "distal branch narrowing (arm traced from the elbow)" : "distal branch narrowing" },
     { id: "rightShoulder", point: { x: center + shoulderHalf, y: shoulderY }, source: armorLikely ? "symmetry" : "silhouette", visibility: armorLikely ? "needs-review" : "visible", confidence: armorLikely ? .58 : .77, method: armorLikely ? "inner attachment below armor extent" : "upper-body widening" },
     { id: "rightElbow", point: { x: rightElbowX, y: elbowY }, source: "centerline", visibility: "visible", confidence: .7, method: "limb branch centerline bend" },
-    { id: "rightWrist", point: { x: rightWristX, y: wristY }, source: "centerline", visibility: "visible", confidence: .72, method: "distal branch narrowing" },
+    { id: "rightWrist", point: rightTracedWrist ?? { x: rightWristX, y: wristY }, source: "centerline", visibility: "visible", confidence: rightTracedWrist ? .8 : .72, method: rightTracedWrist ? "distal branch narrowing (arm traced from the elbow)" : "distal branch narrowing" },
     { id: "leftHip", point: { x: leftHipX, y: pelvisY + bounds.height * .012 }, source: hiddenLegs ? "inferred_hidden" : "silhouette", visibility: hiddenLegs ? "inferred" : "visible", confidence: hiddenLegs ? .5 : .76, method: "pelvis width and leg origin" },
     { id: "leftKnee", point: { x: leftKneeX, y: kneeY }, source: hiddenLegs ? "inferred_hidden" : "centerline", visibility: hiddenLegs ? "inferred" : "visible", confidence: hiddenLegs ? .42 : .7, method: hiddenLegs ? "symmetric hidden trajectory" : "leg centerline bend" },
     { id: "leftAnkle", point: { x: leftAnkleX, y: ankleY }, source: hiddenLegs ? "inferred_hidden" : "centerline", visibility: hiddenLegs ? "inferred" : "visible", confidence: hiddenLegs ? .48 : .74, method: hiddenLegs ? "foot-aligned hidden trajectory" : "distal leg narrowing" },
