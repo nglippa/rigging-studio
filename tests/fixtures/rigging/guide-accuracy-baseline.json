@@ -1,0 +1,22 @@
+{
+  "warrior": {
+    "mean": 0.0496,
+    "worst": 0.0964
+  },
+  "goblin": {
+    "mean": 0.0619,
+    "worst": 0.0999
+  },
+  "courier": {
+    "mean": 0.0635,
+    "worst": 0.1273
+  },
+  "paladin": {
+    "mean": 0.0591,
+    "worst": 0.1136
+  },
+  "rogue": {
+    "mean": 0.0384,
+    "worst": 0.0819
+  }
+}

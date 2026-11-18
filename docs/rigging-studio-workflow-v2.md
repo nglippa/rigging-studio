@@ -273,3 +273,15 @@ The ceilings are today's numbers plus a margin; lower them when the guide improv
 ### When the Studio engine is asleep
 
 The gate stops the Studio engine after 30 minutes idle. With `COMFYUI_WAKE_URL` set, the bridge reports the engine as asleep (provider `asleep: true`, health DEGRADED) and keeps offering the capabilities that worked at its last successful check; the first request wakes it. If the bridge starts while the engine sleeps and nothing is known yet, it wakes the engine once, so the browser learns what it can do (about 50 s). Health polling never wakes it again, so the engine still sleeps when idle.
+
+### One standard for every character (2026-11-18)
+
+Every character goes through the same steps, with nothing tuned for one sprite:
+
+1. **Proportions** are detected from the silhouette (`detectProportions`): median row width ÷ figure height under 0.4 is adult, otherwise chibi. Measured: chibi 0.55–0.80 (all ten benchmark sprites), adult 0.14–0.25 (goblin, courier); the median ignores the rows a weapon widens. `buildAdaptiveAnatomicalPartitionGuide` defaults to `"auto"`, so every caller gets it; Parts shows Auto / Chibi / Adult with Auto selected, and the result is recorded in the guide's `adaptiveMetadata.proportions`.
+2. **Joints** come from the pose model when the image is at least 256 px on its short side and the model finds a person, otherwise from the silhouette.
+3. **Silhouette joints are measured where the drawing allows**: legs from leg columns at knee and ankle height, arms from a run of silhouette beside the torso at elbow and wrist height (the run nearest the body; anything further out is held equipment). Adult wrists hang at the hips. Where nothing separate is drawn, the proportional guess stays.
+
+**Adding a character to the benchmark.** Add it to `tests/fixtures/rigging/joint-ground-truth.json` with its image, view, proportions and hand-marked joints (screen-side names), or only its image and proportions under `proportionsOnly`. `tests/rigging/guide-accuracy.test.ts` then checks it like every other: proportions detected correctly, mean joint error at most 10% of the figure's height, and no worse than its recorded baseline. Record a new sprite's baseline, or lower baselines after an improvement, with `UPDATE_GUIDE_BASELINE=1 npx vitest run tests/rigging/guide-accuracy.test.ts`; recording never raises a baseline.
+
+Current baselines (mean / worst joint error): warrior 5.0% / 9.6%, goblin 6.2% / 10.0%, courier 6.3% / 12.7%, paladin 5.9% / 11.4%, rogue 3.8% / 8.2%. The largest remaining errors are wrists and hips whose height is still guessed: the courier's hands sit above the adult wrist height, so its arms are not measured, and the paladin's hands are raised to hold its mace and shield. Tracing each arm down from the shoulder would fix both.

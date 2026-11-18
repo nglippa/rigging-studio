@@ -1,10 +1,9 @@
 {
-  "note": "Joint positions marked by hand on a coordinate grid (2026-11-17), in source pixels. Limbs are named by SCREEN side, as the part-cutter guide names them. Only joints visible in the art are listed. 'pairedLimbs' means left/right cannot be told apart (profile), so each joint is scored against the nearer of the guide's two.",
+  "note": "Joint positions in source pixels, limbs named by SCREEN side (as the part-cutter guide names them). Marked by hand on a coordinate grid unless 'source' says otherwise. Only visible joints are listed. 'pairedLimbs' (profile): each limb joint is scored against the nearer of the guide's two. Errors are a share of the figure's own height, measured from its silhouette. Add a sprite here to put it under tests/rigging/guide-accuracy.test.ts.",
   "sprites": {
     "warrior": {
       "image": "public/benchmark/guided-manual/warrior.png",
       "view": "front",
-      "height": 44,
       "pairedLimbs": false,
       "joints": {
         "head": [
@@ -73,7 +72,6 @@
     "goblin": {
       "image": "public/rig-test/goblin/goblin-source.png",
       "view": "profile",
-      "height": 1440,
       "pairedLimbs": true,
       "joints": {
         "head": [
@@ -126,6 +124,241 @@
         ]
       },
       "proportions": "adult"
+    },
+    "courier": {
+      "image": "public/rig-test/courier/courier-source.png",
+      "view": "front",
+      "proportions": "adult",
+      "pairedLimbs": false,
+      "source": "MediaPipe keypoints (tests/fixtures/pose/courier-front.json), visibly accurate, mapped to screen sides",
+      "joints": {
+        "head": [
+          533,
+          183
+        ],
+        "neck": [
+          524,
+          286
+        ],
+        "pelvis": [
+          547,
+          666
+        ],
+        "leftShoulder": [
+          419,
+          309
+        ],
+        "leftElbow": [
+          358,
+          477
+        ],
+        "leftWrist": [
+          290,
+          638
+        ],
+        "rightShoulder": [
+          607,
+          324
+        ],
+        "rightElbow": [
+          665,
+          502
+        ],
+        "rightWrist": [
+          740,
+          683
+        ],
+        "leftHip": [
+          483,
+          659
+        ],
+        "leftKnee": [
+          409,
+          929
+        ],
+        "leftAnkle": [
+          338,
+          1200
+        ],
+        "rightHip": [
+          611,
+          672
+        ],
+        "rightKnee": [
+          651,
+          972
+        ],
+        "rightAnkle": [
+          646,
+          1286
+        ]
+      }
+    },
+    "paladin": {
+      "image": "public/benchmark/guided-manual/paladin.png",
+      "view": "front",
+      "proportions": "chibi",
+      "pairedLimbs": false,
+      "joints": {
+        "head": [
+          23,
+          11
+        ],
+        "neck": [
+          23,
+          19
+        ],
+        "pelvis": [
+          23,
+          33
+        ],
+        "leftShoulder": [
+          16,
+          21
+        ],
+        "leftElbow": [
+          12,
+          25
+        ],
+        "leftWrist": [
+          9,
+          28
+        ],
+        "rightShoulder": [
+          31,
+          21
+        ],
+        "rightElbow": [
+          33,
+          24
+        ],
+        "rightWrist": [
+          35,
+          28
+        ],
+        "leftHip": [
+          19,
+          35
+        ],
+        "leftKnee": [
+          18,
+          39
+        ],
+        "leftAnkle": [
+          17,
+          43
+        ],
+        "rightHip": [
+          27,
+          35
+        ],
+        "rightKnee": [
+          28,
+          39
+        ],
+        "rightAnkle": [
+          29,
+          43
+        ]
+      }
+    },
+    "rogue": {
+      "image": "public/benchmark/guided-manual/rogue.png",
+      "view": "front",
+      "proportions": "chibi",
+      "pairedLimbs": false,
+      "joints": {
+        "head": [
+          23,
+          12
+        ],
+        "neck": [
+          23,
+          20
+        ],
+        "pelvis": [
+          23,
+          37
+        ],
+        "leftShoulder": [
+          16,
+          23
+        ],
+        "leftElbow": [
+          13,
+          28
+        ],
+        "leftWrist": [
+          12,
+          32
+        ],
+        "rightShoulder": [
+          31,
+          23
+        ],
+        "rightElbow": [
+          34,
+          28
+        ],
+        "rightWrist": [
+          35,
+          32
+        ],
+        "leftHip": [
+          19,
+          38
+        ],
+        "leftKnee": [
+          18,
+          41
+        ],
+        "leftAnkle": [
+          17,
+          44
+        ],
+        "rightHip": [
+          27,
+          38
+        ],
+        "rightKnee": [
+          28,
+          41
+        ],
+        "rightAnkle": [
+          29,
+          44
+        ]
+      }
+    }
+  },
+  "proportionsOnly": {
+    "doomsmith": {
+      "image": "public/benchmark/guided-manual/doomsmith.png",
+      "proportions": "chibi"
+    },
+    "dwarf": {
+      "image": "public/benchmark/guided-manual/dwarf.png",
+      "proportions": "chibi"
+    },
+    "npc-special-beorn": {
+      "image": "public/benchmark/guided-manual/npc-special-beorn.png",
+      "proportions": "chibi"
+    },
+    "numenorian": {
+      "image": "public/benchmark/guided-manual/numenorian.png",
+      "proportions": "chibi"
+    },
+    "shadow-hunter": {
+      "image": "public/benchmark/guided-manual/shadow-hunter.png",
+      "proportions": "chibi"
+    },
+    "starweaver": {
+      "image": "public/benchmark/guided-manual/starweaver.png",
+      "proportions": "chibi"
+    },
+    "warden": {
+      "image": "public/benchmark/guided-manual/warden.png",
+      "proportions": "chibi"
     }
   }
 }

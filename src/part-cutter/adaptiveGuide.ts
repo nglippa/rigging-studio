@@ -56,7 +56,22 @@ const foregroundBoundsInBand = (alpha: readonly number[], profile: SilhouettePro
  * ratios. "adult" puts the neck at 22% and the pelvis at 52% of the figure's height: measured on a near-adult goblin in
  * profile, whose neck the silhouette cannot find (the face juts forward, so no row is narrow).
  */
-export type GuideProportions = "chibi" | "adult";
+export type GuideProportions = "auto" | "chibi" | "adult";
+
+/**
+ * Chibi or adult, from the silhouette alone: the median row width as a share of the figure's height. Chibi sprites are
+ * squat (0.55-0.80 across the ten benchmark sprites); adult figures are slender (0.14-0.25 on the goblin and the
+ * courier). The median ignores the few rows a weapon or shield widens. tests/rigging/guide-accuracy.test.ts checks this
+ * on every sprite in tests/fixtures/rigging/joint-ground-truth.json.
+ */
+export const ADULT_MAX_MEDIAN_WIDTH = .4;
+export function detectProportions(alpha: readonly number[], width: number, height: number): "chibi" | "adult" {
+  const widths: number[] = [];
+  for (let y = 0; y < height; y += 1) { let count = 0; for (let x = 0; x < width; x += 1) if (alpha[y * width + x]) count += 1; if (count) widths.push(count); }
+  if (!widths.length) return "chibi";
+  const median = [...widths].sort((a, b) => a - b)[Math.floor(widths.length / 2)];
+  return median / widths.length < ADULT_MAX_MEDIAN_WIDTH ? "adult" : "chibi";
+}
 const ADULT_NECK = .22; const ADULT_PELVIS = .52;
 const adultPelvisFactor = (ADULT_PELVIS - ADULT_NECK) / (1 - ADULT_NECK);
 
@@ -90,7 +105,23 @@ const legEvidence = (alpha: readonly number[], profile: SilhouetteProfile, y: nu
   return { left: first.centroid, right: first.centroid, stacked: true };
 };
 
-function descriptorFor(alpha: readonly number[], profile: SilhouetteProfile, requestedProfile: AnatomicalPartitionGuide["profile"], proportions: GuideProportions = "chibi"): { descriptor: ChibiProportionDescriptor; neckY: number; hiddenLegs: boolean; armorLikely: boolean } {
+/**
+ * The arm on one side at one height, when it is drawn apart from the body: the run of silhouette next to the torso's
+ * run on that side. The torso's run is the one under the body centre. Null when the arm lies against the body (no
+ * separate run), so the proportional guess stays.
+ */
+const armEvidence = (alpha: readonly number[], profile: SilhouetteProfile, y: number, side: "left" | "right", bodyX: number): number | null => {
+  const bounds = profile.foregroundBounds;
+  const segments = massSegments(alpha, profile, y, Math.max(1, Math.round(bounds.height * .01)), Math.max(2, Math.round(bounds.width * .02)));
+  if (segments.length < 2) return null;
+  const torso = segments.find((segment) => segment.left <= bodyX && segment.right >= bodyX) ?? [...segments].sort((a, b) => Math.abs(a.centroid - bodyX) - Math.abs(b.centroid - bodyX))[0];
+  const beside = segments.filter((segment) => segment !== torso && (side === "left" ? segment.right < torso.left : segment.left > torso.right));
+  if (!beside.length) return null;
+  // The arm attaches to the body, so the run nearest the torso is the arm; anything further out is held equipment.
+  return beside.sort((a, b) => (side === "left" ? b.right - a.right : a.left - b.left))[0].centroid;
+};
+
+function descriptorFor(alpha: readonly number[], profile: SilhouetteProfile, requestedProfile: AnatomicalPartitionGuide["profile"], proportions: "chibi" | "adult" = "chibi"): { descriptor: ChibiProportionDescriptor; neckY: number; hiddenLegs: boolean; armorLikely: boolean } {
   const bounds = profile.foregroundBounds; const bottom = bounds.y + bounds.height - 1; const bboxCenter = bounds.x + bounds.width / 2; const bodyCenterX = clamp(bboxCenter + (profile.centerOfMass.x - bboxCenter) * .4, bounds.x, bounds.x + bounds.width - 1);
   const compactSource = bounds.height < profile.height * .82; const tall = bounds.height / bounds.width > 1.42; const foregroundCenterYRatio = (profile.centerOfMass.y - bounds.y) / bounds.height;
   const defaultRatio = compactSource ? .52 : tall ? .45 : .42; const searchTop = Math.round(bounds.y + bounds.height * .30); const searchBottom = Math.round(bounds.y + bounds.height * .60);
@@ -113,14 +144,18 @@ function descriptorFor(alpha: readonly number[], profile: SilhouetteProfile, req
 }
 
 type LandmarkInput = { id: AnatomicalLandmarkId; point: Point; source: LandmarkEvidenceSource; visibility: LandmarkVisibilityState; confidence: number; method: string };
-function inferLandmarks(alpha: readonly number[], profile: SilhouetteProfile, descriptor: ChibiProportionDescriptor, neckYInput: number, requestedProfile: AnatomicalPartitionGuide["profile"], hiddenLegs: boolean, armorLikely: boolean, proportions: GuideProportions = "chibi"): AnatomicalLandmark[] {
+function inferLandmarks(alpha: readonly number[], profile: SilhouetteProfile, descriptor: ChibiProportionDescriptor, neckYInput: number, requestedProfile: AnatomicalPartitionGuide["profile"], hiddenLegs: boolean, armorLikely: boolean, proportions: "chibi" | "adult" = "chibi"): AnatomicalLandmark[] {
   const bounds = descriptor.foregroundBounds; const bottom = bounds.y + bounds.height - 1; const bboxCenter = bounds.x + bounds.width / 2; const extreme = descriptor.archetype === "large_head_extreme"; const broad = descriptor.archetype === "broad_chibi"; const tall = descriptor.archetype === "tall_chibi"; const digitigrade = requestedProfile === "digitigrade"; const center = digitigrade ? bboxCenter + (profile.centerOfMass.x - bboxCenter) * .8 : extreme ? bboxCenter - bounds.width * .02 : bboxCenter; const pelvisFactor = proportions === "adult" ? adultPelvisFactor : extreme ? .66 : broad ? .61 : tall ? .54 : .57;
   const neckY = armorLikely ? neckYInput - bounds.height * .07 : neckYInput; const pelvisY = neckY + (bottom - neckY) * pelvisFactor; const chestY = neckY + (pelvisY - neckY) * .34; const shoulderY = neckY + (pelvisY - neckY) * (proportions === "adult" ? .25 : armorLikely ? .06 : .12); const rootY = Math.min(profile.height * .96, bottom + bounds.height * .15); const ankleY = rootY - bounds.height * .055; const kneeY = pelvisY + (ankleY - pelvisY) * .55;
   const wideBroad = broad && bounds.width / bounds.height > 1.05; const shoulderHalf = broad && !armorLikely ? bounds.width * .20 : armorLikely ? bounds.width * .18 : Math.max(bounds.width * .16, bounds.height * .095); const hipHalf = Math.max(bounds.width * .055, bounds.height * .035);
-  const wristY = shoulderY + (pelvisY - shoulderY) * .74; const elbowY = shoulderY + (wristY - shoulderY) * .50; const armReach = bounds.width * (armorLikely ? .16 : extreme ? .24 : wideBroad ? .36 : .34);
+  // Adult arms hang to the hips; chibi arms are short.
+  const wristY = proportions === "adult" ? pelvisY : shoulderY + (pelvisY - shoulderY) * .74; const elbowY = shoulderY + (wristY - shoulderY) * .50; const armReach = bounds.width * (armorLikely ? .16 : extreme ? .24 : wideBroad ? .36 : .34);
   const leftWristEvidence = rowCentroidOnSide(alpha, profile, wristY, "left", center, center - armReach); const rightWristEvidence = rowCentroidOnSide(alpha, profile, wristY, "right", center, center + armReach); const evidenceWeight = armorLikely ? .08 : .15;
-  const leftWristX = (center - armReach) * (1 - evidenceWeight) + leftWristEvidence * evidenceWeight; const rightWristX = (center + armReach) * (1 - evidenceWeight) + rightWristEvidence * evidenceWeight;
-  const leftElbowFallback = (center - shoulderHalf + leftWristX) / 2; const rightElbowFallback = (center + shoulderHalf + rightWristX) / 2; const leftElbowEvidence = rowCentroidOnSide(alpha, profile, elbowY, "left", center, leftElbowFallback); const rightElbowEvidence = rowCentroidOnSide(alpha, profile, elbowY, "right", center, rightElbowFallback); const leftElbowX = leftElbowFallback * .85 + leftElbowEvidence * .15; const rightElbowX = rightElbowFallback * .85 + rightElbowEvidence * .15;
+  // An arm drawn apart from the body is measured; one lying against it keeps the proportional guess nudged by the silhouette.
+  const leftWristX = armEvidence(alpha, profile, wristY, "left", center) ?? (center - armReach) * (1 - evidenceWeight) + leftWristEvidence * evidenceWeight;
+  const rightWristX = armEvidence(alpha, profile, wristY, "right", center) ?? (center + armReach) * (1 - evidenceWeight) + rightWristEvidence * evidenceWeight;
+  const leftElbowFallback = (center - shoulderHalf + leftWristX) / 2; const rightElbowFallback = (center + shoulderHalf + rightWristX) / 2; const leftElbowEvidence = rowCentroidOnSide(alpha, profile, elbowY, "left", center, leftElbowFallback); const rightElbowEvidence = rowCentroidOnSide(alpha, profile, elbowY, "right", center, rightElbowFallback); const leftElbowX = armEvidence(alpha, profile, elbowY, "left", center) ?? leftElbowFallback * .85 + leftElbowEvidence * .15;
+  const rightElbowX = armEvidence(alpha, profile, elbowY, "right", center) ?? rightElbowFallback * .85 + rightElbowEvidence * .15;
   const kneeHalf = digitigrade ? bounds.width * .15 : wideBroad ? bounds.width * .13 : extreme ? bounds.width * .06 : bounds.width * .085; const ankleHalf = digitigrade ? bounds.width * .18 : wideBroad ? bounds.width * .15 : extreme ? bounds.width * .08 : bounds.width * .105;
   let leftKneeX = center - kneeHalf; let rightKneeX = center + kneeHalf; let leftAnkleX = center - ankleHalf; let rightAnkleX = center + ankleHalf;
   let leftHipX = center - hipHalf; let rightHipX = center + hipHalf; let pelvisX = center;
@@ -183,10 +218,10 @@ function adaptiveZones(alpha: readonly number[], width: number, height: number, 
   return BODY_TYPES.map((type) => built.get(type)!);
 }
 
-export function buildAdaptiveAnatomicalPartitionGuide(state: Pick<PartCutterState, "sourceCanvasSize" | "parts">, foreground: readonly number[], requestedProfile: AnatomicalPartitionGuide["profile"] = "humanoid", timestamp = new Date().toISOString(), proportions: GuideProportions = "chibi"): AnatomicalPartitionGuide {
-  const started = typeof performance !== "undefined" ? performance.now() : Date.now(); const { width, height } = state.sourceCanvasSize; const alpha = foreground.map((value) => value > 0 ? 255 : 0); const profile = analyzeSilhouette(alpha, width, height); const analysis = descriptorFor(alpha, profile, requestedProfile, proportions); const landmarks = inferLandmarks(alpha, profile, analysis.descriptor, analysis.neckY, requestedProfile, analysis.hiddenLegs, analysis.armorLikely, proportions); const zones = adaptiveZones(alpha, width, height, landmarks, analysis.descriptor);
+export function buildAdaptiveAnatomicalPartitionGuide(state: Pick<PartCutterState, "sourceCanvasSize" | "parts">, foreground: readonly number[], requestedProfile: AnatomicalPartitionGuide["profile"] = "humanoid", timestamp = new Date().toISOString(), requestedProportions: GuideProportions = "auto"): AnatomicalPartitionGuide {
+  const started = typeof performance !== "undefined" ? performance.now() : Date.now(); const { width, height } = state.sourceCanvasSize; const alpha = foreground.map((value) => value > 0 ? 255 : 0); const profile = analyzeSilhouette(alpha, width, height); const proportions = requestedProportions === "auto" ? detectProportions(alpha, width, height) : requestedProportions; const analysis = descriptorFor(alpha, profile, requestedProfile, proportions); const landmarks = inferLandmarks(alpha, profile, analysis.descriptor, analysis.neckY, requestedProfile, analysis.hiddenLegs, analysis.armorLikely, proportions); const zones = adaptiveZones(alpha, width, height, landmarks, analysis.descriptor);
   const inferredLandmarkIds = landmarks.filter((landmark) => landmark.visibility === "inferred").map((landmark) => landmark.landmarkId); const needsReviewLandmarkIds = landmarks.filter((landmark) => landmark.visibility === "needs-review").map((landmark) => landmark.landmarkId);
-  return { guideVersion: 1, profile: requestedProfile, sourceCanvasSize: state.sourceCanvasSize, landmarks, zones, adaptiveMetadata: { initializationMethod: "alpha-silhouette-adaptive-v1", topology: requestedProfile, topologyNeedsReview: requestedProfile === "custom" && analysis.descriptor.archetype === "custom", proportionDescriptor: analysis.descriptor, foregroundPixelCount: profile.foregroundPixelCount, inferredLandmarkIds, needsReviewLandmarkIds, runtimeMs: elapsed(started) }, status: "seeded", createdAt: timestamp, updatedAt: timestamp };
+  return { guideVersion: 1, profile: requestedProfile, sourceCanvasSize: state.sourceCanvasSize, landmarks, zones, adaptiveMetadata: { initializationMethod: "alpha-silhouette-adaptive-v1", topology: requestedProfile, topologyNeedsReview: requestedProfile === "custom" && analysis.descriptor.archetype === "custom", proportionDescriptor: analysis.descriptor, foregroundPixelCount: profile.foregroundPixelCount, inferredLandmarkIds, needsReviewLandmarkIds, runtimeMs: elapsed(started), proportions }, status: "seeded", createdAt: timestamp, updatedAt: timestamp };
 }
 
 const affectedZones: Readonly<Record<AnatomicalLandmarkId, readonly PartSemanticType[]>> = { root: [], pelvis: ["torso", "pelvis"], chest: ["torso"], neck: ["head", "torso"], head: ["head"], leftShoulder: ["torso", "leftUpperArm"], leftElbow: ["leftUpperArm", "leftForearm"], leftWrist: ["leftForearm", "leftHand"], rightShoulder: ["torso", "rightUpperArm"], rightElbow: ["rightUpperArm", "rightForearm"], rightWrist: ["rightForearm", "rightHand"], leftHip: ["pelvis", "leftThigh"], leftKnee: ["leftThigh", "leftLowerLeg"], leftAnkle: ["leftLowerLeg", "leftFoot"], rightHip: ["pelvis", "rightThigh"], rightKnee: ["rightThigh", "rightLowerLeg"], rightAnkle: ["rightLowerLeg", "rightFoot"], leftHock: ["leftLowerLeg", "leftFoot"], rightHock: ["rightLowerLeg", "rightFoot"] };
