@@ -2,23 +2,130 @@
   "note": "Joint positions marked by hand on a coordinate grid (2026-11-17), in source pixels. Limbs are named by SCREEN side, as the part-cutter guide names them. Only joints visible in the art are listed. 'pairedLimbs' means left/right cannot be told apart (profile), so each joint is scored against the nearer of the guide's two.",
   "sprites": {
     "warrior": {
-      "image": "public/benchmark/guided-manual/warrior.png", "view": "front", "height": 44, "pairedLimbs": false,
+      "image": "public/benchmark/guided-manual/warrior.png",
+      "view": "front",
+      "height": 44,
+      "pairedLimbs": false,
       "joints": {
-        "head": [23, 11], "neck": [23, 20], "pelvis": [23, 36],
-        "leftShoulder": [17, 23], "leftElbow": [13, 28], "leftWrist": [11, 32],
-        "rightShoulder": [30, 22], "rightElbow": [33, 27], "rightWrist": [34, 31],
-        "leftHip": [19, 37], "leftKnee": [18, 40], "leftAnkle": [18, 43],
-        "rightHip": [27, 37], "rightKnee": [28, 40], "rightAnkle": [29, 43]
-      }
+        "head": [
+          23,
+          11
+        ],
+        "neck": [
+          23,
+          20
+        ],
+        "pelvis": [
+          23,
+          36
+        ],
+        "leftShoulder": [
+          17,
+          23
+        ],
+        "leftElbow": [
+          13,
+          28
+        ],
+        "leftWrist": [
+          11,
+          32
+        ],
+        "rightShoulder": [
+          30,
+          22
+        ],
+        "rightElbow": [
+          33,
+          27
+        ],
+        "rightWrist": [
+          34,
+          31
+        ],
+        "leftHip": [
+          19,
+          37
+        ],
+        "leftKnee": [
+          18,
+          40
+        ],
+        "leftAnkle": [
+          18,
+          43
+        ],
+        "rightHip": [
+          27,
+          37
+        ],
+        "rightKnee": [
+          28,
+          40
+        ],
+        "rightAnkle": [
+          29,
+          43
+        ]
+      },
+      "proportions": "chibi"
     },
     "goblin": {
-      "image": "public/rig-test/goblin/goblin-source.png", "view": "profile", "height": 1440, "pairedLimbs": true,
+      "image": "public/rig-test/goblin/goblin-source.png",
+      "view": "profile",
+      "height": 1440,
+      "pairedLimbs": true,
       "joints": {
-        "head": [500, 230], "neck": [430, 360], "pelvis": [430, 790],
-        "leftShoulder": [290, 440], "leftElbow": [230, 690], "leftWrist": [255, 915],
-        "rightShoulder": [460, 480], "rightElbow": [560, 645], "rightWrist": [650, 735],
-        "leftHip": [400, 800], "leftKnee": [380, 1110], "leftAnkle": [360, 1400]
-      }
+        "head": [
+          500,
+          230
+        ],
+        "neck": [
+          430,
+          360
+        ],
+        "pelvis": [
+          430,
+          790
+        ],
+        "leftShoulder": [
+          290,
+          440
+        ],
+        "leftElbow": [
+          230,
+          690
+        ],
+        "leftWrist": [
+          255,
+          915
+        ],
+        "rightShoulder": [
+          460,
+          480
+        ],
+        "rightElbow": [
+          560,
+          645
+        ],
+        "rightWrist": [
+          650,
+          735
+        ],
+        "leftHip": [
+          400,
+          800
+        ],
+        "leftKnee": [
+          380,
+          1110
+        ],
+        "leftAnkle": [
+          360,
+          1400
+        ]
+      },
+      "proportions": "adult"
     }
   }
 }

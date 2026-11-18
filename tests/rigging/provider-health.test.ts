@@ -36,6 +36,15 @@ describe("central provider health", () => {
     expect(capabilities.reconstruction.available).toBe(true);
   });
 
+  it("treats an engine that is asleep (woken on use) as DEGRADED, keeping its last working capabilities usable", async () => {
+    const asleep = payload({ reachable: false });
+    const health = await service({ ...asleep, provider: { ...asleep.provider, asleep: true, message: "Asleep · wakes on first use" } }).probe();
+    expect(health.state).toBe("DEGRADED");
+    expect(characterPipelineCapabilitiesFromHealth(health).reconstruction.available).toBe(true);
+    // Unreachable without the asleep flag is still OFFLINE.
+    expect((await service(payload({ reachable: false })).probe()).state).toBe("OFFLINE");
+  });
+
   it("classifies a reachable endpoint with no working capability as MISCONFIGURED", async () => {
     const health = await service({ ...payload({ segmentation: false }), capabilities: [capability("CHARACTER_SEGMENTATION", false, "Missing ComfyUI-SAM2 nodes"), capability("OCCLUSION_RECONSTRUCTION", false, "Missing model")] }).probe();
     expect(health.state).toBe("MISCONFIGURED");

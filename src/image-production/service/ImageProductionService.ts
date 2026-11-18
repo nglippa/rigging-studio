@@ -87,12 +87,28 @@ export class ImageProductionService {
     this.resolveRepairAssets = options.resolveRepairAssets;
   }
 
+  /** Capabilities that passed their dependency check the last time ComfyUI answered. */
+  private readonly lastAvailable = new Set<string>();
+  /** The engine is woken once per bridge run when nothing is known about it yet; after that it sleeps when idle. */
+  private wokeForFirstCheck = false;
+
   async status(refreshWorkflows = false) {
-    const [provider, capabilities, generationProviders] = await Promise.all([
+    const [reported, capabilities, generationProviders] = await Promise.all([
       this.provider.status(), this.registry.listCapabilities(refreshWorkflows),
       Promise.all([...this.generationProviders.values()].map((item) => item.getCapabilities())),
     ]);
+    // An engine that stops itself when idle (the Mac Studio's gate) is asleep, not broken, when the bridge can wake it
+    // (COMFYUI_WAKE_URL): what worked at the last check is still offered, and the first request wakes it.
+    const wakeUrl = process.env.COMFYUI_WAKE_URL;
+    if (!reported.reachable && wakeUrl && !this.lastAvailable.size && !this.wokeForFirstCheck) {
+      // Nothing is known yet (the bridge just started while the engine slept): wake it once so the next check can see it.
+      this.wokeForFirstCheck = true;
+      void fetch(wakeUrl, { signal: AbortSignal.timeout(30_000) }).catch(() => undefined);
+    }
+    const asleep = !reported.reachable && Boolean(wakeUrl) && this.lastAvailable.size > 0;
+    const provider = asleep ? { ...reported, asleep: true, message: "Asleep · wakes on first use (up to a minute)" } : reported;
     const checked = await Promise.all(capabilities.map(async (capability) => {
+      if (asleep) return this.lastAvailable.has(capability.capability) ? { ...capability, capabilityAvailable: true, reason: "ComfyUI is asleep and wakes on first use" } : { ...capability, capabilityAvailable: false, reason: "ComfyUI is asleep" };
       if (!provider.reachable) return { ...capability, capabilityAvailable: false, reason: `ComfyUI offline at ${provider.url}: ${provider.message}` };
       if (!capability.capabilityAvailable) return capability;
       try {
@@ -101,6 +117,7 @@ export class ImageProductionService {
         return dependencies.available ? capability : { ...capability, capabilityAvailable: false, reason: formatDependencyFailure(dependencies) };
       } catch (error: unknown) { return { ...capability, capabilityAvailable: false, reason: error instanceof Error ? error.message : "Dependency inspection failed" }; }
     }));
+    if (reported.reachable) { this.lastAvailable.clear(); for (const item of checked) if (item.capabilityAvailable) this.lastAvailable.add(item.capability); }
     return {
       provider, capabilities: checked,
       providers: [

@@ -262,4 +262,14 @@ On the goblin thigh, with the same input and seed, `InpaintModelConditioning` (k
 | warrior, 48 px | front | 5.0% / 9.6% (left hip) | 7.5%: worse; its right shoulder lands on the shield |
 | goblin, 1024×1536 | profile | 12.1% / 23.8% (left hip) | pose model finds no person |
 
-The ceilings are today's numbers plus a margin; lower them when the guide improves. Because of the warrior result, the pose model is only consulted for images at least 256 px on the short side (`POSE_MODEL_MIN_SIDE`). The profile result is the clearest next improvement: the silhouette guide still assumes a front view.
+The ceilings are today's numbers plus a margin; lower them when the guide improves. Because of the warrior result, the pose model is only consulted for images at least 256 px on the short side (`POSE_MODEL_MIN_SIDE`).
+
+### Side views and adult proportions (2026-11-18)
+
+- The guide now measures the legs instead of placing them symmetrically about one centre: at knee and ankle height, two substantial runs of silhouette are two legs, one wide run is two legs touching, and one narrow run is a side view with the legs overlapping (both legs, the hips and the pelvis go on it). Thin runs such as a blade are ignored. A narrow single column counts as a leg even when the lower body otherwise reads as hidden (robe).
+- Parts has a **Chibi / Adult** switch above Cut all parts (`GuideProportions`). Chibi is the old behaviour. Adult puts the neck at 22% and the pelvis at 52% of the figure's height and the shoulders a quarter of the way down the torso. In profile the face juts forward, so no row is narrow and the neck cannot be found from the silhouette; a search for a narrow neck in the top 15–30% was tried and found nothing on the goblin, so it was removed.
+- Goblin (profile, adult): mean error 12.1% → 7.7%, worst 23.8% → 14.3% (now a wrist). Warrior unchanged at 5.0%.
+
+### When the Studio engine is asleep
+
+The gate stops the Studio engine after 30 minutes idle. With `COMFYUI_WAKE_URL` set, the bridge reports the engine as asleep (provider `asleep: true`, health DEGRADED) and keeps offering the capabilities that worked at its last successful check; the first request wakes it. If the bridge starts while the engine sleeps and nothing is known yet, it wakes the engine once, so the browser learns what it can do (about 50 s). Health polling never wakes it again, so the engine still sleeps when idle.

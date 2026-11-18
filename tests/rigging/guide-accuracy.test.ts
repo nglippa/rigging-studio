@@ -3,14 +3,14 @@ import { PNG } from "pngjs";
 import { describe, expect, it } from "vitest";
 import type { DetectedPose } from "../../src/character-generation/pose/poseDetector";
 import { poseModelSuitable, poseToLandmarks } from "../../src/character-generation/pose/poseLandmarks";
-import { applyPoseLandmarks, buildAdaptiveAnatomicalPartitionGuide, createPartCutterState, type AnatomicalLandmarkId, type AnatomicalPartitionGuide } from "../../src/part-cutter";
+import { applyPoseLandmarks, buildAdaptiveAnatomicalPartitionGuide, createPartCutterState, type AnatomicalLandmarkId, type AnatomicalPartitionGuide, type GuideProportions } from "../../src/part-cutter";
 
 /**
  * How close the guide's joints land to joints marked by hand, as a share of the character's height. This is the
  * number to watch when changing the guide or the pose mapping: each sprite has a ceiling that is today's measured
  * error plus a small margin, so a change that makes it worse fails here.
  */
-type Truth = { readonly image: string; readonly view: string; readonly height: number; readonly pairedLimbs: boolean; readonly joints: Readonly<Partial<Record<AnatomicalLandmarkId, readonly [number, number]>>> };
+type Truth = { readonly image: string; readonly view: string; readonly proportions: GuideProportions; readonly height: number; readonly pairedLimbs: boolean; readonly joints: Readonly<Partial<Record<AnatomicalLandmarkId, readonly [number, number]>>> };
 const truth = JSON.parse(readFileSync(new URL("../fixtures/rigging/joint-ground-truth.json", import.meta.url), "utf8")) as { sprites: Record<string, Truth> };
 
 const foregroundOf = (path: string) => {
@@ -35,18 +35,19 @@ function score(guide: AnatomicalPartitionGuide, sprite: Truth): { mean: number; 
 const guideFor = (name: string) => {
   const sprite = truth.sprites[name]; const image = foregroundOf(sprite.image);
   const base = createPartCutterState(`accuracy-${name}`, image.width, image.height, "manual", "2026-11-17T12:00:00.000Z");
-  return { sprite, image, guide: buildAdaptiveAnatomicalPartitionGuide(base, image.foreground, "humanoid") };
+  return { sprite, image, guide: buildAdaptiveAnatomicalPartitionGuide(base, image.foreground, "humanoid", "2026-11-17T12:00:00.000Z", sprite.proportions) };
 };
 
 describe("guide joint accuracy against hand-marked joints", () => {
-  // Ceilings: measured 2026-11-17, plus a margin. Lower them when the guide improves.
-  const ceilings: Record<string, { mean: number }> = { warrior: { mean: .055 }, goblin: { mean: .13 } };
+  // Ceilings: measured 2026-11-17, plus a margin. Lower them when the guide improves. The goblin was 12.1% with chibi
+  // proportions; adult proportions and measured leg columns brought it to 7.7%.
+  const ceilings: Record<string, { mean: number }> = { warrior: { mean: .055 }, goblin: { mean: .085 } };
 
   for (const name of Object.keys(ceilings)) {
     it(`${name}: the silhouette guide stays within its measured error`, () => {
       const { sprite, guide } = guideFor(name);
       const result = score(guide, sprite);
-      console.info(`${name} (${sprite.view}) silhouette guide: mean ${(result.mean * 100).toFixed(1)}% of height, worst ${(result.worst * 100).toFixed(1)}% at ${result.worstJoint}`);
+      console.info(`${name} (${sprite.view}, ${sprite.proportions}) silhouette guide: mean ${(result.mean * 100).toFixed(1)}% of height, worst ${(result.worst * 100).toFixed(1)}% at ${result.worstJoint}`);
       expect(result.mean).toBeLessThanOrEqual(ceilings[name].mean);
     });
   }

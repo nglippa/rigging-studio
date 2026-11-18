@@ -142,7 +142,9 @@ export class ProviderHealthService {
     const reachable = payload.provider.reachable;
     // Reachable with some capabilities working is DEGRADED, not MISCONFIGURED: each capability is still offered on its own,
     // so a missing optional install (Grounding DINO for text-prompted segmentation) does not switch off click to select or repaint.
-    const state: ProviderReadinessState = !reachable ? "OFFLINE" : segmentation?.available ? "READY" : capabilities.some((item) => item.available) ? "DEGRADED" : "MISCONFIGURED";
+    // An asleep engine (it stops itself when idle and the bridge wakes it on use) is DEGRADED, so what it can do stays usable.
+    const asleep = (payload.provider as { asleep?: unknown }).asleep === true;
+    const state: ProviderReadinessState = !reachable ? (asleep && capabilities.some((item) => item.available) ? "DEGRADED" : "OFFLINE") : segmentation?.available ? "READY" : capabilities.some((item) => item.available) ? "DEGRADED" : "MISCONFIGURED";
     const message = stringValue(payload.provider.message);
     return {
       ...initialSnapshot(), state, endpoint: stringValue(payload.provider.url), capabilities, generationProviders, lastCheckedAt: checkedAt,

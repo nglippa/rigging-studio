@@ -500,3 +500,7 @@
 .cutter-canvas g[data-region-id] text { paint-order:stroke;stroke:#05080d;stroke-width:3px;fill:#f2f6fb;font-weight:700; }
 /* Click to select (SAM2): a crosshair says the click picks a spot, not a loop. */
 .cutter-canvas svg[data-tool="click"] { cursor:crosshair; }
+/* Chibi / Adult proportions for Cut all parts: a two-way switch above the button. */
+.guided-proportions { display:grid;grid-template-columns:1fr 1fr;gap:2px;padding:2px;border:1px solid rgba(255,255,255,.08);border-radius:6px; }
+.guided-proportions button { min-height:28px;color:#a7a2bd;border:0;border-radius:4px;background:transparent;font-weight:650;cursor:pointer; }
+.guided-proportions button.active { color:#071216;background:var(--space-cyan); }
