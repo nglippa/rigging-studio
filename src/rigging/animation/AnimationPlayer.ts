@@ -1,4 +1,4 @@
-import { evaluateAnimationAtTime } from "./evaluate";
+import { drawingTime, evaluateAnimationAtTime } from "./evaluate";
 import type { AnimationDefinition } from "../schema/types";
 import type { RigPose } from "../runtime/types";
 import { RigRuntime } from "../runtime/RigRuntime";
@@ -96,6 +96,6 @@ export class AnimationPlayer {
   private applyPose(): void {
     if (!this.animation) return;
     const setupPose: RigPose = this.runtime.getSetupPose();
-    this.runtime.setPose(evaluateAnimationAtTime(this.animation, setupPose, this.time));
+    this.runtime.setPose(evaluateAnimationAtTime(this.animation, setupPose, drawingTime(this.animation, this.time)));
   }
 }

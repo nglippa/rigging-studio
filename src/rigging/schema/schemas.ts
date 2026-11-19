@@ -62,4 +62,5 @@ export const animationTrackSchema: z.ZodType<AnimationTrack> = z.object({
 export const animationDefinitionSchema: z.ZodType<AnimationDefinition> = z.object({
   schemaVersion: z.literal(ANIMATION_SCHEMA_VERSION), id, name: z.string().trim().min(1), duration: positive,
   loop: z.boolean(), tracks: z.array(animationTrackSchema),
+  drawings: z.array(z.number().finite().min(0)).min(1).refine((times) => times.every((time, index) => index === 0 || time > times[index - 1]), "Drawing times must ascend").optional(),
 }).strict();

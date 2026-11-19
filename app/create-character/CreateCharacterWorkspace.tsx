@@ -15,7 +15,7 @@ import { PART_TYPES, type PartType } from "@/src/character-generation/segmentati
 import type { ProposedCharacterPart, Rect, SegmentationMask } from "@/src/character-generation/segmentation/segmentationSchema";
 import { validateSegmentationResponse } from "@/src/character-generation/segmentation/segmentationValidator";
 import { extractPartToDataUrl } from "@/src/character-generation/segmentation/partImageProcessor";
-import { buildRigProposal } from "@/src/character-generation/rigging/rigProposalBuilder";
+import { buildRigProposal, sourcePixelScale } from "@/src/character-generation/rigging/rigProposalBuilder";
 import { validateRigProposal } from "@/src/character-generation/rigging/rigProposalValidator";
 import { wouldCreateHierarchyCycle } from "@/src/character-generation/rigging/hierarchyBuilder";
 import { runRigSmokeTest, type RigSmokeTestResult } from "@/src/character-generation/testing/rigSmokeTest";
@@ -193,7 +193,7 @@ export function CreateCharacterWorkspace() {
     setProject((current) => updateProject(current, {
       stage: "generate", generationPrompt: built.prompt,
       generationMetadata: { provider: result.provider, preset: built.preset, negativePrompt: built.negativePrompt, generationMode: result.generationMode, novelArtwork: result.novelArtwork, sourceArtifact: result.sourceArtifact },
-      generationHistory: [...current.generationHistory, result], sourceImage: result, suitability: undefined, segmentationData: undefined,
+      generationHistory: [...current.generationHistory, result], sourceImage: result, suitability: undefined, segmentationData: undefined, partCutterState: undefined,
       extractedParts: [], reconstructedParts: [], rigDefinition: undefined, skins: [], warnings: result.warnings,
     }));
   });
@@ -289,7 +289,7 @@ export function CreateCharacterWorkspace() {
     }));
     commandService.assertProjectOperationCurrent(operation, "create-character-extraction");
     const resolvedImages = Object.fromEntries(extracted.map((part) => [part.partId, part.image]));
-    const proposal = buildRigProposal({ name: project.name, parts: accepted, imageWidth: project.sourceImage.width, imageHeight: project.sourceImage.height, resolvedImages, partCutterState: project.partCutterState });
+    const proposal = buildRigProposal({ pixelScale: sourcePixelScale(project.sourceImage), name: project.name, parts: accepted, imageWidth: project.sourceImage.width, imageHeight: project.sourceImage.height, resolvedImages, partCutterState: project.partCutterState });
     const unresolved = project.reconstructedParts.filter((review) => review.decision === "unreviewed").map((review) => review.partId);
     const rig = { ...proposal.rig, metadata: { ...proposal.rig.metadata, occlusionWarnings: unresolved } };
     const validated = validateRigProposal({ ...proposal, rig }); if (!validated.success) throw new Error(validated.message);

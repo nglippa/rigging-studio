@@ -5,6 +5,7 @@ import { RigRuntime } from "../runtime/RigRuntime";
 import type { AttachmentDefinition } from "../schema/types";
 import { RigAssetLoader, type TextureLoadResult } from "../assets/RigAssetLoader";
 import { rotsprite, snapAngle, type RgbaImage } from "./rotsprite";
+import { pixelScaleOf, renderPixelFrame, type FrameWindow, type PartPixels } from "../export/pixelFrames";
 
 export type RigRendererOptions = {
   readonly baseUrl?: string;
@@ -53,6 +54,12 @@ export class RigRenderer {
   private readonly pixelArt: boolean;
   private readonly sourcePixels = new Map<string, RgbaImage | null>();
   private readonly rotated = new Map<string, { readonly texture: Texture; readonly anchorX: number; readonly anchorY: number; readonly size: number }>();
+  /**
+   * True pixel art drawn larger (metadata.pixelScale): the whole character is composed at its own resolution on the CPU
+   * (export/pixelFrames, the same code the hand-drawn bench and sprite-sheet export use) and shown as one texture enlarged
+   * by the scale, so every part sits on the one art-pixel grid and the game shows exactly the frames that were measured.
+   */
+  private composite: { readonly canvas: HTMLCanvasElement; readonly context: CanvasRenderingContext2D; readonly texture: Texture; readonly sprite: Sprite; readonly window: FrameWindow; readonly cache: Map<string, { image: RgbaImage; pivot: { x: number; y: number } }>; pixels: PartPixels | null; lastKey: string } | null = null;
 
   private constructor(
     private readonly runtime: RigRuntime,
@@ -80,6 +87,21 @@ export class RigRenderer {
       this.boneContainers.set(bone.id, container);
       this.container.addChild(container);
     });
+    const scale = pixelScaleOf(runtime.definition);
+    if (this.pixelArt && scale > 1 && typeof document !== "undefined") {
+      // Room for limbs and weapons to swing beyond the picture: half its size on every side, on whole art pixels.
+      const width = runtime.definition.canvas?.width ?? 256; const height = runtime.definition.canvas?.height ?? 256;
+      const window = { x: -Math.ceil(width / 2 / scale) * scale, y: -Math.ceil(height / 2 / scale) * scale, width: Math.ceil(width * 2 / scale) * scale, height: Math.ceil(height * 2 / scale) * scale };
+      const canvas = document.createElement("canvas"); canvas.width = window.width / scale; canvas.height = window.height / scale;
+      const context = canvas.getContext("2d");
+      if (context) {
+        const texture = Texture.from(canvas); texture.source.scaleMode = "nearest";
+        const sprite = new Sprite(texture); sprite.label = "pixel-composite"; sprite.zIndex = 0; sprite.visible = false;
+        sprite.position.set(window.x, window.y); sprite.scale.set(scale);
+        this.slotLayer.addChild(sprite);
+        this.composite = { canvas, context, texture, sprite, window, cache: new Map(), pixels: null, lastKey: "" };
+      }
+    }
     runtime.definition.slots.forEach((slot) => {
       const sprite = new Sprite(Texture.WHITE);
       sprite.label = `slot:${slot.id}`;
@@ -122,6 +144,11 @@ export class RigRenderer {
       ));
     });
 
+    if (this.updateComposite()) {
+      if (this.showBounds) this.slotBounds.clear();
+      if (this.showBones) this.drawBoneHandles(); else this.boneHandles.clear();
+      return;
+    }
     const visibleBounds: VisibleSlotBounds[] = [];
     this.runtime.getResolvedSlots().forEach(({ slot, attachment }) => {
       const sprite = this.attachmentSprites.get(slot.id);
@@ -176,6 +203,35 @@ export class RigRenderer {
   }
 
   /**
+   * Draws the composed frame when composited mode applies (no per-slot overrides or swapped attachments, every texture
+   * readable). Re-composes only when the pose changes, so a held drawing costs nothing. False means draw part by part.
+   */
+  private updateComposite(): boolean {
+    const composite = this.composite; if (!composite) return false;
+    const overridden = this.slotRenderOverrides.size > 0 || Object.keys(this.runtime.getSlotAttachmentOverrides()).length > 0 || this.runtime.getSkinId() !== this.runtime.definition.defaultSkinId;
+    if (overridden) { composite.sprite.visible = false; return false; }
+    if (!composite.pixels) {
+      const pixels: Record<string, RgbaImage> = {};
+      for (const attachment of this.runtime.definition.attachments) {
+        const result = this.textureResults[attachment.id]; if (!result?.success) continue;
+        const read = this.readPixels(attachment.id, result.texture); if (!read) { composite.sprite.visible = false; return false; }
+        pixels[attachment.id] = read;
+      }
+      composite.pixels = pixels;
+    }
+    const pose = this.runtime.getPose();
+    const key = Object.entries(pose.bones).map(([id, bone]) => `${id}:${bone.x.toFixed(2)},${bone.y.toFixed(2)},${bone.rotation.toFixed(4)},${bone.scaleX.toFixed(3)},${bone.scaleY.toFixed(3)}`).join("|");
+    if (key !== composite.lastKey) {
+      const frame = renderPixelFrame(this.runtime.definition, pose, composite.pixels, composite.window, composite.cache);
+      composite.context.putImageData(new ImageData(new Uint8ClampedArray(frame.data), frame.width, frame.height), 0, 0);
+      composite.texture.source.update(); composite.lastKey = key;
+    }
+    composite.sprite.visible = true;
+    this.attachmentSprites.forEach((sprite) => { sprite.visible = false; });
+    return true;
+  }
+
+  /**
    * A part that is only rotated (not stretched or mirrored), drawn as a RotSprite copy at the nearest 5° step about its
    * pivot, cached per part and angle. Null when it should be drawn as an ordinary transformed texture.
    */
@@ -216,6 +272,7 @@ export class RigRenderer {
     if (this.destroyed) return;
     this.destroyed = true;
     this.rotated.forEach((entry) => entry.texture.destroy(true));
+    this.composite?.texture.destroy(true); this.composite = null;
     this.rotated.clear();
     this.attachmentSprites.clear();
     this.boneContainers.clear();

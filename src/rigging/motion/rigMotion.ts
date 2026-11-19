@@ -116,7 +116,10 @@ const carriesEquipment = (rig: RigDefinition, boneId: string): boolean => rig.sl
 const equipmentElongation = (rig: RigDefinition, boneId: string): number => Math.max(0, ...rig.slots.flatMap((slot) => {
   if (slot.boneId !== boneId) return [];
   const attachment = rig.attachments.find((candidate) => candidate.id === slot.attachmentId);
-  return attachment?.category === "equipment" ? [Math.max(attachment.width, attachment.height) / Math.max(1, Math.min(attachment.width, attachment.height))] : [];
+  if (attachment?.category !== "equipment") return [];
+  // The item's true shape when the rig recorded it (any angle); otherwise its bounding box, which only suits upright items.
+  const measured = (rig.metadata?.equipmentElongation as Record<string, unknown> | undefined)?.[attachment.id];
+  return [typeof measured === "number" ? measured : Math.max(attachment.width, attachment.height) / Math.max(1, Math.min(attachment.width, attachment.height))];
 }));
 
 function limb(rig: RigDefinition, world: World, side: Side, kind: "arm" | "leg", facingSign: number): Limb | null {
@@ -672,6 +675,27 @@ export function artlessLimbBones(rig: RigDefinition): ReadonlySet<string> {
   return new Set(rig.bones.filter((bone) => /left|right/i.test(bone.id) && /arm|hand|leg|thigh|shin|calf|foot|hock/i.test(bone.id) && !hasArtBelow(bone.id)).map((bone) => bone.id));
 }
 
+/**
+ * When each standard clip is drawn, as fractions of its length: hand pixel animation shows a few drawings a second and
+ * holds the extremes (measured on hand-animated CC0 sprites in tests/fixtures/handdrawn: idle 3 drawings at 9 a second,
+ * run 6 at 12.5, an attack 8 drawings with 160-240 ms holds on the wind-up and follow-through and three 40 ms frames
+ * through the strike). The extremes of each clip's keys fall on drawings, so they are held rather than passed through.
+ */
+const even = (count: number) => Array.from({ length: count }, (_, index) => index / count);
+export const DRAWING_CHARTS: Readonly<Record<MotionId, readonly number[]>> = {
+  idle: even(16),                                   // 8 a second over 2 s
+  walk: even(8),                                    // contact, down, passing, up, for each leg
+  run: even(6),
+  raise_arms: [0, .12, .24, .36, .44, .53, .62, .71, .8, .88, .94],
+  // ready, wind-up, held anticipation (.3-.4), three quick strike drawings through contact (.44), held follow-through
+  // (.54-.72), recovery, settle.
+  melee_attack: [0, .12, .24, .3, .4, .44, .49, .54, .72, .88],
+  // The snap is one quick drawing, the recoil extreme is held, then a slower, unevenly spaced recovery.
+  hurt: [0, .06, .12, .34, .46, .58, .8],
+  // A stagger held at the tipping point, a fast fall in short drawings, the impact, a small settle, then lying still.
+  death: [0, .06, .25, .43, .5, .56, .62, .7, .76, .84, .92],
+};
+
 /** Builds one standard motion for this rig, or null when the rig has none of the bones that motion needs. */
 export function buildMotionClip(rig: RigDefinition, id: MotionId, anatomy: RigAnatomy = analyzeRigAnatomy(rig)): AnimationDefinition | null {
   const spec = STANDARD_MOTIONS.find((motion) => motion.id === id);
@@ -684,7 +708,8 @@ export function buildMotionClip(rig: RigDefinition, id: MotionId, anatomy: RigAn
             : death(anatomy, anatomy.root ? computeWorldTransforms(rig, createRestPose(rig))[anatomy.root.id].y : anatomy.groundY, spec.duration);
   const artless = artlessLimbBones(rig);
   const shown = tracks.filter((track) => !artless.has(track.boneId));
-  return shown.length ? { schemaVersion: ANIMATION_SCHEMA_VERSION, id: spec.id, name: spec.name, duration: spec.duration, loop: spec.loop, tracks: shown } : null;
+  const drawings = DRAWING_CHARTS[spec.id].map((fraction) => Math.round(fraction * spec.duration * 1000) / 1000);
+  return shown.length ? { schemaVersion: ANIMATION_SCHEMA_VERSION, id: spec.id, name: spec.name, duration: spec.duration, loop: spec.loop, tracks: shown, drawings } : null;
 }
 
 /** The standard clip set for a rig, each resolved against that rig's rest pose and facing. */

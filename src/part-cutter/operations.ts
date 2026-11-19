@@ -340,3 +340,13 @@ export function renderProposalSvg(proposal: PartCutProposal, width: number, heig
   const source = sourceImage ? `<image href="${escape(sourceImage)}" x="0" y="0" width="${width}" height="${height}" preserveAspectRatio="none"/>` : `<rect width="100%" height="100%" fill="#091013"/>`;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}">${source}<rect x="0" y="0" width="${Math.min(width, 300)}" height="25" fill="#091013" fill-opacity=".82"/><text x="8" y="17" fill="#fff" font-family="system-ui" font-size="11" font-weight="700">${safeCount} SAFE · ${proposal.parts.length - safeCount} REVIEW · staged masks</text>${panels}</svg>`;
 }
+
+/**
+ * The saved cutter state when it was cut from this very image, otherwise null. A character keeps its project when new art
+ * is approved, so its old cuts (and guide) describe a different picture and must not be laid over the new one.
+ */
+export function cutterStateFor(state: PartCutterState | undefined | null, source: { readonly generationId: string; readonly width: number; readonly height: number }): PartCutterState | null {
+  if (!state || state.sourceImageId !== source.generationId) return null;
+  if (state.sourceCanvasSize.width !== source.width || state.sourceCanvasSize.height !== source.height) return null;
+  return state;
+}

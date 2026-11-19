@@ -5,7 +5,9 @@
  *   1. Scale up 8× with Scale2× applied three times, treating similar colours as equal, so edges become smooth staircases.
  *   2. Rotate and shrink back to the original pixel size in one nearest-neighbour pass.
  *
- * (The optional offset search and single-pixel restoration steps of the original are left out.) Pure array code: the
+ * 3. Clean up: stray single pixels left where an edge's staircase breaks take their neighbours' colour (cleanUp below).
+ *
+ * (The optional offset search of the original is left out.) Pure array code: the
  * renderer calls it once per part and angle and caches the result. See the human-motion-rigging skill, ch09.
  */
 export type RgbaImage = { readonly width: number; readonly height: number; readonly data: Uint8ClampedArray };
@@ -59,7 +61,50 @@ export function rotsprite(image: RgbaImage, degrees: number, pivot: { readonly x
     const from = (iy * source.width + ix) * 4; const to = (y * size + x) * 4;
     out[to] = source.data[from]; out[to + 1] = source.data[from + 1]; out[to + 2] = source.data[from + 2]; out[to + 3] = source.data[from + 3];
   }
+  if (!exact) cleanUp({ width: size, height: size, data: out }, loneColours(image));
   return { image: { width: size, height: size, data: out }, pivot: { x: radius, y: radius } };
+}
+
+const colourAt = (data: Uint8ClampedArray, index: number) => data[index * 4 + 3] < 128 ? -1 : (data[index * 4] << 16) | (data[index * 4 + 1] << 8) | data[index * 4 + 2];
+
+/** Colours the source uses as single pixels (an eye shine, a rivet): those are drawn that way and are kept. */
+function loneColours(image: RgbaImage): ReadonlySet<number> {
+  const lone = new Set<number>(); const { width, height, data } = image;
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+    const here = colourAt(data, y * width + x); if (here === -1) continue;
+    let alone = true;
+    for (let dy = -1; dy <= 1 && alone; dy += 1) for (let dx = -1; dx <= 1; dx += 1) {
+      if ((dx || dy) && x + dx >= 0 && y + dy >= 0 && x + dx < width && y + dy < height && colourAt(data, (y + dy) * width + x + dx) === here) { alone = false; break; }
+    }
+    if (alone) lone.add(here);
+  }
+  return lone;
+}
+
+/**
+ * RotSprite's clean-up step: a rotated image has stray single pixels where the staircase of an edge breaks, and they
+ * flicker as the angle changes. A pixel with no neighbour of its colour (eight around) takes the colour most of its four
+ * direct neighbours share, or becomes empty when most are empty, unless its colour is one the art draws as single pixels.
+ */
+function cleanUp(image: RgbaImage, keep: ReadonlySet<number>): void {
+  const { width, height, data } = image; const changes: [number, number][] = [];
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+    const index = y * width + x; const here = colourAt(data, index); if (here === -1 || keep.has(here)) continue;
+    let alone = true;
+    for (let dy = -1; dy <= 1 && alone; dy += 1) for (let dx = -1; dx <= 1; dx += 1) {
+      if ((dx || dy) && x + dx >= 0 && y + dy >= 0 && x + dx < width && y + dy < height && colourAt(data, (y + dy) * width + x + dx) === here) { alone = false; break; }
+    }
+    if (!alone) continue;
+    const around = ([[1, 0], [-1, 0], [0, 1], [0, -1]] as const).map(([dx, dy]) => { const nx = x + dx; const ny = y + dy; return nx >= 0 && ny >= 0 && nx < width && ny < height ? ny * width + nx : -1; });
+    const votes = new Map<number, number>(); for (const neighbour of around) { const colour = neighbour >= 0 ? colourAt(data, neighbour) : -1; votes.set(colour, (votes.get(colour) ?? 0) + 1); }
+    let winner = -2; let winning = 0; votes.forEach((count, colour) => { if (count > winning) { winning = count; winner = colour; } });
+    const source = around.find((neighbour) => neighbour >= 0 && colourAt(data, neighbour) === winner) ?? -1;
+    if (winning >= 2) changes.push([index, winner === -1 ? -1 : source]);
+  }
+  for (const [index, from] of changes) {
+    if (from < 0) data.fill(0, index * 4, index * 4 + 4);
+    else data.copyWithin(index * 4, from * 4, from * 4 + 4);
+  }
 }
 
 /** Rotations are pre-rendered at this step (degrees) and the nearest is shown. */

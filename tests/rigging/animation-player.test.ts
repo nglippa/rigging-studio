@@ -101,3 +101,28 @@ describe("AnimationPlayer", () => {
     expect(source).toEqual(sourceSnapshot);
   });
 });
+
+describe("drawn timing (clip.drawings)", () => {
+  it("shows each drawing until the next instead of moving every tick", async () => {
+    const { drawingTime, evaluateAnimation } = await import("../../src/rigging/animation/evaluate");
+    const clip = { schemaVersion: 1 as const, id: "swing", name: "Swing", duration: 1, loop: false, drawings: [0, .3, .4, .8], tracks: [] };
+    expect(drawingTime(clip, 0)).toBe(0);
+    expect(drawingTime(clip, .29)).toBe(0);
+    expect(drawingTime(clip, .3)).toBe(.3);
+    expect(drawingTime(clip, .79)).toBe(.4);
+    expect(drawingTime(clip, 1)).toBe(.8);
+    expect(drawingTime({ ...clip, drawings: undefined }, .55)).toBe(.55);
+    void evaluateAnimation;
+  });
+
+  it("gives every standard clip a drawing chart that holds its extremes", async () => {
+    const { DRAWING_CHARTS, STANDARD_MOTIONS } = await import("../../src/rigging/motion/rigMotion");
+    for (const motion of STANDARD_MOTIONS) {
+      const chart = DRAWING_CHARTS[motion.id];
+      expect(chart[0]).toBe(0);
+      expect(chart.every((value, index) => index === 0 || value > chart[index - 1])).toBe(true);
+      const perSecond = chart.length / motion.duration;
+      expect(perSecond).toBeGreaterThanOrEqual(6); expect(perSecond).toBeLessThanOrEqual(16); // hand-drawn rates
+    }
+  });
+});

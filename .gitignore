@@ -51,3 +51,5 @@ next-env.d.ts
 
 # Background services started by npm run studio:up
 /.studio/
+/.bench/
+/tests/fixtures/bench-rigs/last-report.json

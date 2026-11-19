@@ -82,4 +82,9 @@ export type AnimationDefinition = {
   readonly duration: number;
   readonly loop: boolean;
   readonly tracks: readonly AnimationTrack[];
+  /**
+   * When set, the times (seconds, ascending, the first 0) at which the clip is drawn: playback shows each drawing until the
+   * next instead of moving every display tick, as hand animation does (a few drawings a second, holds on the extremes).
+   */
+  readonly drawings?: readonly number[];
 };

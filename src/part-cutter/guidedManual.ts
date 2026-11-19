@@ -307,15 +307,126 @@ export function selectionFromCanvasMask(alpha: ArrayLike<number>, width: number,
  * which otherwise stays with whatever part lies next to it (a chibi's head kept the dark edge of the sword beside it, and
  * its hidden-area fill then painted the sword's whole shape as head).
  */
-function withOutline(selection: GuidedSelection, foreground: readonly number[], width: number, height: number): GuidedSelection {
-  const left = Math.max(0, selection.bounds.x - 1); const top = Math.max(0, selection.bounds.y - 1);
-  const right = Math.min(width, selection.bounds.x + selection.bounds.width + 1); const bottom = Math.min(height, selection.bounds.y + selection.bounds.height + 1);
+/**
+ * The selection plus the outline drawn around it. A segmentation model's mask stops at the object's colour and leaves its
+ * dark outline behind, and that outline is one art pixel thick: one screen pixel for small sprites, several for pixel art
+ * drawn larger. So the mask grows through connected outline-dark pixels (up to OUTLINE_REACH), and by one pixel of any
+ * colour when no colours are given.
+ */
+const OUTLINE_REACH = 12;
+function withOutline(selection: GuidedSelection, foreground: readonly number[], width: number, height: number, colours?: ArrayLike<number>): GuidedSelection {
+  const reach = colours ? OUTLINE_REACH : 1;
+  const left = Math.max(0, selection.bounds.x - reach); const top = Math.max(0, selection.bounds.y - reach);
+  const right = Math.min(width, selection.bounds.x + selection.bounds.width + reach); const bottom = Math.min(height, selection.bounds.y + selection.bounds.height + reach);
   const bounds = { x: left, y: top, width: right - left, height: bottom - top }; const alpha = new Array<number>(bounds.width * bounds.height).fill(0);
   const inside = (x: number, y: number) => { const lx = x - selection.bounds.x; const ly = y - selection.bounds.y; return lx >= 0 && ly >= 0 && lx < selection.mask.width && ly < selection.mask.height && selection.mask.alpha[ly * selection.mask.width + lx] > 0; };
-  for (let y = top; y < bottom; y += 1) for (let x = left; x < right; x += 1) {
-    if (inside(x, y) || ((foreground[y * width + x] ?? 0) > 0 && (inside(x - 1, y) || inside(x + 1, y) || inside(x, y - 1) || inside(x, y + 1)))) alpha[(y - top) * bounds.width + x - left] = 255;
+  const local = (x: number, y: number) => (y - top) * bounds.width + x - left;
+  const dark = (x: number, y: number) => { if (!colours) return false; const i = (y * width + x) * 4; return 0.299 * colours[i] + 0.587 * colours[i + 1] + 0.114 * colours[i + 2] < 72; };
+  const queue: [number, number, number][] = [];
+  for (let y = top; y < bottom; y += 1) for (let x = left; x < right; x += 1) if (inside(x, y)) { alpha[local(x, y)] = 255; queue.push([x, y, 0]); }
+  for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    const [x, y, depth] = queue[cursor];
+    for (const [nx, ny] of [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]] as const) {
+      if (nx < left || ny < top || nx >= right || ny >= bottom || alpha[local(nx, ny)] || !((foreground[ny * width + nx] ?? 0) > 0)) continue;
+      // Outline pixels are taken however thick the outline is; anything else only as the one-pixel ring.
+      if (depth === 0 || (dark(nx, ny) && depth < reach)) { if (!colours && depth > 0) continue; alpha[local(nx, ny)] = 255; if (dark(nx, ny)) queue.push([nx, ny, depth + 1]); }
+    }
   }
+  // Closing (grow then shrink by CLOSE_RADIUS, within the figure): fills the nibbles a model's mask leaves along an object's
+  // edge, such as a lighter rim, without reaching as far as a separate shape like the hand holding it.
+  if (colours) close(alpha, bounds, foreground, width);
   return { bounds, mask: { width: bounds.width, height: bounds.height, alpha } };
+}
+
+/**
+ * An arm hidden behind the item it holds (the shield arm of a character facing the viewer): its cut parts are slivers of
+ * outline, a small fraction of its twin's, and rotating slivers draws debris. Such an arm is treated as hidden: its
+ * slivers go to the nearest part (the item they outline), and the rig draws it from its twin, behind the body, as it does
+ * a side view's far arm. Only an arm whose hand holds one of the items just cut is considered.
+ */
+const HIDDEN_ARM_SHARE = .2;
+function hideCoveredArms(state: PartCutterState, holdingSides: readonly ("left" | "right")[], foreground: readonly number[]): { readonly state: PartCutterState; readonly hidden: readonly PartSemanticType[] } {
+  const area = (part: PartCutterState["parts"][number]) => { let n = 0; for (const value of part.mask.alpha) if (value > 0) n += 1; return n; };
+  const armOf = (side: "left" | "right") => (["UpperArm", "Forearm", "Hand"] as const).map((piece) => `${side}${piece}` as PartSemanticType);
+  let current = state; const hidden: PartSemanticType[] = [];
+  for (const side of holdingSides) {
+    const twin = side === "left" ? "right" : "left";
+    const mine = current.parts.filter((part) => armOf(side).includes(part.semanticType));
+    const theirs = current.parts.filter((part) => armOf(twin).includes(part.semanticType));
+    const twinArea = theirs.reduce((sum, part) => sum + area(part), 0);
+    if (!mine.length || !twinArea || mine.reduce((sum, part) => sum + area(part), 0) >= twinArea * HIDDEN_ARM_SHARE) continue;
+    for (const part of mine) current = removeOwnershipRegion(current, part.partId, "ai");
+    hidden.push(...mine.map((part) => part.semanticType));
+  }
+  if (!hidden.length) return { state: current, hidden };
+  const { width, height } = current.sourceCanvasSize;
+  current = adoptStrayArtwork(current, foreground, Math.max(2, Math.round(Math.hypot(width, height) * .05))).state;
+  const progress = current.guidedManual;
+  if (progress) current = { ...current, guidedManual: { ...progress, completedSemantics: progress.completedSemantics.filter((semantic) => !hidden.includes(semantic)), skippedSemantics: [...new Set([...progress.skippedSemantics, ...hidden])] } };
+  return { state: current, hidden };
+}
+
+/**
+ * A blade, spear or axe completed along its own axis: a segmentation model often stops at the grip and guard where they
+ * cross the body, and the body part then keeps them, so they stay behind (a grey ghost) when the weapon swings. Every drawn
+ * pixel in a narrow corridor around the item's long axis, up to a third past its ends, joins it unless an arm owns it (the
+ * hand around the grip stays the hand's). Items that are not elongated, such as a round shield, are left as they are.
+ */
+function alongBlade(selection: GuidedSelection, state: PartCutterState, foreground: readonly number[], width: number, height: number): GuidedSelection {
+  const { bounds, mask } = selection; let n = 0; let sx = 0; let sy = 0; let sxx = 0; let syy = 0; let sxy = 0;
+  for (let y = 0; y < mask.height; y += 1) for (let x = 0; x < mask.width; x += 1) if (mask.alpha[y * mask.width + x] > 0) { const gx = x + bounds.x; const gy = y + bounds.y; n += 1; sx += gx; sy += gy; sxx += gx * gx; syy += gy * gy; sxy += gx * gy; }
+  if (n < 16) return selection;
+  const mx = sx / n; const my = sy / n; const vxx = sxx / n - mx * mx; const vyy = syy / n - my * my; const vxy = sxy / n - mx * my;
+  const spread = Math.sqrt(((vxx - vyy) / 2) ** 2 + vxy ** 2); const major = (vxx + vyy) / 2 + spread; const minor = Math.max(1e-6, (vxx + vyy) / 2 - spread);
+  if (Math.sqrt(major / minor) < 2.5) return selection;
+  const angle = .5 * Math.atan2(2 * vxy, vxx - vyy); const ux = Math.cos(angle); const uy = Math.sin(angle);
+  let lo = Infinity; let hi = -Infinity; let across = 0;
+  for (let y = 0; y < mask.height; y += 1) for (let x = 0; x < mask.width; x += 1) if (mask.alpha[y * mask.width + x] > 0) {
+    const dx = x + bounds.x - mx; const dy = y + bounds.y - my; const along = dx * ux + dy * uy; lo = Math.min(lo, along); hi = Math.max(hi, along);
+    across = Math.max(across, Math.abs(-dx * uy + dy * ux));
+  }
+  // Only the grip end extends: the end nearer the body's centre (the tip points away from the body).
+  let bx = 0; let by = 0; let bn = 0; for (let y = 0; y < height; y += 4) for (let x = 0; x < width; x += 4) if ((foreground[y * width + x] ?? 0) > 0) { bx += x; by += y; bn += 1; }
+  const towardBody = bn ? ((bx / bn - mx) * ux + (by / bn - my) * uy) : 0;
+  const length = hi - lo; if (towardBody < 0) lo -= length / 3; else hi += length / 3; const halfWidth = Math.max(2, across * .6);
+  const ownership = ensureOwnershipPartition(state).ownership; if (!ownership) return selection;
+  const labels = decodeOwnership(ownership);
+  const armOwned = (index: number) => { const regionId = ownership.regionIds[labels[index] - 1]; const part = state.parts.find((candidate) => candidate.partId === regionId); return Boolean(part && /Arm|Forearm|Hand/.test(part.semanticType)); };
+  const ends = [[mx + ux * lo, my + uy * lo], [mx + ux * hi, my + uy * hi]];
+  const left = Math.max(0, Math.floor(Math.min(bounds.x, ...ends.map((p) => p[0])) - halfWidth)); const top = Math.max(0, Math.floor(Math.min(bounds.y, ...ends.map((p) => p[1])) - halfWidth));
+  const right = Math.min(width, Math.ceil(Math.max(bounds.x + bounds.width, ...ends.map((p) => p[0])) + halfWidth)); const bottom = Math.min(height, Math.ceil(Math.max(bounds.y + bounds.height, ...ends.map((p) => p[1])) + halfWidth));
+  const out = { x: left, y: top, width: right - left, height: bottom - top }; const alpha = new Array<number>(out.width * out.height).fill(0);
+  for (let y = top; y < bottom; y += 1) for (let x = left; x < right; x += 1) {
+    const lx = x - bounds.x; const ly = y - bounds.y;
+    if (lx >= 0 && ly >= 0 && lx < mask.width && ly < mask.height && mask.alpha[ly * mask.width + lx] > 0) { alpha[(y - top) * out.width + x - left] = 255; continue; }
+    const index = y * width + x; if (!((foreground[index] ?? 0) > 0) || armOwned(index)) continue;
+    const dx = x - mx; const dy = y - my; const along = dx * ux + dy * uy;
+    if (along >= lo && along <= hi && Math.abs(-dx * uy + dy * ux) <= halfWidth) alpha[(y - top) * out.width + x - left] = 255;
+  }
+  return { bounds: out, mask: { width: out.width, height: out.height, alpha } };
+}
+
+const CLOSE_RADIUS = 6;
+function close(alpha: number[], bounds: { readonly x: number; readonly y: number; readonly width: number; readonly height: number }, foreground: readonly number[], width: number): void {
+  const w = bounds.width; const h = bounds.height; const r = CLOSE_RADIUS;
+  const sweep = (from: Uint8Array, grow: boolean) => {
+    const out = new Uint8Array(w * h);
+    for (let y = 0; y < h; y += 1) for (let x = 0; x < w; x += 1) {
+      let hit = !grow;
+      for (let dy = -r; dy <= r && hit !== grow; dy += 1) for (let dx = -r; dx <= r; dx += 1) {
+        if (dx * dx + dy * dy > r * r) continue;
+        const nx = x + dx; const ny = y + dy; const on = nx >= 0 && ny >= 0 && nx < w && ny < h && from[ny * w + nx] === 1;
+        if (grow ? on : !on) { hit = grow; break; }
+      }
+      out[y * w + x] = hit ? 1 : 0;
+    }
+    return out;
+  };
+  const mask = Uint8Array.from(alpha, (value) => value > 0 ? 1 : 0);
+  const closed = sweep(sweep(mask, true), false);
+  for (let y = 0; y < h; y += 1) for (let x = 0; x < w; x += 1) {
+    const i = y * w + x; if (closed[i] && !mask[i] && (foreground[(bounds.y + y) * width + bounds.x + x] ?? 0) > 0) alpha[i] = 255;
+  }
 }
 
 /**
@@ -323,17 +434,22 @@ function withOutline(selection: GuidedSelection, foreground: readonly number[], 
  * screen-left hand's as off-hand (the rig attaches those to the right-hand and left-hand bones). Pixels other parts own
  * are carved out of them, as a loop drawn over existing parts is. The guided step the user is on does not move.
  */
-export function commitHeldObjects(state: PartCutterState, items: readonly (GuidedSelection & { readonly hand: "left" | "right" })[], foreground: readonly number[], at?: string): { readonly state: PartCutterState; readonly cut: readonly PartSemanticType[] } {
+export function commitHeldObjects(state: PartCutterState, items: readonly (GuidedSelection & { readonly hand: "left" | "right" })[], foreground: readonly number[], at?: string, colours?: ArrayLike<number>): { readonly state: PartCutterState; readonly cut: readonly PartSemanticType[]; readonly hidden: readonly PartSemanticType[] } {
   let current = initializeGuidedManual(state, at); const progress = current.guidedManual!; const cut: PartSemanticType[] = [];
   const { width, height } = state.sourceCanvasSize;
   for (const item of items) {
     const semantic: PartSemanticType = item.hand === "right" ? "mainHandEquipment" : "offHandEquipment";
     if (cut.includes(semantic)) continue;
     const positioned: PartCutterState = { ...current, guidedManual: { ...current.guidedManual!, phase: "equipment", currentSemantic: semantic, intent: "replace" } };
-    const result = commitGuidedSelection(positioned, withOutline(item, foreground, width, height), foreground, at, true);
+    const outlined = withOutline(item, foreground, width, height, colours);
+    const selection = colours ? alongBlade(outlined, current, foreground, width, height) : outlined;
+    const result = commitGuidedSelection(positioned, selection, foreground, at, true);
     if (result.ok) { current = result.state; cut.push(semantic); }
   }
-  return { state: { ...current, guidedManual: { ...current.guidedManual!, phase: progress.phase, currentSemantic: progress.currentSemantic, intent: progress.intent } }, cut };
+  const sides = cut.map((semantic) => semantic === "mainHandEquipment" ? "right" as const : "left" as const);
+  const covered = colours ? hideCoveredArms(current, sides, foreground) : { state: current, hidden: [] as PartSemanticType[] };
+  current = covered.state;
+  return { state: { ...current, guidedManual: { ...current.guidedManual!, phase: progress.phase, currentSemantic: progress.currentSemantic, intent: progress.intent } }, cut, hidden: covered.hidden };
 }
 
 /**

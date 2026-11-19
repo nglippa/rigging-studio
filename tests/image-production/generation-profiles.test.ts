@@ -94,6 +94,21 @@ describe("plain-background cut-out", () => {
     expect(alphaAt(result.bytes, 30, 20)).toBe(255); // the outline itself
   });
 
+  it("removes a floor shadow under the feet but keeps grey boots inside their outline", () => {
+    // A brown body (rows 4-31), a dark-outlined grey boot (rows 32-35, x 14-25) and a flat grey shadow (rows 34-37) wider than it.
+    const bytes = image((x, y) => {
+      if (y >= 4 && y < 32 && x >= 14 && x < 26) return [110, 70, 40];
+      if (y >= 32 && y < 36 && x >= 14 && x < 26) return x === 14 || x === 25 || y === 35 ? [20, 20, 24] : [150, 150, 156];
+      if (y >= 34 && y < 38 && x >= 8 && x < 32) return [170, 170, 176];
+      return [254, 254, 254];
+    });
+    const result = removePlainBackground(bytes);
+    expect(alphaAt(result.bytes, 10, 36)).toBe(0);   // shadow
+    expect(alphaAt(result.bytes, 30, 35)).toBe(0);   // shadow
+    expect(alphaAt(result.bytes, 18, 33)).toBe(255); // grey boot inside its outline
+    expect(alphaAt(result.bytes, 20, 20)).toBe(255); // body
+  });
+
   it("leaves an image alone when its border is not one plain colour", () => {
     const bytes = image((x, y) => [(x * 37) % 255, (y * 53) % 255, 90]);
     expect(removePlainBackground(bytes).removed).toBe(false);

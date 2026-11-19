@@ -99,6 +99,8 @@ export async function startEngine(wakeUrl: string, engineReachable: () => Promis
     const status = await gateStatus(new URL(wakeUrl));
     if (status?.engine === "stopped" && status.guard_refusal) throw new Error(`The Mac Studio refused to start ComfyUI: ${status.guard_refusal}`);
   }
+  const status = await gateStatus(new URL(wakeUrl));
+  if (status?.engine === "running") throw new Error("ComfyUI is running on the Mac Studio but this Mac cannot reach it at its local address (127.0.0.1:8188). Start the forward with npm run studio:up");
   throw new Error("ComfyUI on the Mac Studio did not start within two minutes");
 }
 

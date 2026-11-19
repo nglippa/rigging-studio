@@ -157,7 +157,7 @@ export function tunableParams(profile: CcMediaProfile): readonly (Omit<ProfilePa
  */
 export function profilePrompt(prompt: string): string {
   return prompt
-    .replace(/Output one pose only on a genuinely transparent background[^.]*\./i, "Output one full-body pose only, on a plain white background.")
+    .replace(/Output one pose only on a genuinely transparent background[^.]*\./i, "Output one full-body pose only, on a plain white background, with no ground shadow under the feet.")
     .replace(/transparent background/gi, "plain white background")
     .replace(/suitable for transparent extraction/gi, "suitable for clean cut-out");
 }

@@ -75,10 +75,41 @@ export function removePlainBackground(bytes: Uint8Array, options: { readonly tol
     if (!peel.length) break;
     for (const index of peel) clear[index] = 1;
   }
+  removeGroundShadow(data, width, height, clear);
   const out = new PNG({ width, height });
   for (let index = 0; index < count; index += 1) {
     out.data[index * 4] = data[index * 4]; out.data[index * 4 + 1] = data[index * 4 + 1]; out.data[index * 4 + 2] = data[index * 4 + 2];
     out.data[index * 4 + 3] = clear[index] ? 0 : (png.alpha === false ? 255 : data[index * 4 + 3]);
   }
   return { bytes: PNG.sync.write(out), removed: true };
+}
+
+/**
+ * A floor shadow drawn under the feet: a flat grey patch with no outline, touching the background, at the bottom of the
+ * figure. Left in, it is cut into the feet and slides around with them when they walk (no hand animator draws that). It is
+ * cleared by flooding from the cleared background through grey, unsaturated pixels within the figure's bottom eighth; the
+ * dark outline of boots or armour stops the flood, so grey boots are kept.
+ */
+function removeGroundShadow(data: Buffer | Uint8Array, width: number, height: number, clear: Uint8Array): void {
+  let top = height; let bottom = -1;
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) if (!clear[y * width + x]) { if (y < top) top = y; if (y > bottom) bottom = y; }
+  if (bottom < 0) return;
+  const band = bottom - Math.round((bottom - top) / 8);
+  const shadowy = (index: number) => {
+    const r = data[index * 4]; const g = data[index * 4 + 1]; const b = data[index * 4 + 2];
+    const lum = .299 * r + .587 * g + .114 * b; return Math.max(r, g, b) - Math.min(r, g, b) < 24 && lum > 90 && lum < 225;
+  };
+  const queue: number[] = [];
+  for (let y = band; y <= bottom; y += 1) for (let x = 0; x < width; x += 1) {
+    const index = y * width + x; if (clear[index] || !shadowy(index)) continue;
+    if ((x > 0 && clear[index - 1]) || (x + 1 < width && clear[index + 1]) || (y > 0 && clear[index - width]) || (y + 1 < height && clear[index + width])) queue.push(index);
+  }
+  const taken = new Uint8Array(width * height); for (const index of queue) taken[index] = 1;
+  for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    const index = queue[cursor]; const x = index % width; const y = (index - x) / width;
+    for (const next of [x > 0 ? index - 1 : -1, x + 1 < width ? index + 1 : -1, y > band ? index - width : -1, y < bottom ? index + width : -1]) {
+      if (next >= 0 && !taken[next] && !clear[next] && shadowy(next)) { taken[next] = 1; queue.push(next); }
+    }
+  }
+  for (const index of queue) clear[index] = 1;
 }

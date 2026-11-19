@@ -302,6 +302,8 @@ export function RigEditor() {
       renderedRigProjectId: rig ? hydrationIdentity.activeProjectId : null,
     };
     (window as Window & { __RIG_STUDIO_UI_IDENTITY__?: typeof digest }).__RIG_STUDIO_UI_IDENTITY__ = digest;
+    // The rig as built, for the hand-drawn bench (scripts/handdrawn-bench): it saves this and re-renders it in Node.
+    if (process.env.NODE_ENV !== "production") (window as Window & { __RIG_STUDIO_RIG_SNAPSHOT__?: () => RigDefinition | null }).__RIG_STUDIO_RIG_SNAPSHOT__ = () => rig;
   }, [agentSession.selectedAnimationId, agentSession.selectedBoneId, editorMode, generatedProjectState?.id, hydrationIdentity.activeProjectId, rig, selections]);
 
   useEffect(() => {

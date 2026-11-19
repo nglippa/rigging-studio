@@ -228,3 +228,14 @@ describe("Part Cutter MCP boundary", () => {
     const after = await service.executeTool("parts_get_status", { includeParts: true }); if (!after.success) throw new Error("Part status failed"); expect((after.parts as readonly { readonly reconstructionImage?: string }[])[0]?.reconstructionImage).toBeUndefined();
   });
 });
+
+describe("part cutter state belongs to one source image", () => {
+  it("is reused for its own image and never for new art approved for the same character", async () => {
+    const { cutterStateFor } = await import("../../src/part-cutter");
+    const knight = createPartCutterState("generation-knight", 1024, 1024, "manual", "2026-11-19T00:00:00.000Z");
+    expect(cutterStateFor(knight, { generationId: "generation-knight", width: 1024, height: 1024 })).toBe(knight);
+    expect(cutterStateFor(knight, { generationId: "generation-goblin", width: 1024, height: 1024 })).toBeNull();
+    expect(cutterStateFor(knight, { generationId: "generation-knight", width: 512, height: 512 })).toBeNull();
+    expect(cutterStateFor(undefined, { generationId: "generation-knight", width: 1024, height: 1024 })).toBeNull();
+  });
+});

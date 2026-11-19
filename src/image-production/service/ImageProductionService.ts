@@ -11,6 +11,8 @@ import { TrustedWorkflowRegistry } from "../workflows/registry";
 import { bindTrustedWorkflow, type LoadedTrustedWorkflow } from "../workflows/workflowManifest";
 import { createStudioQueue } from "../studio/studioSession";
 import type { StudioWorkQueue } from "../studio/StudioWorkQueue";
+import { PNG } from "pngjs";
+import { pixelize } from "../pixel/pixelize";
 import { removePlainBackground } from "../profiles/plainBackground";
 import { bindProfile, coerceParam, CUTOUT_PROFILE_ID, DEFAULT_PROFILE_ID, findProfile, listProfiles, PROFILE_GUIDANCE, profilePrompt, profileRequirements, tunableParams, type CcMediaProfile } from "../profiles/ccMediaProfile";
 
@@ -88,6 +90,16 @@ function profileWorkflow(profile: CcMediaProfile, capability: ImageProductionCap
     },
     workflow: profile.graph as unknown as LoadedTrustedWorkflow["workflow"], manifestPath: `profile:${profile.id}`, workflowPath: `profile:${profile.id}`,
   };
+}
+
+/** The candidate as true pixel art (see pixelize), or null when it is not a PNG or shows no pixel grid. */
+function truePixels(image: { readonly bytes: Uint8Array; readonly mimeType: string }): { readonly bytes: Uint8Array; readonly scale: number; readonly nativeWidth: number; readonly nativeHeight: number; readonly colours: number } | null {
+  if (image.mimeType !== "image/png") return null;
+  const png = PNG.sync.read(Buffer.from(image.bytes));
+  const result = pixelize({ width: png.width, height: png.height, data: new Uint8ClampedArray(png.data) });
+  if (result.grid.cell < 3 || result.scale < 2) return null;
+  const out = new PNG({ width: result.exact.width, height: result.exact.height }); out.data.set(result.exact.data);
+  return { bytes: PNG.sync.write(out), scale: result.scale, nativeWidth: result.native.width, nativeHeight: result.native.height, colours: result.colours };
 }
 
 export class ImageProductionService {
@@ -293,12 +305,16 @@ export class ImageProductionService {
         const generated = result.outputs[0];
         if (!generated) throw new Error("ComfyUI returned no candidate image");
         // A profile draws on a plain background; cut the character out so the rest of the pipeline sees its silhouette.
-        const output = profile ? await this.cutout(generated, `${proposalId}-${index + 1}`).catch((error: unknown) => { proposal = { ...proposal, warnings: [...proposal.warnings, `Candidate ${index + 1}: background not removed (${error instanceof Error ? error.message : "cut-out failed"})`] }; return generated; }) : generated;
+        const cut = profile ? await this.cutout(generated, `${proposalId}-${index + 1}`).catch((error: unknown) => { proposal = { ...proposal, warnings: [...proposal.warnings, `Candidate ${index + 1}: background not removed (${error instanceof Error ? error.message : "cut-out failed"})`] }; return generated; }) : generated;
+        // A pixel-art profile draws blocks that sit on no exact grid; snap them to their true pixels so the character is real
+        // pixel art (one colour per pixel, a limited palette) and the rig can move it in whole pixels.
+        const pixels = profile && /pixel/i.test(profile.id) ? truePixels(cut) : null;
+        const output = pixels ? { ...cut, bytes: pixels.bytes } : cut;
         const candidateId = `candidate-${String(index + 1).padStart(2, "0")}`;
         const asset = await this.storage.writeCandidate(proposalId, candidateId, output.bytes, output.mimeType);
         let candidate: ImageCandidate = {
           candidateId, imageAssetId: asset.imageAssetId, imageFileName: asset.imageFileName, width: asset.width, height: asset.height, seed,
-          providerMetadata: { promptId: result.promptId, providerFilename: output.providerAsset.filename, providerSubfolder: output.providerAsset.subfolder, workflowId: workflow.manifest.id, ...(profile ? { model: profile.label } : {}) },
+          providerMetadata: { promptId: result.promptId, providerFilename: output.providerAsset.filename, providerSubfolder: output.providerAsset.subfolder, workflowId: workflow.manifest.id, ...(profile ? { model: profile.label } : {}), ...(pixels ? { pixelScale: pixels.scale, nativeWidth: pixels.nativeWidth, nativeHeight: pixels.nativeHeight, paletteColours: pixels.colours } : {}) },
           diagnostics: { warnings: result.warnings }, status: "generated",
         };
         candidates.push(candidate);

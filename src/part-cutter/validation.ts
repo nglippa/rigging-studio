@@ -82,8 +82,11 @@ export function validatePrepare(
 }
 
 /** Parts the guide declared hidden behind others (no zone art), e.g. the far leg of a side view. */
-export function hiddenGuideSemantics(state: Pick<PartCutterState, "anatomicalGuide">): readonly PartCutterState["parts"][number]["semanticType"][] {
-  return (state.anatomicalGuide?.zones ?? []).filter((zone) => zone.optional && !zone.mask?.alpha.some(Boolean)).map((zone) => zone.semanticType);
+export function hiddenGuideSemantics(state: Pick<PartCutterState, "anatomicalGuide"> & { readonly guidedManual?: PartCutterState["guidedManual"] }): readonly PartCutterState["parts"][number]["semanticType"][] {
+  const fromGuide = (state.anatomicalGuide?.zones ?? []).filter((zone) => zone.optional && !zone.mask?.alpha.some(Boolean)).map((zone) => zone.semanticType);
+  // An arm left out because the item it holds covers it is drawn from its twin too (guidedManual.hideCoveredArms).
+  const covered = (state.guidedManual?.skippedSemantics ?? []).filter((semantic) => /^(left|right)(UpperArm|Forearm|Hand)$/.test(semantic));
+  return [...new Set([...fromGuide, ...covered])];
 }
 
 /** "leftUpperArm" → "left upper arm". */

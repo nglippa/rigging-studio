@@ -22,8 +22,15 @@ export function animationTime(animation: AnimationDefinition, elapsed: number): 
   return ((elapsed % animation.duration) + animation.duration) % animation.duration;
 }
 
+/** The time of the drawing on screen at `time`: the latest drawing time not after it (the time itself when the clip has none). */
+export function drawingTime(animation: AnimationDefinition, time: number): number {
+  const drawings = animation.drawings; if (!drawings?.length) return time;
+  let shown = drawings[0]; for (const at of drawings) { if (at <= time + 1e-9) shown = at; else break; }
+  return shown;
+}
+
 export function evaluateAnimation(animation: AnimationDefinition, basePose: RigPose, elapsed: number): RigPose {
-  return evaluateAnimationAtTime(animation, basePose, animationTime(animation, elapsed));
+  return evaluateAnimationAtTime(animation, basePose, drawingTime(animation, animationTime(animation, elapsed)));
 }
 
 export function evaluateAnimationAtTime(animation: AnimationDefinition, basePose: RigPose, time: number): RigPose {

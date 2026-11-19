@@ -31,11 +31,13 @@ export class ComfyCharacterPipelineService {
     const status = await this.production.status();
     const capability = (name: ImageProductionCapability, modelFamily: string, confidenceSource: CharacterPipelineCapability["confidenceSource"] = "unavailable"): CharacterPipelineCapability => {
       const found = status.capabilities.find((candidate) => candidate.capability === name);
+      // An engine that sleeps until called (the Studio queue starts it for the job) is available, not offline.
+      const engine = status.provider.reachable || ("asleep" in status.provider && status.provider.asleep === true);
       return {
-        available: Boolean(status.provider.reachable && found?.capabilityAvailable), imageConditioned: true,
-        mode: status.provider.reachable && found?.capabilityAvailable ? "provider" : "unavailable", provider: "comfyui",
+        available: Boolean(engine && found?.capabilityAvailable), imageConditioned: true,
+        mode: engine && found?.capabilityAvailable ? "provider" : "unavailable", provider: "comfyui",
         ...(found?.workflowId ? { workflow: found.workflowId } : {}), modelFamily, confidenceSource,
-        ...(!status.provider.reachable || !found?.capabilityAvailable ? { reason: found?.reason ?? status.provider.message } : {}),
+        ...(!engine || !found?.capabilityAvailable ? { reason: found?.reason ?? status.provider.message } : {}),
       };
     };
     return { capabilities: {
@@ -48,7 +50,10 @@ export class ComfyCharacterPipelineService {
     } };
   }
 
-  async segmentCharacter(request: CharacterSegmentationRequest): Promise<CharacterSegmentationResponse> {
+  /** Queued as one Studio job: its uploads and model runs need the engine loaded. */
+  segmentCharacter(request: CharacterSegmentationRequest): Promise<CharacterSegmentationResponse> { return this.onStudio("segmentCharacter", () => this.segmentCharacterOnStudio(request)); }
+
+  private async segmentCharacterOnStudio(request: CharacterSegmentationRequest): Promise<CharacterSegmentationResponse> {
     assertCanvas(request.width, request.height);
     const started = Date.now();
     const source = await readSourceImage(request.image);
@@ -167,7 +172,10 @@ export class ComfyCharacterPipelineService {
     return validation.data;
   }
 
-  async refinePartMasks(request: CharacterMaskRefinementRequest): Promise<CharacterSegmentationResponse> {
+  /** Queued as one Studio job: its uploads and model runs need the engine loaded. */
+  refinePartMasks(request: CharacterMaskRefinementRequest): Promise<CharacterSegmentationResponse> { return this.onStudio("refinePartMasks", () => this.refinePartMasksOnStudio(request)); }
+
+  private async refinePartMasksOnStudio(request: CharacterMaskRefinementRequest): Promise<CharacterSegmentationResponse> {
     const started = Date.now();
     const target = selectRefinementTarget(request.current.parts, request.targetPartId, request.instruction);
     if (!target.mask) throw new Error(`Part ${target.id} has no current pixel mask to refine`);
@@ -197,7 +205,10 @@ export class ComfyCharacterPipelineService {
     return validation.data;
   }
 
-  async reconstructPart(request: OcclusionReconstructionRequest): Promise<OcclusionReconstructionResult> {
+  /** Queued as one Studio job: its uploads and model runs need the engine loaded. */
+  reconstructPart(request: OcclusionReconstructionRequest): Promise<OcclusionReconstructionResult> { return this.onStudio("reconstructPart", () => this.reconstructPartOnStudio(request)); }
+
+  private async reconstructPartOnStudio(request: OcclusionReconstructionRequest): Promise<OcclusionReconstructionResult> {
     const started = Date.now();
     if (!request.reconstructionMask || !request.reconstructionMaskBounds) throw new Error("A reviewed reconstruction mask/occlusion area is required; select the missing region before requesting reconstruction");
     if (!request.part.mask) throw new Error("Reconstruction requires the current visible part mask so neighboring source pixels remain excluded");
@@ -239,7 +250,10 @@ export class ComfyCharacterPipelineService {
     };
   }
 
-  async segmentAtPoints(request: PointSegmentationRequest): Promise<PointSegmentationResult> {
+  /** Queued as one Studio job: its uploads and model runs need the engine loaded. */
+  segmentAtPoints(request: PointSegmentationRequest): Promise<PointSegmentationResult> { return this.onStudio("segmentAtPoints", () => this.segmentAtPointsOnStudio(request)); }
+
+  private async segmentAtPointsOnStudio(request: PointSegmentationRequest): Promise<PointSegmentationResult> {
     const started = Date.now();
     assertCanvas(request.width, request.height);
     const positive = validatePoints("positive", request.positive, request.width, request.height);
@@ -285,10 +299,17 @@ export class ComfyCharacterPipelineService {
     return latest;
   }
 
-  /** One model run on the Studio, queued with every other Studio job (Command Center's lease, load on call, unload after). */
-  private execute(capability: ImageProductionCapability, values: Readonly<Record<string, ImageProductionJson>>): Promise<readonly ImageProviderOutput[]> {
+  /**
+   * Runs a whole pipeline call as one job on the Studio queue (Command Center's lease, load on call, unload after). The
+   * model runs inside it call execute directly: queueing them again from inside a queued job would wait on itself.
+   */
+  private onStudio<T>(label: string, job: () => Promise<T>): Promise<T> {
     const studio = this.production.studio;
-    return studio ? studio.run(capability, () => this.executeOnStudio(capability, values)) : this.executeOnStudio(capability, values);
+    return studio ? studio.run(label, job) : job();
+  }
+
+  private execute(capability: ImageProductionCapability, values: Readonly<Record<string, ImageProductionJson>>): Promise<readonly ImageProviderOutput[]> {
+    return this.executeOnStudio(capability, values);
   }
 
   private async executeOnStudio(capability: ImageProductionCapability, values: Readonly<Record<string, ImageProductionJson>>, retried = false): Promise<readonly ImageProviderOutput[]> {

@@ -148,7 +148,10 @@ export function fillPartArt(source: PixelImage, parts: readonly ProposedCharacte
           // Under another body part the fill completes this part inside its own extent. Under equipment it may also reach
           // across to the next body part, because a weapon often hides the whole strip between two parts.
           const withinOwnExtent = nx >= layer.left && ny >= layer.top && nx < layer.right && ny < layer.bottom && betweenOwnArt(nx, ny);
-          if (!(withinOwnExtent || (isEquipment(front) && !isEquipment(layer) && insideBody(nx, ny)))) continue;
+          // Only the large parts that sit behind a weapon (torso, head) continue across under it; a limb behind a sword only
+          // completes itself within its own extent, or it paints the weapon's whole shape and leaves it as a ghost.
+          const spansBody = layer.part.semanticType === "torso" || layer.part.semanticType === "head";
+          if (!(withinOwnExtent || (spansBody && isEquipment(front) && !isEquipment(layer) && insideBody(nx, ny)))) continue;
           originOf.set(neighbour, origin); next.push(neighbour);
           const ox = origin % width; const oy = (origin - ox) / width;
           const mx = 2 * ox - nx; const my = 2 * oy - ny;
@@ -170,7 +173,20 @@ export function fillPartArt(source: PixelImage, parts: readonly ProposedCharacte
       }
       softened.set(index, [r / count, g / count, bl / count]);
     }
-    for (const [index, colour] of softened) painted.set(index, colour);
+    // Then each filled pixel takes the nearest colour the part itself uses: averaging invents colours, and pixel art has
+    // none it was not drawn with (a hand artist extends a shape with its own palette).
+    const ownColours: (readonly [number, number, number])[] = []; const seenColours = new Set<number>();
+    for (let y = layer.top; y < layer.bottom; y += 1) for (let x = layer.left; x < layer.right; x += 1) {
+      const index = y * width + x; if (labels[index] !== own) continue;
+      const key = (source.data[index * 4] << 16) | (source.data[index * 4 + 1] << 8) | source.data[index * 4 + 2];
+      if (!seenColours.has(key) && seenColours.size < 256) { seenColours.add(key); ownColours.push(rgb(index)); }
+    }
+    const nearestOwn = (colour: readonly [number, number, number]) => {
+      let best = colour; let bestDistance = Infinity;
+      for (const candidate of ownColours) { const d = Math.abs(candidate[0] - colour[0]) + Math.abs(candidate[1] - colour[1]) + Math.abs(candidate[2] - colour[2]); if (d < bestDistance) { bestDistance = d; best = candidate; } }
+      return best;
+    };
+    for (const [index, colour] of softened) painted.set(index, ownColours.length ? nearestOwn(colour) : colour);
 
     const outWidth = right - left; const outHeight = bottom - top; const data = new Uint8ClampedArray(outWidth * outHeight * 4);
     const put = (index: number, from: number, opaque: boolean): void => {

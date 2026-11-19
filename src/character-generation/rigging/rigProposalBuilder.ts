@@ -21,13 +21,39 @@ export type RigProposalBuildInput = {
   readonly artBounds?: Readonly<Record<string, { readonly x: number; readonly y: number; readonly width: number; readonly height: number }>>;
   readonly partCutterState?: PartCutterState;
   readonly topology?: AutoRigTopology;
+  /** The source art's pixel size when it is true pixel art drawn larger (see pixelize): the rig then moves in whole art pixels. */
+  readonly pixelScale?: number;
+};
+
+/**
+ * How elongated a part's drawn pixels are, at any angle: the square root of the ratio of its two principal-axis variances
+ * (about 5 for a blade, about 1 for a round shield). A bounding box would call a diagonal sword square.
+ */
+export function maskElongation(mask: { readonly width: number; readonly height: number; readonly alpha: ArrayLike<number> } | undefined): number | undefined {
+  if (!mask) return undefined;
+  let n = 0; let sx = 0; let sy = 0; let sxx = 0; let syy = 0; let sxy = 0;
+  for (let y = 0; y < mask.height; y += 1) for (let x = 0; x < mask.width; x += 1) {
+    if (!(mask.alpha[y * mask.width + x] > 0)) continue;
+    n += 1; sx += x; sy += y; sxx += x * x; syy += y * y; sxy += x * y;
+  }
+  if (n < 8) return undefined;
+  const mx = sx / n; const my = sy / n; const vxx = sxx / n - mx * mx; const vyy = syy / n - my * my; const vxy = sxy / n - mx * my;
+  const spread = Math.sqrt(((vxx - vyy) / 2) ** 2 + vxy ** 2); const major = (vxx + vyy) / 2 + spread; const minor = Math.max(1e-6, (vxx + vyy) / 2 - spread);
+  return Math.round(Math.sqrt(major / minor) * 100) / 100;
+}
+
+/** The art pixel size recorded on a generated source image, when it was snapped to true pixels. */
+export const sourcePixelScale = (source: { readonly providerMetadata?: unknown } | null | undefined): number | undefined => {
+  const value = source?.providerMetadata && typeof source.providerMetadata === "object" ? (source.providerMetadata as Record<string, unknown>).pixelScale : undefined;
+  return typeof value === "number" && Number.isInteger(value) && value > 1 ? value : undefined;
 };
 
 /**
  * Version of the art preparation a generated rig was built with. 1: joint caps and hidden-area fill.
- * 2: texture-mirroring fill, joints across gaps, far leg for side views. Older rigs are offered a rebuild.
+ * 2: texture-mirroring fill, joints across gaps, far leg for side views. 4: fills keep the part's own colours, and a limb
+ * behind a weapon no longer fills across the body. Older rigs are offered a rebuild.
  */
-export const ART_PREPARATION_VERSION = 3;
+export const ART_PREPARATION_VERSION = 4;
 
 /** True for a rig built from cut parts before the current art preparation (gap filling, far leg, far arm). */
 export const needsArtRebuild = (rig: RigDefinition): boolean =>
@@ -98,6 +124,9 @@ export function buildRigProposal(input: RigProposalBuildInput): RigProposal {
     schemaVersion: 1, id, canvas: { width: input.imageWidth, height: input.imageHeight }, rootBoneId: "root", bones: hierarchy.bones,
     slots, attachments, skins: [{ id: "default", name: "Default", slotAttachments: skinAttachments }], defaultSkinId: "default",
     metadata: {
+      ...(input.pixelScale ? { pixelArt: true, pixelScale: input.pixelScale } : {}),
+      // Held items' true shape, so motion can tell a blade (strike with that arm) from a shield.
+      equipmentElongation: Object.fromEntries(attachments.filter((attachment) => attachment.category === "equipment").flatMap((attachment) => accepted.filter((part) => part.id === attachment.id)).flatMap((part) => { const value = maskElongation(part.mask); return value === undefined ? [] : [[part.id, value]]; })),
       name: input.name, authoringSource: "generated-character-pipeline", rotationUnit: "degrees", coordinateSystem: "x-right-y-down", generatedAt: new Date(0).toISOString(),
       anatomyProfile: hierarchy.topology.topology, topologySource: hierarchy.topology.source, topologySupported: hierarchy.topology.supported,
       pivotSources: Object.fromEntries(Object.entries(hierarchy.pivotSources).map(([boneId, pivot]) => [boneId, { source: pivot.source, confidence: pivot.confidence, detail: pivot.detail, point: pivot.point }])),

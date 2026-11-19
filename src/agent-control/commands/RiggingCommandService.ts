@@ -6,7 +6,7 @@ import { getGeneratedCharacterStorage } from "../../character-generation/project
 import { HttpCharacterPipelineProvider } from "../../character-generation/providers/httpCharacterPipelineProvider";
 import { MockCharacterPipelineProvider } from "../../character-generation/providers/mockCharacterPipelineProvider";
 import type { CharacterImageGenerationResult, CharacterPipelineProvider, OcclusionReconstructionResult } from "../../character-generation/providers/characterPipelineProvider";
-import { buildRigProposal } from "../../character-generation/rigging/rigProposalBuilder";
+import { buildRigProposal, sourcePixelScale } from "../../character-generation/rigging/rigProposalBuilder";
 import type { RigProposal } from "../../character-generation/rigging/rigProposalSchema";
 import { validateRigProposal } from "../../character-generation/rigging/rigProposalValidator";
 import { validateSegmentationResponse } from "../../character-generation/segmentation/segmentationValidator";
@@ -39,7 +39,7 @@ import { extractPartToDataUrl } from "../../character-generation/segmentation/pa
 import { prepareRiggedPartArt } from "../../character-generation/rigging/riggedPartArt";
 import type { CharacterSegmentationResponse, Point, Rect, SegmentationMask } from "../../character-generation/segmentation/segmentationSchema";
 import {
-  SEMANTIC_TAXONOMY, acceptProposal as acceptPartCutProposal, anatomicalGuidePrompt, analyzeCoverage, assignOwnershipSelection, buildAnatomicalPartitionGuide, constrainProviderMaskToZone, createPartCutterState, ensureOwnershipPartition, evaluateRotationTest, guidedProposalFromSegmentation, mergeParts as mergePartCuts,
+  SEMANTIC_TAXONOMY, acceptProposal as acceptPartCutProposal, anatomicalGuidePrompt, analyzeCoverage, assignOwnershipSelection, buildAnatomicalPartitionGuide, constrainProviderMaskToZone, createPartCutterState, cutterStateFor, ensureOwnershipPartition, evaluateRotationTest, guidedProposalFromSegmentation, mergeParts as mergePartCuts,
   partCutToSegmentation, proposalToSegmentation, rejectProposal as rejectPartCutProposal, renderProposalSvg,
   recordOwnershipRelabel, reshapeRegionEdge, splitPart as splitPartCut, validateReconstructionAsset, type PartCutterState, type PartSemanticType, type RegionEdge,
 } from "../../part-cutter";
@@ -635,7 +635,7 @@ export class RiggingCommandService {
     const next = updatedProject(project, {
       stage: "generate", generationPrompt: built.prompt,
       generationMetadata: { provider: result.provider, preset: built.preset, negativePrompt: built.negativePrompt, generationMode: result.generationMode, novelArtwork: result.novelArtwork, sourceArtifact: result.sourceArtifact },
-      generationHistory: [...project.generationHistory, result], sourceImage: result, suitability: undefined, segmentationData: undefined,
+      generationHistory: [...project.generationHistory, result], sourceImage: result, suitability: undefined, segmentationData: undefined, partCutterState: undefined,
       extractedParts: [], reconstructedParts: [], rigDefinition: undefined, skins: [], warnings: result.warnings,
     });
     this.setProject(next); this.emit("generation.completed", actor, `Generated image ${result.generationId}`, result.generationId);
@@ -686,7 +686,7 @@ export class RiggingCommandService {
     const next = updatedProject(project, {
       stage: input.accepted ? "prepare" : "generate", generationPrompt: result.generationPrompt,
       generationMetadata: { provider: input.provider, generationMode: result.generationMode, novelArtwork: true, sourceArtifact: result.sourceArtifact, importedMetadata: input.metadata },
-      generationHistory: [...project.generationHistory, result], imageProductionHistory: proposalRecord ? [...project.imageProductionHistory, proposalRecord] : project.imageProductionHistory, sourceImage: result, suitability: undefined, segmentationData: undefined,
+      generationHistory: [...project.generationHistory, result], imageProductionHistory: proposalRecord ? [...project.imageProductionHistory, proposalRecord] : project.imageProductionHistory, sourceImage: result, suitability: undefined, partCutterState: undefined, segmentationData: undefined,
       extractedParts: [], reconstructedParts: [], rigDefinition: undefined, skins: [], warnings: [],
     });
     this.setProject(next);
@@ -759,7 +759,7 @@ export class RiggingCommandService {
   private requirePartCutterState(): PartCutterState {
     const project = this.requireProject(); const source = project.sourceImage;
     if (!source) throw new Error("Import or generate a character source image first");
-    return project.partCutterState ?? createPartCutterState(source.generationId, source.width, source.height, project.segmentationData ? "assisted" : "manual");
+    return cutterStateFor(project.partCutterState, source) ?? createPartCutterState(source.generationId, source.width, source.height, project.segmentationData ? "assisted" : "manual");
   }
 
   private setPartCutterState(state: PartCutterState, actor: string, summary: string): GeneratedCharacterProject {
@@ -966,7 +966,7 @@ export class RiggingCommandService {
     // Same art preparation as the Parts screen: stray slivers adopted, joint caps and hidden-area fill added.
     const prepared = await prepareRiggedPartArt(source.image, { width: source.width, height: source.height }, this.requirePartCutterState()); const state = prepared.state; const segmentationData = prepared.segmentation;
     const extractedParts = prepared.parts.map((part) => ({ ...part, status: part.status === "reconstructed" ? "reconstructed" as const : "accepted" as const }));
-    const proposal = buildRigProposal({ name: project.name, parts: segmentationData.parts, imageWidth: source.width, imageHeight: source.height, resolvedImages: Object.fromEntries(extractedParts.map((part) => [part.partId, part.image])), artBounds: prepared.artBounds, partCutterState: state }); const validated = validateRigProposal(proposal); if (!validated.success) throw new Error(validated.message);
+    const proposal = buildRigProposal({ pixelScale: sourcePixelScale(project.sourceImage), name: project.name, parts: segmentationData.parts, imageWidth: source.width, imageHeight: source.height, resolvedImages: Object.fromEntries(extractedParts.map((part) => [part.partId, part.image])), artBounds: prepared.artBounds, partCutterState: state }); const validated = validateRigProposal(proposal); if (!validated.success) throw new Error(validated.message);
     const keptFacing = project.rigDefinition?.metadata.facing; const builtRig = typeof keptFacing === "string" ? { ...validated.data.rig, metadata: { ...validated.data.rig.metadata, facing: keptFacing } } : validated.data.rig;
     const finalized = { ...state, finalized: true, updatedAt: now() }; const next = updatedProject(project, { stage: "rig", partCutterState: finalized, segmentationData, extractedParts, reconstructedParts: detectOcclusionReviews(segmentationData.parts), rigDefinition: builtRig, skins: builtRig.skins, warnings: [...project.warnings, ...validated.data.warnings] });
     const candidateAnimations = this.animations ? { ...this.animations, rigId: validated.data.rig.id } : null;
@@ -978,7 +978,7 @@ export class RiggingCommandService {
   private createRigProposal(actor: string): CommandResult<JsonObject> {
     const project = this.requireProject(); const segmentation = project.segmentationData; const source = project.sourceImage;
     if (!segmentation || !source) throw new Error("Segment the character before creating a rig proposal");
-    const proposal = buildRigProposal({ name: project.name, parts: segmentation.parts, imageWidth: source.width, imageHeight: source.height, partCutterState: project.partCutterState });
+    const proposal = buildRigProposal({ pixelScale: sourcePixelScale(project.sourceImage), name: project.name, parts: segmentation.parts, imageWidth: source.width, imageHeight: source.height, partCutterState: project.partCutterState });
     const validated = validateRigProposal(proposal); if (!validated.success) throw new Error(validated.message);
     this.pendingRigProposal = proposal; this.emit("rig.changed", actor, `Created rig proposal ${proposal.rig.id}`, proposal.rig.id);
     return this.ok({ proposalId: proposal.rig.id, summary: rigSummary(proposal.rig, true), requiresReview: true }, proposal.warnings);
