@@ -1,0 +1,120 @@
+{
+ "schema": "cc-media-profile/1",
+ "id": "cutout-rmbg2",
+ "label": "Cut-out (RMBG-2.0, transparent PNG)",
+ "kind": "image",
+ "exclusive": false,
+ "hints": {
+  "role": "cutout",
+  "best_for": "Removes the background from a finished image and returns an RGBA PNG; no prompt is used",
+  "speed": "seconds per image; BiRefNet-class model runs at 1024 px, alpha resized to the input size",
+  "output": "RGBA PNG, same size as the input; core ComfyUI nodes only (RemoveBackground, InvertMask, JoinImageWithAlpha)",
+  "status": "Staged 2026-11-18; test-rendered on the node lab; needs background_removal folder + RMBG-2.0.safetensors on the live engine"
+ },
+ "requires": [
+  {
+   "folder": "background_removal",
+   "file": "RMBG-2.0.safetensors"
+  }
+ ],
+ "postprocess": [
+  "none"
+ ],
+ "limits": {
+  "timeout_s": 600
+ },
+ "output": {
+  "node": "save",
+  "field": "filename_prefix"
+ },
+ "params": {
+  "prompt": {
+   "type": "text",
+   "max_len": 200,
+   "default": "cut out",
+   "label": "Not used",
+   "targets": [
+    [
+     "9",
+     "value"
+    ]
+   ]
+  },
+  "image": {
+   "type": "image",
+   "required": true,
+   "label": "Input image",
+   "targets": [
+    [
+     "1",
+     "image"
+    ]
+   ]
+  }
+ },
+ "graph": {
+  "1": {
+   "class_type": "LoadImage",
+   "inputs": {
+    "image": "placeholder.png"
+   }
+  },
+  "2": {
+   "class_type": "LoadBackgroundRemovalModel",
+   "inputs": {
+    "bg_removal_name": "RMBG-2.0.safetensors"
+   }
+  },
+  "3": {
+   "class_type": "RemoveBackground",
+   "inputs": {
+    "bg_removal_model": [
+     "2",
+     0
+    ],
+    "image": [
+     "1",
+     0
+    ]
+   }
+  },
+  "4": {
+   "class_type": "InvertMask",
+   "inputs": {
+    "mask": [
+     "3",
+     0
+    ]
+   }
+  },
+  "5": {
+   "class_type": "JoinImageWithAlpha",
+   "inputs": {
+    "image": [
+     "1",
+     0
+    ],
+    "alpha": [
+     "4",
+     0
+    ]
+   }
+  },
+  "save": {
+   "class_type": "SaveImage",
+   "inputs": {
+    "filename_prefix": "cc/cutout-rmbg2",
+    "images": [
+     "5",
+     0
+    ]
+   }
+  },
+  "9": {
+   "class_type": "PrimitiveString",
+   "inputs": {
+    "value": "cut out"
+   }
+  }
+ }
+}

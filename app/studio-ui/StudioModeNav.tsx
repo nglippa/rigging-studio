@@ -16,6 +16,8 @@ const statusGlyph: Readonly<Record<StageStatus, string>> = { done: "✓", todo: 
 
 export function StudioModeNav({ active, statuses, onSelect }: { readonly active: StudioMode; readonly statuses?: StageStatuses; readonly onSelect: (mode: StudioMode) => void }) {
   return <nav className="studio-mode-nav" aria-label="Workflow stage">
+    {/* The first step of every character, so its art and description can be revisited from any stage. */}
+    <button type="button" className="is-complete" data-mode="create" data-status="done" data-ux-role="navigation" aria-label="Create, done" title="Create — describe the character and make or import its art" onClick={() => window.location.assign("/create-character")}><i aria-hidden="true">✓</i><span>Create</span></button>
     {STUDIO_STAGES.map(({ mode, label, meaning }, index) => {
       const current = active === mode;
       const status: StageStatus = statuses?.[mode] ?? "todo";

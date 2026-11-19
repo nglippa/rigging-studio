@@ -14,7 +14,8 @@ import { ImageProductionService, type GenerateImageCandidatesRequest } from "../
 import { ImageGenerationJobService } from "../../src/image-production/service/ImageGenerationJobService";
 import { ComfyCharacterPipelineService } from "../../src/image-production/service/ComfyCharacterPipelineService";
 import { suitabilityReviewSchema } from "../../src/character-generation/providers/characterPipelineProvider";
-import type { ImageApprovalPolicy, ImageProposalReviewInput } from "../../src/image-production/proposals/imageProposal";
+import type { ImageApprovalPolicy, ImageProductionJson, ImageProposalReviewInput } from "../../src/image-production/proposals/imageProposal";
+import { importProfile } from "../../src/image-production/profiles/ccMediaProfile";
 import { ImageProposalStorage } from "../../src/image-production/assets/imageProposalStorage";
 import { LocalProjectStore } from "../storage/localProjectStore";
 import type { LocalProjectSnapshot } from "../../src/project-storage/types";
@@ -185,6 +186,7 @@ export class StudioBridgeServer {
 
   async close(): Promise<void> {
     this.studio?.close();
+    await this.imageProduction.studio.shutdown().catch(() => undefined); // unload the Studio engine and give the lease back
     this.pending.forEach((pending) => { clearTimeout(pending.timer); pending.reject(new Error("Studio bridge closed")); });
     this.pending.clear();
     this.pollQueue = [];
@@ -349,6 +351,13 @@ export class StudioBridgeServer {
       catch (error: unknown) { response.writeHead(503, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error instanceof Error ? error.message : "Image provider status failed" })); }
       return;
     }
+    if (request.url === "/image-generation/profiles" && (request.method === "GET" || request.method === "POST")) {
+      try {
+        if (request.method === "POST") { const profile = await importProfile(await this.readJsonBody(request, 4_000_000)); response.writeHead(201, { "Content-Type": "application/json" }).end(JSON.stringify({ id: profile.id, label: profile.label })); return; }
+        response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ profiles: await this.imageProduction.profileStatus() }));
+      } catch (error: unknown) { response.writeHead(request.method === "POST" ? 400 : 503, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error instanceof Error ? error.message : "Generation profiles are unavailable" })); }
+      return;
+    }
     if (request.method === "POST" && request.url === "/image-generation/jobs") {
       try {
         const body = await this.readJsonBody(request); if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("Generation request must be an object");
@@ -362,9 +371,15 @@ export class StudioBridgeServer {
           ...(typeof record.negativePrompt === "string" ? { negativePrompt: record.negativePrompt } : {}), ...(typeof record.width === "number" ? { width: record.width } : {}),
           ...(typeof record.height === "number" ? { height: record.height } : {}), ...(typeof record.seed === "number" ? { seed: record.seed } : {}),
           ...(typeof record.model === "string" ? { model: record.model } : {}),
+          ...(record.provider === "comfyui" && typeof record.profileId === "string" ? { profileId: record.profileId } : {}),
+          ...(record.profileParams && typeof record.profileParams === "object" && !Array.isArray(record.profileParams) ? { profileParams: record.profileParams as Readonly<Record<string, ImageProductionJson>> } : {}),
         });
         response.writeHead(202, { "Content-Type": "application/json" }).end(JSON.stringify(job));
       } catch (error: unknown) { response.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error instanceof Error ? error.message : "Image generation job could not start" })); }
+      return;
+    }
+    if (request.method === "GET" && request.url === "/studio/queue") {
+      response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(this.imageProduction.studio.state()));
       return;
     }
     if (request.method === "GET" && request.url?.startsWith("/image-generation/jobs/")) {

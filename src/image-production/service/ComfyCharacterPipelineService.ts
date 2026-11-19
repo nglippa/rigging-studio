@@ -285,7 +285,13 @@ export class ComfyCharacterPipelineService {
     return latest;
   }
 
-  private async execute(capability: ImageProductionCapability, values: Readonly<Record<string, ImageProductionJson>>, retried = false): Promise<readonly ImageProviderOutput[]> {
+  /** One model run on the Studio, queued with every other Studio job (Command Center's lease, load on call, unload after). */
+  private execute(capability: ImageProductionCapability, values: Readonly<Record<string, ImageProductionJson>>): Promise<readonly ImageProviderOutput[]> {
+    const studio = this.production.studio;
+    return studio ? studio.run(capability, () => this.executeOnStudio(capability, values)) : this.executeOnStudio(capability, values);
+  }
+
+  private async executeOnStudio(capability: ImageProductionCapability, values: Readonly<Record<string, ImageProductionJson>>, retried = false): Promise<readonly ImageProviderOutput[]> {
     let providerStatus = await this.production.provider.status();
     if (!providerStatus.reachable) providerStatus = (await this.wakeEngine()) ?? providerStatus;
     if (!providerStatus.reachable) throw new Error(`ComfyUI is offline at ${providerStatus.url}: ${providerStatus.message}`);
@@ -296,7 +302,7 @@ export class ComfyCharacterPipelineService {
       const network = error instanceof TypeError && /fetch failed/i.test(error.message);
       if (!network || retried || !(this.wake.wakeUrl ?? process.env.COMFYUI_WAKE_URL)) throw error;
       await this.wakeEngine();
-      return this.execute(capability, values, true);
+      return this.executeOnStudio(capability, values, true);
     }
   }
 

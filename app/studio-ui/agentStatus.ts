@@ -10,7 +10,7 @@ export function presentAgentStatus(session: StudioSessionState): AgentStatusPres
   if (session.mcpConnected && session.toolCount > 0) {
     return { state: "ready", label: `Agent · Ready · ${session.toolCount} tools`, ready: true };
   }
-  if (session.mcpConnected) return { state: "no-tools", label: "Agent · No tools", ready: false };
-  if (session.bridgeConnected) return { state: "bridge", label: "Agent · Bridge only", ready: false };
-  return { state: "disconnected", label: "Agent · Disconnected", ready: false };
+  if (session.mcpConnected) return { state: "no-tools", label: "AI agent · starting", ready: false };
+  if (session.bridgeConnected) return { state: "bridge", label: "Studio connected", ready: false };
+  return { state: "disconnected", label: "Studio offline · run npm run studio:up", ready: false };
 }

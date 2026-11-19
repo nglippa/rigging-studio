@@ -53,12 +53,14 @@ export class ComfyUIAdapter implements ImageProductionProvider {
   }
 
   async inspectDependencies(workflow: LoadedTrustedWorkflow): Promise<{ readonly available: boolean; readonly missingNodeClasses: readonly string[]; readonly missingModels: readonly string[] }> {
-    const objectInfo = await this.json("/object_info", { method: "GET" });
+    const objectInfo = await this.objectInfo();
     const knownClasses = new Set(isRecord(objectInfo) ? Object.keys(objectInfo) : []);
     const missingNodeClasses = workflow.manifest.requiredNodeClasses.filter((nodeClass) => !knownClasses.has(nodeClass));
-    const checkpoint = process.env.COMFYUI_CHECKPOINT;
+    const checkpoint = workflow.manifest.requiredModels.includes("COMFYUI_CHECKPOINT") ? process.env.COMFYUI_CHECKPOINT : undefined;
     const objectInfoText = JSON.stringify(objectInfo);
     const missingModels = workflow.manifest.requiredModels.flatMap((environmentName) => {
+      // A generation profile names its model files directly ("file:<name>"); the engine lists every file it can load.
+      if (environmentName.startsWith("file:")) return objectInfoText.includes(JSON.stringify(environmentName.slice(5))) ? [] : [environmentName.slice(5)];
       const configured = modelSetting(environmentName);
       if (!configured) return [environmentName];
       return objectInfoText.includes(configured) ? [] : [`${environmentName}:${configured}`];
@@ -70,6 +72,15 @@ export class ComfyUIAdapter implements ImageProductionProvider {
       if (installed.length && !installed.includes(checkpoint) && !missingModels.includes(`COMFYUI_CHECKPOINT:${checkpoint}`)) missingModels.push(`COMFYUI_CHECKPOINT:${checkpoint}`);
     }
     return { available: missingNodeClasses.length === 0 && missingModels.length === 0, missingNodeClasses, missingModels };
+  }
+
+  /** ComfyUI's node and model catalogue, kept for half a minute: checking several profiles at once reads it once. */
+  private objectInfoCache: { readonly at: number; readonly value: unknown } | null = null;
+  private async objectInfo(): Promise<unknown> {
+    if (this.objectInfoCache && Date.now() - this.objectInfoCache.at < 30_000) return this.objectInfoCache.value;
+    const value = await this.json("/object_info", { method: "GET" });
+    this.objectInfoCache = { at: Date.now(), value };
+    return value;
   }
 
   async submit(workflow: ComfyApiWorkflow): Promise<{ readonly promptId: string; readonly queueNumber?: number }> {

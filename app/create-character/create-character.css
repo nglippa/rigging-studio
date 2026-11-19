@@ -78,3 +78,40 @@
 /* Creation workspace scale correction. */
 .character-workspace{font-size:15px}.character-workspace button{min-height:38px;padding-inline:13px;border-radius:8px;font-size:14px}.character-workspace button.primary{min-height:44px;padding-inline:18px;border-radius:11px;font-size:15px}.character-workspace input,.character-workspace select{min-height:38px;height:38px;padding-inline:10px;border-radius:8px;font-size:14px}.character-workspace textarea{padding:11px;border-radius:8px;font-size:14px;line-height:1.5}.character-topbar{min-height:58px;height:58px}.character-mark{width:58px;font-size:13px}.character-topbar>div:first-of-type strong{font-size:12px}.character-topbar>div:first-of-type span{font-size:15px}.character-topbar nav button{min-width:88px;padding-inline:12px;gap:8px;font-size:14px}.character-topbar nav button b{width:24px;height:24px;font-size:11px}.character-file-tools button,.character-file-tools a{min-height:38px;font-size:13px}.panel-title{min-height:44px;padding-inline:14px;font-size:15px}.parts-list button,.rig-tree>button{min-height:42px;height:42px;padding-inline:12px;gap:9px;font-size:14px}.parts-list small,.rig-tree>button small{font-size:12px}.compact-actions button{min-height:34px;font-size:13px}.mask-toolbar{height:46px;gap:6px}.mask-toolbar span,.mask-toolbar button{font-size:13px}.mask-toolbar button{min-height:34px;padding-inline:10px}.prepare-canvas{grid-template-rows:46px minmax(0,1fr) 36px}.part-inspector>label,.rig-inspector>label,.field-grid label{font-size:13px}.character-status{height:34px;font-size:12px}.character-status span{padding-inline:11px}.stage-empty p{font-size:15px}
 @media (max-width:700px){.character-topbar{height:56px}.character-topbar nav button{min-width:64px;padding-inline:7px;font-size:13px}.character-status{height:32px}.structured-controls.open{inset:56px 0 32px}}
+
+/* Generation profile (ComfyUI): model + LoRAs/ControlNet/custom nodes, from Command Center's profiles. */
+.profile-picker { margin-top:14px; padding-top:14px; border-top:1px solid #6550a944; display:grid; gap:8px; }
+.profile-picker > label { display:grid; grid-template-columns:92px minmax(0,1fr); align-items:center; gap:12px; color:#c8c0ef; font-size:12px; font-weight:650; }
+.profile-picker select { min-height:38px; padding-inline:12px; color:#eeeaff; border-color:#7661bc; background:#171426; font-size:13px; }
+.profile-picker .profile-note { margin:0 0 0 104px; color:#8ee7ff; font-size:11px; line-height:1.45; }
+.profile-picker .profile-note[data-ready="false"] { color:#ffb4c8; }
+.profile-actions { margin-left:104px; display:flex; flex-wrap:wrap; align-items:center; gap:14px; }
+.profile-actions small { color:#c8c0ef; font-size:11px; }
+.link-button { padding:0; min-height:0; border:0; background:none; color:#b9a8ff; font-size:12px; text-decoration:underline; text-underline-offset:3px; cursor:pointer; }
+.link-button:hover { color:#e1d8ff; }
+.profile-settings { margin-left:104px; display:grid; gap:8px; padding:10px 12px; border:1px solid #6550a955; background:#0e0d19; }
+.profile-setting { display:grid; grid-template-columns:minmax(120px,170px) minmax(0,1fr); align-items:center; gap:10px; color:#c8c0ef; font-size:12px; text-transform:none; }
+.profile-setting input[type="number"] { max-width:140px; min-height:30px; }
+.profile-slider { display:flex; align-items:center; gap:8px; }
+.profile-slider input { flex:1; }
+.profile-slider output { min-width:36px; color:#eeeaff; font-variant-numeric:tabular-nums; }
+.profile-requires { color:#9d95c4; font-size:11px; }
+.profile-requires summary { cursor:pointer; color:#c8c0ef; }
+.profile-requires p { margin:6px 0 0; line-height:1.45; overflow-wrap:anywhere; }
+@media (max-width:720px) { .profile-picker > label { grid-template-columns:1fr; } .profile-picker .profile-note, .profile-actions, .profile-settings { margin-left:0; } }
+
+/* Notes and errors sit above the work, where they are seen, not only in the footer. */
+.character-notice, .character-error { display:flex; align-items:center; gap:12px; margin:0; padding:10px 18px; font-size:13px; }
+.character-notice { color:#cfe9ff; background:#0f2233; border-bottom:1px solid #2f5d80; }
+.character-error { color:#ffd6de; background:#2a1018; border-bottom:1px solid #7a3045; }
+.character-error strong { color:#ffb4c8; white-space:nowrap; }
+.character-notice span, .character-error span { flex:1; }
+.character-notice button, .character-error button { min-height:0; padding:2px 8px; border:0; background:none; color:inherit; font-size:16px; cursor:pointer; }
+
+/* One column that never grows past the window: a wide top bar or footer used to stretch it (1500 px on a 1200 px
+   screen), which pushed the generation controls off the right edge and left a blank strip on the left. */
+.character-workspace { grid-template-columns: minmax(0, 1fr); }
+.character-stage, .character-topbar, .character-status { min-width: 0; }
+.character-status { overflow: hidden; }
+.character-status span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.character-topbar nav button { white-space: nowrap; }

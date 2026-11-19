@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { RigEditor } from "./rig-editor/RigEditor";
 import { ProjectHydrationBoundary } from "./studio-ui/ProjectHydrationBoundary";
 // The studio stages share one cascade. Every stage route loads the same three sheets in the same order,
@@ -12,6 +13,12 @@ export const metadata: Metadata = {
   description: "The full modular character rig and animation editor.",
 };
 
-export default function Home() {
+/**
+ * The rig editor lives here with a stage (`/?mode=setup`, `test`, `animate`). Opening the app itself (`/` with no stage)
+ * starts where a character starts: describing and generating it.
+ */
+export default async function Home({ searchParams }: { readonly searchParams?: Promise<Readonly<Record<string, string | string[] | undefined>>> }) {
+  const params = (await searchParams) ?? {};
+  if (!params.mode) redirect("/create-character");
   return <ProjectHydrationBoundary><RigEditor /></ProjectHydrationBoundary>;
 }

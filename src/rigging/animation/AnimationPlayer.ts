@@ -15,8 +15,11 @@ export class AnimationPlayer {
 
   play(animation: AnimationDefinition, restart = true): void {
     const changed = this.animation !== animation;
+    // Playing a clip that has already run to its end starts it again, as any media player does; without this a one-shot
+    // clip (an attack) played once and then stayed stuck on its last frame.
+    const finished = !changed && !this.shouldLoop() && this.time >= animation.duration;
     this.animation = animation;
-    if (restart || changed) this.time = 0;
+    if (restart || changed || finished) this.time = 0;
     this.playing = true;
     this.didComplete = false;
     this.applyPose();

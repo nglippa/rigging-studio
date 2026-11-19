@@ -21,6 +21,20 @@ const animation = (
 });
 
 describe("AnimationPlayer", () => {
+  it("plays a one-shot clip again from the start after it has finished, and resumes a paused one where it was", () => {
+    const runtime = new RigRuntime(validRig());
+    const player = new AnimationPlayer(runtime); const clip = animation("x", "linear", false);
+    player.play(clip); player.update(2);
+    expect(player.completed).toBe(true); expect(player.isPlaying).toBe(false);
+    // Play again (as the Play button does: no forced restart) runs it from the beginning instead of staying on the last frame.
+    player.play(clip, false); player.update(.25);
+    expect(player.isPlaying).toBe(true); expect(player.currentTime).toBeCloseTo(.25);
+    expect(runtime.getPose().bones.child.x).toBeCloseTo(2.5);
+    // A pause part-way through still resumes where it stopped.
+    player.pause(); player.play(clip, false); player.update(.25);
+    expect(player.currentTime).toBeCloseTo(.5);
+  });
+
   it("interpolates linearly between keyframes", () => {
     const runtime = new RigRuntime(validRig());
     const player = new AnimationPlayer(runtime);

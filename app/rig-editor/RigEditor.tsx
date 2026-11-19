@@ -246,6 +246,13 @@ export function RigEditor() {
           const draft = parseDraft(localDraft);
           if (draft.success) { initialRig = draft.data.rig; restored = true; }
         }
+        // Nothing to edit yet: start where a character starts instead of showing the bundled sample knight.
+        if (!restored && !handoff) {
+          if (cancelled) return;
+          try { window.sessionStorage.setItem(STAGE_NOTICE_KEY, "There is no character to rig yet. Describe one and generate its art, or import an image."); } catch { /* the redirect still happens */ }
+          router.replace("/create-character");
+          return;
+        }
         const parsedAnimation = safeParseAnimationJson(animationSource, initialRig);
         const validAnimations = sampleSources.flatMap((source) => {
           const parsed = safeParseAnimationJson(source, initialRig);

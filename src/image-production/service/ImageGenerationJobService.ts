@@ -13,6 +13,8 @@ export type ImageGenerationJob = {
   readonly updatedAt: string;
   readonly proposalId?: string;
   readonly error?: string;
+  /** While queued for the Mac Studio: why it cannot start yet (Command Center is using it, a model is loaded there...). */
+  readonly waiting?: string;
 };
 
 export class ImageGenerationJobService {
@@ -49,8 +51,8 @@ export class ImageGenerationJobService {
     try {
       const proposal = await this.imageProduction.generateCandidates({ ...request, onProposalCreated: (proposalId) => {
         this.activeProposalIds.set(jobId, proposalId);
-        const latest = this.get(jobId); this.jobs.set(jobId, { ...latest, proposalId, updatedAt: this.now().toISOString() });
-      } });
+        const { waiting: _waiting, ...latest } = this.get(jobId); void _waiting; this.jobs.set(jobId, { ...latest, proposalId, updatedAt: this.now().toISOString() });
+      }, onStudioWait: (waiting) => { const latest = this.get(jobId); this.jobs.set(jobId, { ...latest, waiting, updatedAt: this.now().toISOString() }); } });
       const latest = this.get(jobId);
       if (latest.status === "cancelled") return;
       this.jobs.set(jobId, proposal.status === "failed"

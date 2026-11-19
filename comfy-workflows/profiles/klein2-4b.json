@@ -1,0 +1,277 @@
+{
+ "schema": "cc-media-profile/1",
+ "id": "klein2-4b",
+ "label": "FLUX.2 Klein 4B (distilled, 4 steps)",
+ "kind": "image",
+ "exclusive": false,
+ "hints": {
+  "speed": "4 steps; 4B model, light on memory",
+  "best_for": "Fast general illustration; base for the Klein 4B LoRAs (Apache-2.0)",
+  "status": "New 2026-11-11; settings from the LoRA card; not yet test-rendered on the Studio",
+  "loras": "lora_pixel_art, lora_walk_cycle",
+  "trigger_pixel_art": "pixel art sprite,",
+  "trigger_walk_cycle": "A pixel art spritesheet, a 4 by 4 grid of walking frames facing down, left, right and up, of"
+ },
+ "requires": [
+  {
+   "folder": "diffusion_models",
+   "file": "flux-2-klein-4b.safetensors"
+  },
+  {
+   "folder": "text_encoders",
+   "file": "qwen_3_4b.safetensors"
+  },
+  {
+   "folder": "vae",
+   "file": "flux2-vae.safetensors"
+  },
+  {
+   "folder": "loras",
+   "file": "flux2-klein-4b__pixel-art-lora.safetensors"
+  },
+  {
+   "folder": "loras",
+   "file": "flux2-klein-4b__pixel_spritesheet_4walk_small_lora_v1.safetensors"
+  }
+ ],
+ "params": {
+  "prompt": {
+   "type": "text",
+   "max_len": 4000,
+   "required": true,
+   "targets": [
+    [
+     "4",
+     "text"
+    ]
+   ]
+  },
+  "seed": {
+   "type": "int",
+   "min": 0,
+   "max": 9007199254740991,
+   "default": 0,
+   "targets": [
+    [
+     "10",
+     "noise_seed"
+    ]
+   ]
+  },
+  "width": {
+   "type": "int",
+   "min": 512,
+   "max": 2048,
+   "multiple": 16,
+   "default": 1024,
+   "targets": [
+    [
+     "7",
+     "width"
+    ],
+    [
+     "8",
+     "width"
+    ]
+   ]
+  },
+  "height": {
+   "type": "int",
+   "min": 512,
+   "max": 2048,
+   "multiple": 16,
+   "default": 1024,
+   "targets": [
+    [
+     "7",
+     "height"
+    ],
+    [
+     "8",
+     "height"
+    ]
+   ]
+  },
+  "lora_pixel_art": {
+   "type": "float",
+   "min": 0.0,
+   "max": 2.0,
+   "default": 0.0,
+   "label": "LoRA: Pixel art",
+   "targets": [
+    [
+     "14",
+     "strength_model"
+    ]
+   ]
+  },
+  "lora_walk_cycle": {
+   "type": "float",
+   "min": 0.0,
+   "max": 2.0,
+   "default": 0.0,
+   "label": "LoRA: Pixel walk-cycle sheet",
+   "targets": [
+    [
+     "15",
+     "strength_model"
+    ]
+   ]
+  }
+ },
+ "postprocess": [
+  "none",
+  "lineart"
+ ],
+ "limits": {
+  "timeout_s": 2400
+ },
+ "output": {
+  "node": "13",
+  "field": "filename_prefix"
+ },
+ "graph": {
+  "1": {
+   "class_type": "UNETLoader",
+   "inputs": {
+    "unet_name": "flux-2-klein-4b.safetensors",
+    "weight_dtype": "default"
+   }
+  },
+  "2": {
+   "class_type": "CLIPLoader",
+   "inputs": {
+    "clip_name": "qwen_3_4b.safetensors",
+    "type": "flux2",
+    "device": "default"
+   }
+  },
+  "3": {
+   "class_type": "VAELoader",
+   "inputs": {
+    "vae_name": "flux2-vae.safetensors"
+   }
+  },
+  "4": {
+   "class_type": "CLIPTextEncode",
+   "inputs": {
+    "text": "",
+    "clip": [
+     "2",
+     0
+    ]
+   }
+  },
+  "6": {
+   "class_type": "BasicGuider",
+   "inputs": {
+    "model": [
+     "15",
+     0
+    ],
+    "conditioning": [
+     "4",
+     0
+    ]
+   }
+  },
+  "7": {
+   "class_type": "EmptyFlux2LatentImage",
+   "inputs": {
+    "width": 1024,
+    "height": 1024,
+    "batch_size": 1
+   }
+  },
+  "8": {
+   "class_type": "Flux2Scheduler",
+   "inputs": {
+    "steps": 4,
+    "width": 1024,
+    "height": 1024
+   }
+  },
+  "9": {
+   "class_type": "KSamplerSelect",
+   "inputs": {
+    "sampler_name": "euler"
+   }
+  },
+  "10": {
+   "class_type": "RandomNoise",
+   "inputs": {
+    "noise_seed": 0
+   }
+  },
+  "11": {
+   "class_type": "SamplerCustomAdvanced",
+   "inputs": {
+    "noise": [
+     "10",
+     0
+    ],
+    "guider": [
+     "6",
+     0
+    ],
+    "sampler": [
+     "9",
+     0
+    ],
+    "sigmas": [
+     "8",
+     0
+    ],
+    "latent_image": [
+     "7",
+     0
+    ]
+   }
+  },
+  "12": {
+   "class_type": "VAEDecode",
+   "inputs": {
+    "samples": [
+     "11",
+     0
+    ],
+    "vae": [
+     "3",
+     0
+    ]
+   }
+  },
+  "13": {
+   "class_type": "SaveImage",
+   "inputs": {
+    "filename_prefix": "cc/klein2-4b",
+    "images": [
+     "12",
+     0
+    ]
+   }
+  },
+  "14": {
+   "class_type": "LoraLoaderModelOnly",
+   "inputs": {
+    "model": [
+     "1",
+     0
+    ],
+    "lora_name": "flux2-klein-4b__pixel-art-lora.safetensors",
+    "strength_model": 0.0
+   }
+  },
+  "15": {
+   "class_type": "LoraLoaderModelOnly",
+   "inputs": {
+    "model": [
+     "14",
+     0
+    ],
+    "lora_name": "flux2-klein-4b__pixel_spritesheet_4walk_small_lora_v1.safetensors",
+    "strength_model": 0.0
+   }
+  }
+ }
+}

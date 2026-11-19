@@ -1,0 +1,325 @@
+{
+ "schema": "cc-media-profile/1",
+ "id": "zimage-pixel-art",
+ "label": "Z-Image Turbo + Pixel Art",
+ "kind": "image",
+ "exclusive": false,
+ "hints": {
+  "speed": "about 30 s per page (as Z-Image Turbo)",
+  "best_for": "Game sprites, props, icons and tiles in 8/16-bit pixel art",
+  "status": "New 2026-11-11; settings from the LoRA card; not yet test-rendered on the Studio",
+  "loras": "lora_saturday_morning, lora_coloring_book, lora_coloring_redmond, lora_pixel_art",
+  "trigger_saturday_morning": "saturd4ym0rning, 2D cartoon illustration,",
+  "trigger_coloring_book": "c0l0ringb00k, black and white cartoon line drawing,",
+  "trigger_coloring_redmond": "Coloring Book, ColoringBookAF,"
+ },
+ "requires": [
+  {
+   "folder": "diffusion_models",
+   "file": "z_image_turbo_bf16.safetensors"
+  },
+  {
+   "folder": "text_encoders",
+   "file": "qwen_3_4b.safetensors"
+  },
+  {
+   "folder": "vae",
+   "file": "ae.safetensors"
+  },
+  {
+   "folder": "loras",
+   "file": "z-image__pixel_art_style_lora_z_image_turbo.safetensors"
+  },
+  {
+   "folder": "loras",
+   "file": "z-image__Saturday-Morning-Z-Image-Turbo.safetensors"
+  },
+  {
+   "folder": "loras",
+   "file": "z-image__Coloring-Book-Z-Image-Turbo-LoRA.safetensors"
+  },
+  {
+   "folder": "loras",
+   "file": "z-image__COLORINGBOOK-REDMOND-ZIMAGE.safetensors"
+  }
+ ],
+ "params": {
+  "prompt": {
+   "type": "text",
+   "max_len": 4000,
+   "required": true,
+   "targets": [
+    [
+     "40",
+     "string_b"
+    ]
+   ]
+  },
+  "seed": {
+   "type": "int",
+   "min": 0,
+   "max": 9007199254740991,
+   "default": 0,
+   "targets": [
+    [
+     "8",
+     "seed"
+    ]
+   ]
+  },
+  "width": {
+   "type": "int",
+   "min": 512,
+   "max": 2048,
+   "multiple": 16,
+   "default": 1024,
+   "targets": [
+    [
+     "6",
+     "width"
+    ]
+   ]
+  },
+  "height": {
+   "type": "int",
+   "min": 512,
+   "max": 2048,
+   "multiple": 16,
+   "default": 1328,
+   "targets": [
+    [
+     "6",
+     "height"
+    ]
+   ]
+  },
+  "lora_saturday_morning": {
+   "type": "float",
+   "min": 0.0,
+   "max": 2.0,
+   "default": 0.0,
+   "label": "LoRA: Saturday-morning cartoon",
+   "targets": [
+    [
+     "41",
+     "strength_model"
+    ]
+   ]
+  },
+  "lora_coloring_book": {
+   "type": "float",
+   "min": 0.0,
+   "max": 2.0,
+   "default": 0.0,
+   "label": "LoRA: Coloring book",
+   "targets": [
+    [
+     "42",
+     "strength_model"
+    ]
+   ]
+  },
+  "lora_coloring_redmond": {
+   "type": "float",
+   "min": 0.0,
+   "max": 2.0,
+   "default": 0.0,
+   "label": "LoRA: Coloring book (Redmond)",
+   "targets": [
+    [
+     "43",
+     "strength_model"
+    ]
+   ]
+  },
+  "lora_pixel_art": {
+   "type": "float",
+   "min": 0.0,
+   "max": 2.0,
+   "default": 1.0,
+   "label": "LoRA: Pixel art",
+   "targets": [
+    [
+     "30",
+     "strength_model"
+    ]
+   ]
+  }
+ },
+ "postprocess": [
+  "none",
+  "lineart"
+ ],
+ "limits": {
+  "timeout_s": 900
+ },
+ "output": {
+  "node": "10",
+  "field": "filename_prefix"
+ },
+ "graph": {
+  "1": {
+   "class_type": "UNETLoader",
+   "inputs": {
+    "unet_name": "z_image_turbo_bf16.safetensors",
+    "weight_dtype": "default"
+   }
+  },
+  "2": {
+   "class_type": "CLIPLoader",
+   "inputs": {
+    "clip_name": "qwen_3_4b.safetensors",
+    "type": "lumina2",
+    "device": "default"
+   }
+  },
+  "3": {
+   "class_type": "VAELoader",
+   "inputs": {
+    "vae_name": "ae.safetensors"
+   }
+  },
+  "4": {
+   "class_type": "CLIPTextEncode",
+   "inputs": {
+    "text": [
+     "40",
+     0
+    ],
+    "clip": [
+     "2",
+     0
+    ]
+   }
+  },
+  "5": {
+   "class_type": "ConditioningZeroOut",
+   "inputs": {
+    "conditioning": [
+     "4",
+     0
+    ]
+   }
+  },
+  "6": {
+   "class_type": "EmptySD3LatentImage",
+   "inputs": {
+    "width": 1280,
+    "height": 1664,
+    "batch_size": 1
+   }
+  },
+  "7": {
+   "class_type": "ModelSamplingAuraFlow",
+   "inputs": {
+    "shift": 3,
+    "model": [
+     "43",
+     0
+    ]
+   }
+  },
+  "8": {
+   "class_type": "KSampler",
+   "inputs": {
+    "seed": 1,
+    "steps": 8,
+    "cfg": 1,
+    "sampler_name": "res_multistep",
+    "scheduler": "simple",
+    "denoise": 1,
+    "model": [
+     "7",
+     0
+    ],
+    "positive": [
+     "4",
+     0
+    ],
+    "negative": [
+     "5",
+     0
+    ],
+    "latent_image": [
+     "6",
+     0
+    ]
+   }
+  },
+  "9": {
+   "class_type": "VAEDecode",
+   "inputs": {
+    "samples": [
+     "8",
+     0
+    ],
+    "vae": [
+     "3",
+     0
+    ]
+   }
+  },
+  "10": {
+   "class_type": "SaveImage",
+   "inputs": {
+    "filename_prefix": "cc/zimage-pixel-art",
+    "images": [
+     "9",
+     0
+    ]
+   }
+  },
+  "30": {
+   "class_type": "LoraLoaderModelOnly",
+   "inputs": {
+    "model": [
+     "1",
+     0
+    ],
+    "lora_name": "z-image__pixel_art_style_lora_z_image_turbo.safetensors",
+    "strength_model": 1.0
+   }
+  },
+  "40": {
+   "class_type": "StringConcatenate",
+   "inputs": {
+    "string_a": "Pixel art style,",
+    "string_b": "Black and white line art for a coloring sheet: PROMPT Flat 2D digital line drawing with thick, clean, closed black outlines on a pure white background; every area is left white to be colored in. The drawing fills the whole canvas from edge to edge with scenery, including the top. No border, no frame, no paper, no book, no photograph, no shadow, no shading, no gray, no color, no solid black areas, no text.",
+    "delimiter": " "
+   }
+  },
+  "41": {
+   "class_type": "LoraLoaderModelOnly",
+   "inputs": {
+    "model": [
+     "30",
+     0
+    ],
+    "lora_name": "z-image__Saturday-Morning-Z-Image-Turbo.safetensors",
+    "strength_model": 0.0
+   }
+  },
+  "42": {
+   "class_type": "LoraLoaderModelOnly",
+   "inputs": {
+    "model": [
+     "41",
+     0
+    ],
+    "lora_name": "z-image__Coloring-Book-Z-Image-Turbo-LoRA.safetensors",
+    "strength_model": 0.0
+   }
+  },
+  "43": {
+   "class_type": "LoraLoaderModelOnly",
+   "inputs": {
+    "model": [
+     "42",
+     0
+    ],
+    "lora_name": "z-image__COLORINGBOOK-REDMOND-ZIMAGE.safetensors",
+    "strength_model": 0.0
+   }
+  }
+ }
+}

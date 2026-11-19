@@ -23,7 +23,10 @@
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "ux:inspect": "tsx scripts/ux-inspection/inspect.mts",
     "ux:compare": "tsx scripts/ux-inspection/compare.mts",
-    "setup:pose": "sh scripts/fetch-pose-model.sh"
+    "setup:pose": "sh scripts/fetch-pose-model.sh",
+    "studio:up": "zsh scripts/studio-up.sh",
+    "studio:down": "zsh scripts/studio-down.sh",
+    "comfy:forward": "node scripts/comfy-forward.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

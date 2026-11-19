@@ -1,0 +1,253 @@
+{
+ "schema": "cc-media-profile/1",
+ "id": "qwen-image-2512-pixel-art",
+ "label": "Qwen-Image 2512 Turbo + Pixel Art",
+ "kind": "image",
+ "exclusive": false,
+ "hints": {
+  "speed": "4 steps (turbo LoRA stacked)",
+  "best_for": "Detailed pixel-art game assets and scenes",
+  "status": "New 2026-11-11; settings from the LoRA card; not yet test-rendered on the Studio",
+  "loras": "lora_pixel_art"
+ },
+ "requires": [
+  {
+   "folder": "unet",
+   "file": "qwen-image-2512-Q8_0.gguf"
+  },
+  {
+   "folder": "text_encoders",
+   "file": "qwen_2.5_vl_7b_fp8_scaled.safetensors"
+  },
+  {
+   "folder": "vae",
+   "file": "qwen_image_vae.safetensors"
+  },
+  {
+   "folder": "loras",
+   "file": "qwen-image-2512__Qwen-Image-2512-Turbo-LoRA.safetensors"
+  },
+  {
+   "folder": "loras",
+   "file": "qwen-image-2512__Qwen-Image-2512-Pixel-Art-LoRA.safetensors"
+  }
+ ],
+ "params": {
+  "prompt": {
+   "type": "text",
+   "max_len": 4000,
+   "required": true,
+   "targets": [
+    [
+     "40",
+     "string_b"
+    ]
+   ]
+  },
+  "seed": {
+   "type": "int",
+   "min": 0,
+   "max": 9007199254740991,
+   "default": 0,
+   "targets": [
+    [
+     "8",
+     "seed"
+    ]
+   ]
+  },
+  "width": {
+   "type": "int",
+   "min": 512,
+   "max": 2048,
+   "multiple": 16,
+   "default": 1024,
+   "targets": [
+    [
+     "7",
+     "width"
+    ]
+   ]
+  },
+  "height": {
+   "type": "int",
+   "min": 512,
+   "max": 2048,
+   "multiple": 16,
+   "default": 1024,
+   "targets": [
+    [
+     "7",
+     "height"
+    ]
+   ]
+  },
+  "lora_pixel_art": {
+   "type": "float",
+   "min": 0.0,
+   "max": 2.0,
+   "default": 1.0,
+   "label": "LoRA: Pixel art",
+   "targets": [
+    [
+     "31",
+     "strength_model"
+    ]
+   ]
+  }
+ },
+ "postprocess": [
+  "none",
+  "lineart"
+ ],
+ "limits": {
+  "timeout_s": 2400
+ },
+ "output": {
+  "node": "13",
+  "field": "filename_prefix"
+ },
+ "graph": {
+  "1": {
+   "class_type": "UnetLoaderGGUF",
+   "inputs": {
+    "unet_name": "qwen-image-2512-Q8_0.gguf"
+   }
+  },
+  "2": {
+   "class_type": "CLIPLoader",
+   "inputs": {
+    "clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+    "type": "qwen_image",
+    "device": "default"
+   }
+  },
+  "3": {
+   "class_type": "VAELoader",
+   "inputs": {
+    "vae_name": "qwen_image_vae.safetensors"
+   }
+  },
+  "4": {
+   "class_type": "CLIPTextEncode",
+   "inputs": {
+    "text": [
+     "40",
+     0
+    ],
+    "clip": [
+     "2",
+     0
+    ]
+   }
+  },
+  "5": {
+   "class_type": "CLIPTextEncode",
+   "inputs": {
+    "text": "\u4f4e\u5206\u8fa8\u7387\uff0c\u4f4e\u753b\u8d28\uff0c\u80a2\u4f53\u7578\u5f62\uff0c\u624b\u6307\u7578\u5f62\uff0c\u753b\u9762\u8fc7\u9971\u548c\uff0c\u8721\u50cf\u611f\uff0c\u4eba\u8138\u65e0\u7ec6\u8282\uff0c\u8fc7\u5ea6\u5149\u6ed1\uff0c\u753b\u9762\u5177\u6709AI\u611f\u3002\u6784\u56fe\u6df7\u4e71\u3002\u6587\u5b57\u6a21\u7cca\uff0c\u626d\u66f2",
+    "clip": [
+     "2",
+     0
+    ]
+   }
+  },
+  "6": {
+   "class_type": "ModelSamplingAuraFlow",
+   "inputs": {
+    "shift": 3.1,
+    "model": [
+     "31",
+     0
+    ]
+   }
+  },
+  "7": {
+   "class_type": "EmptySD3LatentImage",
+   "inputs": {
+    "width": 1024,
+    "height": 1024,
+    "batch_size": 1
+   }
+  },
+  "8": {
+   "class_type": "KSampler",
+   "inputs": {
+    "seed": 0,
+    "steps": 4,
+    "cfg": 1,
+    "sampler_name": "euler",
+    "scheduler": "simple",
+    "denoise": 1,
+    "model": [
+     "6",
+     0
+    ],
+    "positive": [
+     "4",
+     0
+    ],
+    "negative": [
+     "5",
+     0
+    ],
+    "latent_image": [
+     "7",
+     0
+    ]
+   }
+  },
+  "12": {
+   "class_type": "VAEDecode",
+   "inputs": {
+    "samples": [
+     "8",
+     0
+    ],
+    "vae": [
+     "3",
+     0
+    ]
+   }
+  },
+  "13": {
+   "class_type": "SaveImage",
+   "inputs": {
+    "filename_prefix": "cc/qwen-image-2512-pixel-art",
+    "images": [
+     "12",
+     0
+    ]
+   }
+  },
+  "30": {
+   "class_type": "LoraLoaderModelOnly",
+   "inputs": {
+    "model": [
+     "1",
+     0
+    ],
+    "lora_name": "qwen-image-2512__Qwen-Image-2512-Turbo-LoRA.safetensors",
+    "strength_model": 1.0
+   }
+  },
+  "31": {
+   "class_type": "LoraLoaderModelOnly",
+   "inputs": {
+    "model": [
+     "30",
+     0
+    ],
+    "lora_name": "qwen-image-2512__Qwen-Image-2512-Pixel-Art-LoRA.safetensors",
+    "strength_model": 1.0
+   }
+  },
+  "40": {
+   "class_type": "StringConcatenate",
+   "inputs": {
+    "string_a": "Pixel Art,",
+    "string_b": "",
+    "delimiter": " "
+   }
+  }
+ }
+}

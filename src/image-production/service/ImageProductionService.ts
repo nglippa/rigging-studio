@@ -8,7 +8,11 @@ import { imageProposalReviewInputSchema, type ImageApprovalPolicy, type ImageCan
 import type { ImageGenerationProvider } from "../providers/imageGenerationProvider";
 import type { ImageProductionProvider, ImageProviderProgress } from "../providers/imageProductionProvider";
 import { TrustedWorkflowRegistry } from "../workflows/registry";
-import { bindTrustedWorkflow } from "../workflows/workflowManifest";
+import { bindTrustedWorkflow, type LoadedTrustedWorkflow } from "../workflows/workflowManifest";
+import { createStudioQueue } from "../studio/studioSession";
+import type { StudioWorkQueue } from "../studio/StudioWorkQueue";
+import { removePlainBackground } from "../profiles/plainBackground";
+import { bindProfile, coerceParam, CUTOUT_PROFILE_ID, DEFAULT_PROFILE_ID, findProfile, listProfiles, PROFILE_GUIDANCE, profilePrompt, profileRequirements, tunableParams, type CcMediaProfile } from "../profiles/ccMediaProfile";
 
 const DEFAULT_CONTROLS: CharacterPromptControls = {
   style: "chibi-pixel-art", bodyProportions: "oversized head, compact torso, short separated limbs", viewDirection: "right",
@@ -41,12 +45,20 @@ export type GenerateImageCandidatesRequest = {
   readonly poseReferenceAssetId?: string;
   readonly metadata?: Readonly<Record<string, ImageProductionJson>>;
   readonly onProposalCreated?: (proposalId: string) => void;
+  /** Why the job is waiting for the Mac Studio (Command Center is using it, a model is loaded there...). */
+  readonly onStudioWait?: (reason: string) => void;
   readonly targetPartId?: string;
   readonly parentProposalId?: string;
+  /** A cc-media-profile/1 generation profile (model, LoRAs, ControlNet, custom nodes) to generate the character with. */
+  readonly profileId?: string;
+  /** Values for the profile's params (LoRA strengths, size, ...); each is clamped to the profile's limits. */
+  readonly profileParams?: Readonly<Record<string, ImageProductionJson>>;
 };
 
 export type ImageProductionServiceOptions = {
   readonly provider?: ImageProductionProvider;
+  /** Runs every job on the Studio's engine in turn, under Command Center's lease, and unloads the engine after. */
+  readonly studio?: StudioWorkQueue;
   readonly generationProviders?: readonly ImageGenerationProvider[];
   readonly registry?: TrustedWorkflowRegistry;
   readonly storage?: ImageProposalStorage;
@@ -60,8 +72,27 @@ export type ImageProductionServiceOptions = {
   }>;
 };
 
+export type ProfileStatus = {
+  readonly id: string; readonly label: string; readonly source: "built-in" | "studio" | "imported"; readonly available: boolean; readonly reason?: string;
+  readonly missing: readonly string[]; readonly recommended: boolean; readonly benchRank?: number; readonly benchSummary?: string; readonly benchSeconds?: number;
+  readonly bestFor?: string; readonly speed?: string; readonly params: ReturnType<typeof tunableParams>; readonly requires: readonly string[]; readonly nodeClasses: readonly string[];
+};
+
+/** A generation profile in the shape of a trusted workflow, so it is checked, run and reviewed like one. */
+function profileWorkflow(profile: CcMediaProfile, capability: ImageProductionCapability): LoadedTrustedWorkflow {
+  const requirements = profileRequirements(profile);
+  return {
+    manifest: {
+      manifestVersion: 1, id: profile.id, capability, workflowFile: `${profile.id}.json`, description: profile.label, inputs: {},
+      outputs: { images: { nodeId: profile.output.node } }, requiredNodeClasses: requirements.nodeClasses, requiredModels: requirements.files.map((file) => `file:${file}`),
+    },
+    workflow: profile.graph as unknown as LoadedTrustedWorkflow["workflow"], manifestPath: `profile:${profile.id}`, workflowPath: `profile:${profile.id}`,
+  };
+}
+
 export class ImageProductionService {
   readonly provider: ImageProductionProvider;
+  readonly studio: StudioWorkQueue;
   readonly registry: TrustedWorkflowRegistry;
   readonly storage: ImageProposalStorage;
   private readonly now: () => Date;
@@ -76,6 +107,7 @@ export class ImageProductionService {
 
   constructor(options: ImageProductionServiceOptions = {}) {
     this.provider = options.provider ?? new ComfyUIAdapter();
+    this.studio = options.studio ?? createStudioQueue(async () => (await this.provider.status()).reachable);
     const generationProviders = options.generationProviders ?? [new DrawThingsProvider({ cwd: process.cwd() })];
     this.generationProviders = new Map(generationProviders.map((provider) => [provider.id, provider]));
     this.registry = options.registry ?? new TrustedWorkflowRegistry();
@@ -89,26 +121,20 @@ export class ImageProductionService {
 
   /** Capabilities that passed their dependency check the last time ComfyUI answered. */
   private readonly lastAvailable = new Set<string>();
-  /** The engine is woken once per bridge run when nothing is known about it yet; after that it sleeps when idle. */
-  private wokeForFirstCheck = false;
 
   async status(refreshWorkflows = false) {
     const [reported, capabilities, generationProviders] = await Promise.all([
       this.provider.status(), this.registry.listCapabilities(refreshWorkflows),
       Promise.all([...this.generationProviders.values()].map((item) => item.getCapabilities())),
     ]);
-    // An engine that stops itself when idle (the Mac Studio's gate) is asleep, not broken, when the bridge can wake it
-    // (COMFYUI_WAKE_URL): what worked at the last check is still offered, and the first request wakes it.
+    // An engine that stops itself when idle (the Mac Studio's gate) is asleep, not broken, when the bridge can start it
+    // (COMFYUI_WAKE_URL). Looking never loads it: what worked at the last check is offered, or, before any check, everything
+    // is offered and checked when a job first starts the engine.
     const wakeUrl = process.env.COMFYUI_WAKE_URL;
-    if (!reported.reachable && wakeUrl && !this.lastAvailable.size && !this.wokeForFirstCheck) {
-      // Nothing is known yet (the bridge just started while the engine slept): wake it once so the next check can see it.
-      this.wokeForFirstCheck = true;
-      void fetch(wakeUrl, { signal: AbortSignal.timeout(30_000) }).catch(() => undefined);
-    }
-    const asleep = !reported.reachable && Boolean(wakeUrl) && this.lastAvailable.size > 0;
+    const asleep = !reported.reachable && Boolean(wakeUrl);
     const provider = asleep ? { ...reported, asleep: true, message: "Asleep · wakes on first use (up to a minute)" } : reported;
     const checked = await Promise.all(capabilities.map(async (capability) => {
-      if (asleep) return this.lastAvailable.has(capability.capability) ? { ...capability, capabilityAvailable: true, reason: "ComfyUI is asleep and wakes on first use" } : { ...capability, capabilityAvailable: false, reason: "ComfyUI is asleep" };
+      if (asleep) return !this.lastAvailable.size || this.lastAvailable.has(capability.capability) ? { ...capability, capabilityAvailable: true, reason: "ComfyUI is asleep and wakes on first use" } : { ...capability, capabilityAvailable: false, reason: "ComfyUI is asleep" };
       if (!provider.reachable) return { ...capability, capabilityAvailable: false, reason: `ComfyUI offline at ${provider.url}: ${provider.message}` };
       if (!capability.capabilityAvailable) return capability;
       try {
@@ -118,21 +144,86 @@ export class ImageProductionService {
       } catch (error: unknown) { return { ...capability, capabilityAvailable: false, reason: error instanceof Error ? error.message : "Dependency inspection failed" }; }
     }));
     if (reported.reachable) { this.lastAvailable.clear(); for (const item of checked) if (item.capabilityAvailable) this.lastAvailable.add(item.capability); }
+    // A character can be made with any ready generation profile, even when the plain checkpoint workflow is not set up.
+    // While the engine sleeps (and can be woken), a profile that cannot be checked is still offered: generating wakes the
+    // engine and checks it then. A sleeping Studio is not an error to show a newcomer.
+    const sleeping = !reported.reachable && Boolean(wakeUrl);
+    const profilesReady = await this.profileStatus().then((items) => items.some((item) => item.available) || (sleeping && items.length > 0), () => false);
     return {
       provider, capabilities: checked,
       providers: [
-        { provider: "comfyui", label: "ComfyUI — Local", local: true, connected: provider.reachable, mode: provider.reachable ? "direct" : "unavailable", characterGeneration: { available: checked.some((item) => item.capability === "CHARACTER_GENERATION" && item.capabilityAvailable), reason: provider.reachable ? undefined : provider.message }, characterVariant: { available: checked.some((item) => item.capability === "CHARACTER_VARIANT" && item.capabilityAvailable) }, metadataCapture: { available: provider.reachable, level: provider.reachable ? "full" : "unavailable" }, watchedFolder: { available: false, reason: "ComfyUI uses its trusted workflow API" }, models: [], message: provider.message },
+        { provider: "comfyui", label: "ComfyUI — Mac Studio", local: true, connected: provider.reachable, mode: provider.reachable ? "direct" : "unavailable", characterGeneration: { available: profilesReady || checked.some((item) => item.capability === "CHARACTER_GENERATION" && item.capabilityAvailable), reason: provider.reachable ? undefined : sleeping ? "Asleep · wakes on first use (up to a minute)" : provider.message }, characterVariant: { available: checked.some((item) => item.capability === "CHARACTER_VARIANT" && item.capabilityAvailable) }, metadataCapture: { available: provider.reachable, level: provider.reachable ? "full" : "unavailable" }, watchedFolder: { available: false, reason: "ComfyUI uses its trusted workflow API" }, models: [], message: sleeping ? "The Mac Studio is asleep; it wakes when you generate (up to a minute)" : provider.message },
         ...generationProviders,
       ],
       conservativeDefaults: { candidateCount: 3, maximumCandidateCount: 4, candidateConcurrency: 1, maximumProposalRounds: 2 },
     };
   }
 
+  /**
+   * Every generation profile with what it needs and whether the engine has it. While the engine sleeps, a profile that
+   * was ready at the last check is still offered (the first use wakes it).
+   */
+  private lastProfileReady = new Map<string, boolean>();
+  async profileStatus(): Promise<readonly ProfileStatus[]> {
+    const profiles = await listProfiles();
+    const engine = await this.provider.status();
+    return Promise.all(profiles.map(async ({ profile, source }) => {
+      const requirements = profileRequirements(profile);
+      const sleeping = !engine.reachable && Boolean(process.env.COMFYUI_WAKE_URL);
+      let available = this.lastProfileReady.get(profile.id) ?? sleeping; let missing: readonly string[] = [];
+      let reason = engine.reachable ? undefined : sleeping ? "The Studio is asleep; this is checked when it wakes" : "ComfyUI is offline";
+      if (engine.reachable) {
+        try {
+          const dependencies = await this.provider.inspectDependencies(profileWorkflow(profile, "CHARACTER_GENERATION"));
+          available = dependencies.available; missing = [...dependencies.missingNodeClasses.map((name) => `node ${name}`), ...dependencies.missingModels];
+          reason = available ? undefined : `Missing on the engine: ${missing.join(", ")}`;
+        } catch (error: unknown) { available = false; reason = error instanceof Error ? error.message : "Could not check the engine"; }
+        this.lastProfileReady.set(profile.id, available);
+      }
+      const guidance = PROFILE_GUIDANCE[profile.id];
+      return {
+        id: profile.id, label: profile.label, source, available, ...(reason ? { reason } : {}), missing,
+        recommended: profile.id === DEFAULT_PROFILE_ID, ...(guidance ? { benchRank: guidance.rank, benchSummary: guidance.summary, benchSeconds: guidance.seconds } : {}),
+        bestFor: typeof profile.hints?.best_for === "string" ? profile.hints.best_for : undefined, speed: typeof profile.hints?.speed === "string" ? profile.hints.speed : undefined,
+        params: tunableParams(profile), requires: requirements.files, nodeClasses: requirements.nodeClasses,
+      } satisfies ProfileStatus;
+    }));
+  }
+
+  /**
+   * The image with its background removed, as an RGBA PNG: by the cut-out profile (RMBG-2.0, the sprite benchmark's
+   * winner) when the engine has its model, otherwise by flooding the plain background the profiles are asked to draw on.
+   */
+  private async cutout<T extends { readonly bytes: Uint8Array; readonly mimeType: string }>(image: T, name: string): Promise<T> {
+    const local = (): T => {
+      if (image.mimeType !== "image/png") throw new Error("only PNG candidates can be cut out locally");
+      const result = removePlainBackground(image.bytes);
+      if (!result.removed) throw new Error("the background is not one plain colour");
+      return { ...image, bytes: result.bytes, mimeType: "image/png" };
+    };
+    if (!this.provider.uploadImage) return local();
+    const { profile } = await findProfile(CUTOUT_PROFILE_ID).catch(() => ({ profile: null }));
+    if (!profile) return local();
+    const dependencies = await this.provider.inspectDependencies(profileWorkflow(profile, "BACKGROUND_REMOVAL"));
+    if (!dependencies.available) return local();
+    const uploaded = await this.provider.uploadImage(`rigging-cutout-${name}.png`, image.bytes, image.mimeType === "image/jpeg" ? "image/jpeg" : "image/png");
+    const submitted = await this.provider.submit(bindProfile(profile, { image: uploaded }));
+    const result = await this.provider.waitForCompletion(submitted.promptId, profile.output.node);
+    const output = result.outputs[0];
+    if (!output || output.mimeType !== "image/png") throw new Error("the cut-out returned no PNG");
+    return { ...image, ...output };
+  }
+
   async generateCandidates(request: GenerateImageCandidatesRequest): Promise<ImageProposal> {
     const capability = OPERATION_CAPABILITY[request.operation];
     if (!capability) throw new Error(`Unsupported trusted image operation ${request.operation}`);
     if (request.provider && request.provider !== "comfyui") return this.generateWithCharacterProvider(request, capability);
-    const workflow = await this.registry.require(capability);
+    return this.studio.run(`${capability} for ${request.projectId}`, () => this.generateOnStudio(request, capability), request.onStudioWait);
+  }
+
+  private async generateOnStudio(request: GenerateImageCandidatesRequest, capability: ImageProductionCapability): Promise<ImageProposal> {
+    const profile = request.profileId && (capability === "CHARACTER_GENERATION" || capability === "CHARACTER_VARIANT") ? (await findProfile(request.profileId)).profile : null;
+    const workflow = profile ? profileWorkflow(profile, capability) : await this.registry.require(capability);
     const providerStatus = await this.provider.status();
     if (!providerStatus.reachable) throw new Error(`ComfyUI is offline at ${providerStatus.url}: ${providerStatus.message}`);
     const dependencies = await this.provider.inspectDependencies(workflow);
@@ -168,7 +259,10 @@ export class ImageProductionService {
       status: "generating", approvalPolicy, createdAt: timestamp, updatedAt: timestamp,
       sourcePrompt: prompt, negativePrompt,
       generationParameters: {
-        candidateCount, preset: request.preset ?? "MODULAR_2D_RIG_CHARACTER", width: request.width ?? 768, height: request.height ?? 768,
+        candidateCount, preset: request.preset ?? "MODULAR_2D_RIG_CHARACTER",
+        width: profile ? Number(coerceParam(profile.params.width ?? { type: "int", targets: [["", ""]], default: 1024 }, request.profileParams?.width) ?? 1024) : request.width ?? 768,
+        height: profile ? Number(coerceParam(profile.params.height ?? { type: "int", targets: [["", ""]], default: 1024 }, request.profileParams?.height) ?? 1024) : request.height ?? 768,
+        ...(profile ? { profileId: profile.id, profileParams: { ...request.profileParams } } : {}),
         steps: request.steps ?? 24, guidance: request.guidance ?? 7, stylePreset: "chibi-pixel-art", candidateConcurrency: 1,
       },
       ...(request.targetPartId ? { targetPartId: request.targetPartId } : {}), ...(request.parentProposalId ? { parentProposalId: request.parentProposalId } : {}),
@@ -189,20 +283,22 @@ export class ImageProductionService {
           steps: request.steps ?? 24, guidance: request.guidance ?? 7, checkpoint: process.env.COMFYUI_CHECKPOINT ?? "model.safetensors",
           ...repairBindings,
         };
-        const bound = bindTrustedWorkflow(workflow, values);
+        const bound = profile ? bindProfile(profile, { ...request.profileParams, prompt: profilePrompt(prompt), seed }) : bindTrustedWorkflow(workflow, values);
         const submitted = await this.provider.submit(bound); this.activePromptIds.set(proposalId, submitted.promptId);
         let progressQueue = Promise.resolve();
         const result = await this.provider.waitForCompletion(submitted.promptId, workflow.manifest.outputs.images.nodeId, (progress) => {
           progressQueue = progressQueue.then(async () => { proposal = await this.progress(proposal, this.mapProgress(progress, index + 1, candidateCount)); }).catch(() => undefined);
         });
         await progressQueue;
-        const output = result.outputs[0];
-        if (!output) throw new Error("ComfyUI returned no candidate image");
+        const generated = result.outputs[0];
+        if (!generated) throw new Error("ComfyUI returned no candidate image");
+        // A profile draws on a plain background; cut the character out so the rest of the pipeline sees its silhouette.
+        const output = profile ? await this.cutout(generated, `${proposalId}-${index + 1}`).catch((error: unknown) => { proposal = { ...proposal, warnings: [...proposal.warnings, `Candidate ${index + 1}: background not removed (${error instanceof Error ? error.message : "cut-out failed"})`] }; return generated; }) : generated;
         const candidateId = `candidate-${String(index + 1).padStart(2, "0")}`;
         const asset = await this.storage.writeCandidate(proposalId, candidateId, output.bytes, output.mimeType);
         let candidate: ImageCandidate = {
           candidateId, imageAssetId: asset.imageAssetId, imageFileName: asset.imageFileName, width: asset.width, height: asset.height, seed,
-          providerMetadata: { promptId: result.promptId, providerFilename: output.providerAsset.filename, providerSubfolder: output.providerAsset.subfolder, workflowId: workflow.manifest.id },
+          providerMetadata: { promptId: result.promptId, providerFilename: output.providerAsset.filename, providerSubfolder: output.providerAsset.subfolder, workflowId: workflow.manifest.id, ...(profile ? { model: profile.label } : {}) },
           diagnostics: { warnings: result.warnings }, status: "generated",
         };
         candidates.push(candidate);
