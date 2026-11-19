@@ -288,6 +288,23 @@ describe("rig-aware standard motions", () => {
     }
   });
 
+  it("a front-facing character raises its weapon upright beside the head in the wind-up, not flat across the face", () => {
+    const source: RigDefinition = (() => { const base = rig("front"); return {
+      ...base,
+      slots: [...base.bones.map((bone, index) => ({ id: `${bone.id}-slot`, boneId: bone.id, attachmentId: `${bone.id}-art`, zIndex: index, visible: true, blendMode: "normal" as const, tint: 0xffffff, pivotX: 0, pivotY: 0 })),
+        { id: "sword-slot", boneId: "right-hand", attachmentId: "sword", zIndex: 60, visible: true, blendMode: "normal" as const, tint: 0xffffff, pivotX: 0, pivotY: 0 }],
+      attachments: [...base.bones.map((bone) => ({ id: `${bone.id}-art`, imagePath: `parts/${bone.id}.png`, width: 20, height: 24, offsetX: 0, offsetY: 0, rotation: 0, scaleX: 1, scaleY: 1, category: "body", tags: [] })),
+        { id: "sword", imagePath: "parts/sword.png", width: 16, height: 110, offsetX: 0, offsetY: 0, rotation: 0, scaleX: 1, scaleY: 1, category: "equipment", tags: [] }],
+    }; })();
+    const attack = clipFor(source, "melee_attack");
+    const handAngle = (fraction: number) => computeWorldTransforms(source, evaluateAnimationAtTime(attack, createRestPose(source), attack.duration * fraction))["right-hand"].rotation * 180 / Math.PI;
+    const rest = handAngle(0);
+    const turned = (fraction: number) => Math.abs(((handAngle(fraction) - rest + 540) % 360) - 180);
+    // Through the wind-up the blade keeps about the angle it was drawn at (plus the wrist's 20° cock before the snap),
+    // while the arm itself turns well over 100°.
+    for (const fraction of [.3, .36, .4]) expect(turned(fraction), String(fraction)).toBeLessThan(30);
+  });
+
   it("works on a hand-built rig whose bones are rotated at rest", () => {
     const parsed = safeParseRigJson(readFileSync(new URL("../../public/rig-test/minimal-rig.json", import.meta.url), "utf8"));
     if (!parsed.success) throw new Error(parsed.message);

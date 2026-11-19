@@ -407,7 +407,9 @@ export function heldObjectSeeds(guide: AnatomicalPartitionGuide, foreground: rea
   }
   // Spread two more prompt points over the unclaimed artwork around each seed (not in any body zone, within reach), by
   // farthest-point sampling over a breadth-first walk from the seed.
-  const reach = Math.max(bounds.width, bounds.height) * .12;
+  // Prompt points stay near the seed so they lie on the same object: walked further, they follow a rope or strap onto
+  // whatever it is tied to (the courier's hook line led to the pouch on her belt).
+  const reach = Math.max(bounds.width, bounds.height) * .07;
   const spread = (seed: Point, allowed: (x: number, y: number) => boolean = (x, y) => !inZone(x, y)): readonly Point[] => {
     const start = Math.round(seed.y) * width + Math.round(seed.x); const visited = new Map<number, number>([[start, 0]]); const queue = [start];
     for (let cursor = 0; cursor < queue.length; cursor += 1) {

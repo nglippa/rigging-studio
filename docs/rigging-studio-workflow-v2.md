@@ -326,6 +326,8 @@ Sources are in the `human-motion-rigging` skill, new chapters ch07 (shoulder: sc
     - Each seed prompts SAM2 with up to three points on the same patch, which avoids the subpart answer.
     - A mask counts as held when it is near one hand (long items measured from their ends), is not mostly body, and reaches at least a forearm's length past the wrist (rejects gloves).
     - Touching pieces in one hand are joined. Hand-grown masks are only a fallback. Each item is cut with its 1 px outline.
+  - **Prompt points stay near their seed** (within 7% of the figure's size), so they lie on the same object; walked further, they followed the courier's hook rope onto the pouch on her belt.
+  - **Front-view chop:** a held weapon stays upright beside the head through the wind-up (as in Raise Arms) and is released into the cut, instead of being carried flat across the face.
   - **Small sprites** go to SAM2 enlarged with Scale2× (EPX) to at least 512 px, not nearest-neighbour; masks come back by majority vote. On the 48 px warrior: sword 7 px → 64 px.
   - **Hidden-area fill** continues a part only between its own art (pixels on both sides along a row or column), so a box that spans a held item cannot paint a ghost of it.
   - **Waking.** A request that fails mid-wake ("fetch failed") wakes the Studio and retries once.

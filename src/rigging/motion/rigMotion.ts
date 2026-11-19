@@ -598,8 +598,12 @@ function frontChop(anatomy: RigAnatomy, arm: Limb, fractions: readonly number[],
   const lift = (index: number) => { const elevation = Math.abs(Math.min(0, upper(index))); return elevation <= 30 ? 0 : Math.min(1, (elevation - 30) / 120) * torsoLength * .16; };
   clip.add(arm.upper, "x", (index) => up.x * lift(index)); clip.add(arm.upper, "y", (index) => up.y * lift(index));
   // The elbow folds behind the head, then extends last into the cut.
-  clip.add(arm.lower, "rotation", (index) => curve([[0, 0], [.3, 80], [.41, 30, "in"], [.46, -arm.restBend * .9, "in"], [.56, -arm.restBend * .6, "out"], [.88, 0], [1, 0]], t(index), .07) * arm.bendSign);
-  if (arm.end) clip.add(arm.end, "rotation", (index) => curve(wind(-20, 15, 25), t(index), .09) * across);
+  const elbow = (index: number) => curve([[0, 0], [.3, 80], [.41, 30, "in"], [.46, -arm.restBend * .9, "in"], [.56, -arm.restBend * .6, "out"], [.88, 0], [1, 0]], t(index), .07) * arm.bendSign;
+  clip.add(arm.lower, "rotation", elbow);
+  // A held weapon stays upright as the arm winds up (as when raising the arms), so the blade is raised beside the head
+  // instead of being carried flat across the face; it is released into the cut and snaps through with the wrist.
+  const keep = (index: number) => arm.carriesEquipment ? curve([[0, 0], [.3, 1], [.4, 1], [.48, 0, "in"], [1, 0]], t(index)) : 0;
+  if (arm.end) clip.add(arm.end, "rotation", (index) => -(upper(index) * across + elbow(index)) * keep(index) + curve(wind(-20, 15, 25), t(index), .09) * across);
   // The other arm comes up and out for balance, and drops as the blow lands.
   for (const other of anatomy.arms) if (other !== arm) clip.add(other.upper, "rotation", (index) => curve(wind(-25, 10, 15), t(index), .06) * turn(wholeArm(other), { x: -other.outward, y: 0 }));
   // The chest leans away in the wind-up and into the cut; the head follows a beat later.
