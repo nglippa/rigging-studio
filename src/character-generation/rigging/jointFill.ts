@@ -126,7 +126,12 @@ export function fillPartArt(source: PixelImage, parts: readonly ProposedCharacte
     // both sides). Its bounding box alone is not enough: a part whose box spans a held sword (a chibi's head beside the
     // raised blade) would otherwise paint the sword's whole shape, which shows as a dark ghost when the sword moves.
     const ownRowMin = new Map<number, number>(); const ownRowMax = new Map<number, number>(); const ownColMin = new Map<number, number>(); const ownColMax = new Map<number, number>();
-    for (let y = layer.top; y < layer.bottom; y += 1) for (let x = layer.left; x < layer.right; x += 1) if (labels[y * width + x] === own) {
+    // The torso counts the head with it (the trunk): under an arm held in front of the chest, the art above is the head.
+    const trunk = layers.filter((other) => other.owner === own || (layer.part.semanticType === "torso" && other.part.semanticType === "head"));
+    const trunkOwners = new Set(trunk.map((other) => other.owner));
+    const trunkLeft = Math.min(...trunk.map((other) => other.left)); const trunkTop = Math.min(...trunk.map((other) => other.top));
+    const trunkRight = Math.max(...trunk.map((other) => other.right)); const trunkBottom = Math.max(...trunk.map((other) => other.bottom));
+    for (let y = trunkTop; y < trunkBottom; y += 1) for (let x = trunkLeft; x < trunkRight; x += 1) if (trunkOwners.has(labels[y * width + x])) {
       if (x < (ownRowMin.get(y) ?? Infinity)) ownRowMin.set(y, x); if (x > (ownRowMax.get(y) ?? -Infinity)) ownRowMax.set(y, x);
       if (y < (ownColMin.get(x) ?? Infinity)) ownColMin.set(x, y); if (y > (ownColMax.get(x) ?? -Infinity)) ownColMax.set(x, y);
     }
@@ -145,11 +150,15 @@ export function fillPartArt(source: PixelImage, parts: readonly ProposedCharacte
           const neighbour = ny * width + nx; const owner = labels[neighbour];
           if (owner <= 0 || owner === own || originOf.has(neighbour)) continue;
           const front = layers[owner - 1];
+          // The torso does continue under an upper arm in front of it (a side view's near arm covers much of the chest,
+          // far more than the joint cap does, and past the torso's own drawn edge), so raising that arm opens no hole.
+          const armOverChest = layer.part.semanticType === "torso" && /UpperArm$/.test(front.part.semanticType);
+          if (front.z <= layer.z || (jointed(front.part.semanticType, layer.part.semanticType) && !armOverChest)) continue;
           // Only under parts drawn in front, and never over a jointed neighbour, whose real art the caps already continue.
-          if (front.z <= layer.z || jointed(front.part.semanticType, layer.part.semanticType)) continue;
+
           // Under another body part the fill completes this part inside its own extent. Under equipment it may also reach
           // across to the next body part, because a weapon often hides the whole strip between two parts.
-          const withinOwnExtent = nx >= layer.left && ny >= layer.top && nx < layer.right && ny < layer.bottom && betweenOwnArt(nx, ny);
+          const withinOwnExtent = (armOverChest || (nx >= layer.left && ny >= layer.top && nx < layer.right && ny < layer.bottom)) && betweenOwnArt(nx, ny);
           // Only the large parts that sit behind a weapon (torso, head) continue across under it; a limb behind a sword only
           // completes itself within its own extent, or it paints the weapon's whole shape and leaves it as a ghost.
           const spansBody = layer.part.semanticType === "torso" || layer.part.semanticType === "head";

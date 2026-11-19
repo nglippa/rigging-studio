@@ -688,10 +688,12 @@ export function artlessLimbBones(rig: RigDefinition): ReadonlySet<string> {
  */
 const even = (count: number) => Array.from({ length: count }, (_, index) => index / count);
 export const DRAWING_CHARTS: Readonly<Record<MotionId, readonly number[]>> = {
-  idle: even(8),                                    // 6.7 a second over 1.2 s
-  // Contact poses (each leg's strike at 0 and .5) held a little longer than the passing drawings: an accent, not a tick.
-  walk: [0, .16, .25, .38, .5, .66, .75, .88],
-  run: [0, .2, .33, .5, .7, .83],
+  // Uneven on purpose: the breath in and out are held, and no half of a cycle repeats the other's spacing exactly (a
+  // verbatim repeat reads as a template, not as drawings).
+  idle: [0, .17, .29, .41, .5, .66, .79, .9],
+  // Contact poses (each leg's strike at 0 and about .5) held a little longer than the passing drawings: an accent.
+  walk: [0, .17, .25, .39, .5, .64, .76, .87],
+  run: [0, .19, .34, .5, .68, .84],
   raise_arms: [0, .12, .24, .36, .44, .53, .62, .71, .8, .88, .94],
   // ready, wind-up, held anticipation (.3-.4), three quick strike drawings through contact (.44), held follow-through
   // (.54-.72), recovery, settle.
@@ -703,6 +705,26 @@ export const DRAWING_CHARTS: Readonly<Record<MotionId, readonly number[]>> = {
 };
 
 /**
+ * Squash and stretch of the whole body about the ground, at the drawings hand animators use them for (Saint11's run and
+ * attack lessons; Thomas's and Johnston's principles): squashed on a foot's contact and before a blow, stretched on the
+ * passing pose and into the strike. [time fraction, scaleX, scaleY]; volume roughly kept. The face counter-scales.
+ */
+export const SQUASH: Partial<Record<MotionId, readonly (readonly [number, number, number])[]>> = {
+  idle: [[0, 1, 1], [.41, .985, 1.02], [.5, .985, 1.02], [.9, 1, 1]],
+  walk: [[0, 1.03, .96], [.17, 1, 1], [.25, .985, 1.02], [.39, 1, 1], [.5, 1.03, .96], [.64, 1, 1], [.76, .985, 1.02], [.87, 1, 1]],
+  run: [[0, 1.05, .93], [.19, .98, 1.04], [.34, 1, 1], [.5, 1.05, .93], [.68, .98, 1.04], [.84, 1, 1]],
+  melee_attack: [[0, 1, 1], [.24, 1.03, .96], [.3, 1.05, .94], [.44, .96, 1.05], [.54, 1.02, .98], [.78, 1, 1]],
+  hurt: [[0, 1, 1], [.06, 1.06, .93], [.34, 1, 1]],
+  death: [[0, 1, 1], [.7, 1.08, .9], [.76, 1, 1]],
+};
+
+export function withSquash(clip: AnimationDefinition, rootId: string, id: MotionId): AnimationDefinition {
+  const keys = SQUASH[id]; if (!keys) return clip;
+  const track = (property: "scaleX" | "scaleY", column: 1 | 2): AnimationTrack => ({ boneId: rootId, property, keyframes: keys.map((key) => ({ time: Math.round(key[0] * clip.duration * 1000) / 1000, value: key[column], easing: "linear" as const })) });
+  return { ...clip, tracks: [...clip.tracks.filter((existing) => !(existing.boneId === rootId && (existing.property === "scaleX" || existing.property === "scaleY"))), track("scaleX", 1), track("scaleY", 2)] };
+}
+
+/**
  * The head counter-turns against everything above it in the chain, so its art keeps the angle it was drawn at and only
  * moves with the neck. Hand pixel animators shift a face rather than rotate it; a rotated face reads as a warped copy.
  */
@@ -710,10 +732,14 @@ function keepFaceUpright(rig: RigDefinition, clip: AnimationDefinition, headId: 
   const ancestors: string[] = []; let bone = rig.bones.find((candidate) => candidate.id === headId);
   while (bone?.parentId) { ancestors.push(bone.parentId); bone = rig.bones.find((candidate) => candidate.id === bone!.parentId); }
   const turning = clip.tracks.filter((track) => track.property === "rotation" && ancestors.includes(track.boneId));
+  // It also counter-scales a squash of its ancestors, so the face keeps its drawn shape while the body squashes.
+  const scaling = (property: "scaleX" | "scaleY") => clip.tracks.filter((track) => track.property === property && ancestors.includes(track.boneId));
+  const scaleTimes = [...new Set([0, clip.duration, ...(clip.drawings ?? []), ...scaling("scaleX").concat(scaling("scaleY")).flatMap((track) => track.keyframes.map((key) => key.time))])].sort((a, b) => a - b);
+  const counter = (property: "scaleX" | "scaleY"): AnimationTrack[] => scaling(property).length ? [{ boneId: headId, property, keyframes: scaleTimes.map((time) => ({ time, value: 1 / scaling(property).reduce((product, track) => product * sampleTrack(track, time), 1), easing: "linear" as const })) }] : [];
   const times = [...new Set([0, clip.duration, ...(clip.drawings ?? []), ...turning.flatMap((track) => track.keyframes.map((key) => key.time))])].sort((a, b) => a - b);
   const keyframes = times.map((time) => ({ time, value: -turning.reduce((sum, track) => sum + sampleTrack(track, time), 0), easing: "linear" as const }));
-  const rest = clip.tracks.filter((track) => !(track.boneId === headId && track.property === "rotation"));
-  return { ...clip, tracks: [...rest, { boneId: headId, property: "rotation", keyframes }] };
+  const rest = clip.tracks.filter((track) => !(track.boneId === headId && (track.property === "rotation" || (track.property !== "x" && track.property !== "y" && scaling(track.property).length))));
+  return { ...clip, tracks: [...rest, { boneId: headId, property: "rotation", keyframes }, ...counter("scaleX"), ...counter("scaleY")] };
 }
 
 /** Builds one standard motion for this rig, or null when the rig has none of the bones that motion needs. */
@@ -733,8 +759,12 @@ export function buildMotionClip(rig: RigDefinition, id: MotionId, anatomy: RigAn
   // The strike drawings of an attack carry a smear of the weapon's swing, as hand-drawn attacks do (three quick drawings).
   const smears = id === "melee_attack" ? [.44, .49].map((fraction) => Math.round(fraction * spec.duration * 1000) / 1000) : undefined;
   const built: AnimationDefinition = { schemaVersion: ANIMATION_SCHEMA_VERSION, id: spec.id, name: spec.name, duration: spec.duration, loop: spec.loop, tracks: shown, drawings, ...(smears ? { smears } : {}) };
-  // Pixel art keeps the face upright (only a fall turns it): a rotated face is a redrawn face, and RotSprite cannot redraw.
-  return rig.metadata?.pixelArt === true && id !== "death" && anatomy.head ? keepFaceUpright(rig, built, anatomy.head.id) : built;
+  // Pixel art squashes and stretches like drawn animation, and keeps the face upright and unsquashed (only a fall turns
+  // it): a rotated or squashed face is a redrawn face, and RotSprite cannot redraw.
+  // Squash and stretch (SQUASH, withSquash) is off: scaling each part on its own drops pixel rows differently per part and
+  // reads as flicker; it needs to squash the composed body as one drawing instead.
+  if (rig.metadata?.pixelArt !== true) return built;
+  return id !== "death" && anatomy.head ? keepFaceUpright(rig, built, anatomy.head.id) : built;
 }
 
 /** The standard clip set for a rig, each resolved against that rig's rest pose and facing. */

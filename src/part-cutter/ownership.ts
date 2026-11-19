@@ -337,3 +337,45 @@ export function adoptStrayArtwork(state: PartCutterState, foreground: readonly n
   if (!adopted) return { state: canonical, adopted: 0 };
   return { state: commitOwnership(canonical, labels, "assign", partition.regionIds, adopted, "migration", "Uncut artwork joined to the nearest part"), adopted };
 }
+
+/**
+ * Detached fragments of a part (a few pixels of a staff's outline that fell to the head) go to the neighbouring part they
+ * touch most: hidden at rest behind that neighbour, they would otherwise float beside the part as soon as it moves. A
+ * fragment is a piece not connected to the part's main body and smaller than 2% of it.
+ */
+export function reassignDetachedFragments(state: PartCutterState): { readonly state: PartCutterState; readonly moved: number } {
+  const canonical = ensureOwnershipPartition(state); const partition = canonical.ownership!; const { width, height } = partition;
+  const labels = decodeOwnership(partition); const seen = new Uint8Array(width * height);
+  const fragments: { readonly target: string; readonly pixels: number[] }[] = [];
+  for (let owner = 1; owner <= partition.regionIds.length; owner += 1) {
+    const pieces: number[][] = [];
+    for (let start = 0; start < labels.length; start += 1) {
+      if (seen[start] || labels[start] !== owner) continue;
+      const piece = [start]; seen[start] = 1;
+      for (let cursor = 0; cursor < piece.length; cursor += 1) {
+        const index = piece[cursor]; const x = index % width; const y = (index - x) / width;
+        for (const next of [x > 0 ? index - 1 : -1, x + 1 < width ? index + 1 : -1, y > 0 ? index - width : -1, y + 1 < height ? index + width : -1]) if (next >= 0 && !seen[next] && labels[next] === owner) { seen[next] = 1; piece.push(next); }
+      }
+      pieces.push(piece);
+    }
+    if (pieces.length < 2) continue;
+    pieces.sort((a, b) => b.length - a.length);
+    for (const piece of pieces.slice(1)) {
+      if (piece.length >= pieces[0].length * .02) continue;
+      const contact = new Map<number, number>();
+      for (const index of piece) { const x = index % width; const y = (index - x) / width; for (const next of [x > 0 ? index - 1 : -1, x + 1 < width ? index + 1 : -1, y > 0 ? index - width : -1, y + 1 < height ? index + width : -1]) { if (next < 0) continue; const other = labels[next]; if (other > 0 && other !== owner) contact.set(other, (contact.get(other) ?? 0) + 1); } }
+      let best = 0; let bestCount = 0; contact.forEach((count, other) => { if (count > bestCount) { bestCount = count; best = other; } });
+      if (best > 0) fragments.push({ target: partition.regionIds[best - 1], pixels: piece });
+    }
+  }
+  let current = canonical; let moved = 0;
+  for (const fragment of fragments) {
+    let left = width; let top = height; let right = 0; let bottom = 0;
+    for (const index of fragment.pixels) { const x = index % width; const y = (index - x) / width; left = Math.min(left, x); top = Math.min(top, y); right = Math.max(right, x); bottom = Math.max(bottom, y); }
+    const mask = { width: right - left + 1, height: bottom - top + 1, alpha: new Array<number>((right - left + 1) * (bottom - top + 1)).fill(0) };
+    for (const index of fragment.pixels) { const x = index % width; const y = (index - x) / width; mask.alpha[(y - top) * mask.width + x - left] = 255; }
+    current = assignOwnershipSelection(current, fragment.target, { x: left, y: top, width: mask.width, height: mask.height }, mask, { actor: "ai", action: "assign" }).state;
+    moved += fragment.pixels.length;
+  }
+  return { state: current, moved };
+}

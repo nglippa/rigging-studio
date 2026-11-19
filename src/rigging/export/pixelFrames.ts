@@ -138,12 +138,16 @@ export function renderPixelFrame(rig: RigDefinition, pose: RigPose, pixels: Part
     const native = k > 1 ? nativePart(rig, slot.id, attachment.id, source, sourcePivotX, sourcePivotY, k, cache) : null;
     const texture = native?.image ?? source; const pivotX = native?.pivot.x ?? sourcePivotX; const pivotY = native?.pivot.y ?? sourcePivotY;
     const matrix: Matrix = k > 1 ? { ...full, tx: full.tx / k, ty: full.ty / k } : full;
-    const scaleX = Math.hypot(matrix.a, matrix.b); const scaleY = Math.hypot(matrix.c, matrix.d);
-    const rotationOnly = Math.abs(scaleX - 1) <= .03 && Math.abs(scaleY - 1) <= .03 && matrix.a * matrix.d - matrix.b * matrix.c > 0;
-    if (rotationOnly) {
+    const scaleX = Math.hypot(matrix.a, matrix.b); const det = matrix.a * matrix.d - matrix.b * matrix.c; const scaleY = det / Math.max(1e-9, scaleX);
+    // Rotation with a squash or stretch (scale within 25%): scaled nearest-neighbour first, then RotSprite, so squashed parts
+    // keep clean outlines. Mirrored or strongly stretched parts are sampled directly.
+    const drawable = det > 0 && Math.abs(scaleX - 1) <= .25 && Math.abs(scaleY - 1) <= .25;
+    if (drawable) {
       const angle = snapAngle(Math.atan2(matrix.b, matrix.a) * 180 / Math.PI);
-      const key = `${attachment.id}:${k}:${angle}:${pivotX.toFixed(1)},${pivotY.toFixed(1)}`;
-      let rotated = cache.get(key); if (!rotated) { rotated = rotsprite(texture, angle, { x: pivotX, y: pivotY }); cache.set(key, rotated); }
+      const sx = Math.round(scaleX * 50) / 50; const sy = Math.round(scaleY * 50) / 50;
+      const key = `${attachment.id}:${k}:${angle}:${sx},${sy}:${pivotX.toFixed(1)},${pivotY.toFixed(1)}`;
+      let rotated = cache.get(key);
+      if (!rotated) { const scaled = sx === 1 && sy === 1 ? { image: texture, pivot: { x: pivotX, y: pivotY } } : scaleNearest(texture, sx, sy, pivotX, pivotY); rotated = rotsprite(scaled.image, angle, scaled.pivot); cache.set(key, rotated); }
       blit(data, area, rotated.image, Math.round(matrix.tx) - rotated.pivot.x, Math.round(matrix.ty) - rotated.pivot.y, slot.tint, palette);
     } else affine(data, area, texture, matrix, pivotX, pivotY, slot.tint, palette);
   }
@@ -175,6 +179,9 @@ function drawSmear(rig: RigDefinition, from: RigPose, to: RigPose, slot: RigDefi
   shades.sort((a, b) => a.lum - b.lum);
   const lightest = shades.length ? shades[Math.floor(shades.length * .75)].rgb : [255, 255, 255];
   const swept = new Uint8Array(area.width * area.height);
+  // A sword smears its outer third; a staff or spear (very long) only the arc its tip draws.
+  const shape = (rig.metadata?.equipmentElongation as Record<string, unknown> | undefined)?.[attachment.id];
+  const inner = typeof shape === "number" && shape > 8 ? .8 : .65;
   // Enough in-between positions that the swept area is one solid crescent, not a fan of separate blades (one per ~4°).
   const angleAt = (pose: RigPose) => { const bone = computeWorldTransforms(rig, pose)[slot.boneId]; return bone ? Math.atan2(bone.matrix.b, bone.matrix.a) * 180 / Math.PI : 0; };
   let turned = Math.abs(angleAt(to) - angleAt(from)); if (turned > 180) turned = 360 - turned;
@@ -193,7 +200,7 @@ function drawSmear(rig: RigDefinition, from: RigPose, to: RigPose, slot: RigDefi
     let reach = 0;
     for (let y = 0; y < rotated.image.height; y += 1) for (let x = 0; x < rotated.image.width; x += 1) if (rotated.image.data[(y * rotated.image.width + x) * 4 + 3] >= 128) reach = Math.max(reach, Math.hypot(x - rotated.pivot.x, y - rotated.pivot.y));
     for (let y = 0; y < rotated.image.height; y += 1) for (let x = 0; x < rotated.image.width; x += 1) {
-      if (rotated.image.data[(y * rotated.image.width + x) * 4 + 3] < 128 || Math.hypot(x - rotated.pivot.x, y - rotated.pivot.y) < reach * .65) continue;
+      if (rotated.image.data[(y * rotated.image.width + x) * 4 + 3] < 128 || Math.hypot(x - rotated.pivot.x, y - rotated.pivot.y) < reach * inner) continue;
       const tx = left + x; const ty = top + y; if (tx >= 0 && ty >= 0 && tx < area.width && ty < area.height) swept[ty * area.width + tx] = 1;
     }
   }
@@ -221,6 +228,16 @@ function fillSmearPockets(data: Uint8ClampedArray, area: FrameWindow, swept: Uin
     }
     if (touches) for (const i of pocket) { data[i * 4] = colour[0]; data[i * 4 + 1] = colour[1]; data[i * 4 + 2] = colour[2]; data[i * 4 + 3] = 255; }
   }
+}
+
+/** The image resized by (sx, sy) with nearest-neighbour sampling, and where the pivot lands in it. */
+function scaleNearest(image: RgbaImage, sx: number, sy: number, pivotX: number, pivotY: number): { image: RgbaImage; pivot: { x: number; y: number } } {
+  const width = Math.max(1, Math.round(image.width * sx)); const height = Math.max(1, Math.round(image.height * sy)); const data = new Uint8ClampedArray(width * height * 4);
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+    const from = (Math.min(image.height - 1, Math.floor((y + .5) / sy)) * image.width + Math.min(image.width - 1, Math.floor((x + .5) / sx))) * 4; const to = (y * width + x) * 4;
+    data[to] = image.data[from]; data[to + 1] = image.data[from + 1]; data[to + 2] = image.data[from + 2]; data[to + 3] = image.data[from + 3];
+  }
+  return { image: { width, height, data }, pivot: { x: pivotX * sx, y: pivotY * sy } };
 }
 
 /** The art pixel size of a rig made from true pixel art drawn larger (metadata.pixelScale), else 1. */

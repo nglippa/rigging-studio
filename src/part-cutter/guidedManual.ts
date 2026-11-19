@@ -1,6 +1,6 @@
 import type { Rect, SegmentationMask } from "../character-generation/segmentation/segmentationSchema";
 import { createManualRegionFromSelection, intersectSelectionWithForeground } from "./manualPartition";
-import { adoptStrayArtwork, assignOwnershipSelection, decodeOwnership, ensureOwnershipPartition, removeOwnershipRegion } from "./ownership";
+import { adoptStrayArtwork, assignOwnershipSelection, decodeOwnership, ensureOwnershipPartition, reassignDetachedFragments, removeOwnershipRegion } from "./ownership";
 import type { GuidedManualIntent, GuidedManualProgress, PartCutterState } from "./schema";
 import { SEMANTIC_TAXONOMY, type PartSemanticType } from "./semanticTaxonomy";
 
@@ -244,6 +244,7 @@ export function guideAllBodyParts(state: PartCutterState, foreground: readonly n
     const { width, height } = current.sourceCanvasSize;
     current = adoptStrayArtwork(current, foreground, Math.max(2, Math.round(Math.hypot(width, height) * .15))).state;
   }
+  if (cut.length + hidden.length === GUIDED_BODY_ORDER.length) current = reassignDetachedFragments(current).state;
   return { state: current, cut, missed, hidden };
 }
 
@@ -508,6 +509,7 @@ export function commitHeldObjects(state: PartCutterState, items: readonly (Guide
   const sides = cut.map((semantic) => semantic === "mainHandEquipment" ? "right" as const : "left" as const);
   const covered = colours ? hideCoveredArms(current, sides, foreground) : { state: current, hidden: [] as PartSemanticType[] };
   current = covered.state;
+  if (colours) current = reassignDetachedFragments(current).state;
   return { state: { ...current, guidedManual: { ...current.guidedManual!, phase: progress.phase, currentSemantic: progress.currentSemantic, intent: progress.intent } }, cut, hidden: covered.hidden };
 }
 
