@@ -1,3 +1,4 @@
+import { sampleTrack } from "../animation/evaluate";
 import { matrixFromTransform, multiplyMatrices, transformPoint, type Point } from "../math/matrix";
 import { degreesToRadians } from "../math/rotation";
 import { createRestPose } from "../runtime/pose";
@@ -19,7 +20,7 @@ export type FacingSource = "metadata" | "feet-art" | "foot-bones" | "default";
 export type FacingCertainty = "declared" | "clear" | "unsure";
 export type MotionId = "idle" | "walk" | "run" | "raise_arms" | "melee_attack" | "hurt" | "death";
 export const STANDARD_MOTIONS: readonly { readonly id: MotionId; readonly name: string; readonly duration: number; readonly loop: boolean }[] = [
-  { id: "idle", name: "Idle", duration: 2, loop: true },
+  { id: "idle", name: "Idle", duration: 1.2, loop: true },
   { id: "walk", name: "Walk", duration: 1, loop: true },
   { id: "run", name: "Run", duration: .7, loop: true },
   { id: "raise_arms", name: "Raise Arms", duration: 1.6, loop: true },
@@ -407,10 +408,12 @@ function gait(rig: RigDefinition, anatomy: RigAnatomy, kind: "walk" | "run", dur
 function idle(anatomy: RigAnatomy, duration: number): AnimationTrack[] {
   const clip = new ClipBuilder([0, duration / 2, duration], "easeInOut");
   const breath = [0, 1, 0];
-  clip.add(anatomy.torso, "y", (index) => -anatomy.height * .004 * breath[index]);
-  clip.add(anatomy.torso, "rotation", (index) => .8 * breath[index]);
+  // Big enough to read at sprite size: the chest rises two to three art pixels and the arms swing one rotation step (5°),
+  // as a hand-drawn idle does in a few strong drawings; smaller motion would only nudge single pixels.
+  clip.add(anatomy.torso, "y", (index) => -anatomy.height * .012 * breath[index]);
+  clip.add(anatomy.torso, "rotation", (index) => 1.5 * breath[index]);
   clip.add(anatomy.head, "rotation", (index) => -1.2 * breath[index]);
-  for (const arm of anatomy.arms) clip.add(arm.upper, "rotation", (index) => (arm.carriesEquipment ? .8 : 1.8) * breath[index] * outwardSign(arm));
+  for (const arm of anatomy.arms) clip.add(arm.upper, "rotation", (index) => (arm.carriesEquipment ? 3 : 5) * breath[index] * outwardSign(arm));
   return clip.tracks();
 }
 
@@ -460,7 +463,9 @@ function raiseArms(anatomy: RigAnatomy, duration: number): AnimationTrack[] {
   for (const arm of anatomy.arms) {
     // Overhead, tipped slightly toward the side the arm travels through, so the arm goes round the body rather than through it.
     const through = forward ?? { x: arm.outward, y: 0 };
-    const target = { x: through.x * .28, y: -1 };
+    // A broad item (a shield) is lifted up and out to its own side, clear of the head, not straight up in front of the face.
+    const broad = arm.carriesEquipment && arm.equipmentElongation < WEAPON_ELONGATION;
+    const target = broad ? { x: arm.outward * .9, y: -1 } : { x: through.x * .28, y: -1 };
     const direction = turn(wholeArm(arm), through);
     let angle = angleTo(arm.upperDir, target);
     if (Math.sign(angle) !== direction && Math.abs(angle) > 25) angle += 360 * direction;
@@ -683,18 +688,33 @@ export function artlessLimbBones(rig: RigDefinition): ReadonlySet<string> {
  */
 const even = (count: number) => Array.from({ length: count }, (_, index) => index / count);
 export const DRAWING_CHARTS: Readonly<Record<MotionId, readonly number[]>> = {
-  idle: even(16),                                   // 8 a second over 2 s
-  walk: even(8),                                    // contact, down, passing, up, for each leg
-  run: even(6),
+  idle: even(8),                                    // 6.7 a second over 1.2 s
+  // Contact poses (each leg's strike at 0 and .5) held a little longer than the passing drawings: an accent, not a tick.
+  walk: [0, .16, .25, .38, .5, .66, .75, .88],
+  run: [0, .2, .33, .5, .7, .83],
   raise_arms: [0, .12, .24, .36, .44, .53, .62, .71, .8, .88, .94],
   // ready, wind-up, held anticipation (.3-.4), three quick strike drawings through contact (.44), held follow-through
   // (.54-.72), recovery, settle.
-  melee_attack: [0, .12, .24, .3, .4, .44, .49, .54, .72, .88],
+  melee_attack: [0, .12, .24, .3, .4, .44, .49, .54, .68, .78, .9],
   // The snap is one quick drawing, the recoil extreme is held, then a slower, unevenly spaced recovery.
   hurt: [0, .06, .12, .34, .46, .58, .8],
   // A stagger held at the tipping point, a fast fall in short drawings, the impact, a small settle, then lying still.
-  death: [0, .06, .25, .43, .5, .56, .62, .7, .76, .84, .92],
+  death: [0, .06, .15, .25, .5, .65, .7, .76, .84, .92],   // the fall itself in two drawings, then impact and settle
 };
+
+/**
+ * The head counter-turns against everything above it in the chain, so its art keeps the angle it was drawn at and only
+ * moves with the neck. Hand pixel animators shift a face rather than rotate it; a rotated face reads as a warped copy.
+ */
+function keepFaceUpright(rig: RigDefinition, clip: AnimationDefinition, headId: string): AnimationDefinition {
+  const ancestors: string[] = []; let bone = rig.bones.find((candidate) => candidate.id === headId);
+  while (bone?.parentId) { ancestors.push(bone.parentId); bone = rig.bones.find((candidate) => candidate.id === bone!.parentId); }
+  const turning = clip.tracks.filter((track) => track.property === "rotation" && ancestors.includes(track.boneId));
+  const times = [...new Set([0, clip.duration, ...(clip.drawings ?? []), ...turning.flatMap((track) => track.keyframes.map((key) => key.time))])].sort((a, b) => a - b);
+  const keyframes = times.map((time) => ({ time, value: -turning.reduce((sum, track) => sum + sampleTrack(track, time), 0), easing: "linear" as const }));
+  const rest = clip.tracks.filter((track) => !(track.boneId === headId && track.property === "rotation"));
+  return { ...clip, tracks: [...rest, { boneId: headId, property: "rotation", keyframes }] };
+}
 
 /** Builds one standard motion for this rig, or null when the rig has none of the bones that motion needs. */
 export function buildMotionClip(rig: RigDefinition, id: MotionId, anatomy: RigAnatomy = analyzeRigAnatomy(rig)): AnimationDefinition | null {
@@ -709,7 +729,12 @@ export function buildMotionClip(rig: RigDefinition, id: MotionId, anatomy: RigAn
   const artless = artlessLimbBones(rig);
   const shown = tracks.filter((track) => !artless.has(track.boneId));
   const drawings = DRAWING_CHARTS[spec.id].map((fraction) => Math.round(fraction * spec.duration * 1000) / 1000);
-  return shown.length ? { schemaVersion: ANIMATION_SCHEMA_VERSION, id: spec.id, name: spec.name, duration: spec.duration, loop: spec.loop, tracks: shown, drawings } : null;
+  if (!shown.length) return null;
+  // The strike drawings of an attack carry a smear of the weapon's swing, as hand-drawn attacks do (three quick drawings).
+  const smears = id === "melee_attack" ? [.44, .49].map((fraction) => Math.round(fraction * spec.duration * 1000) / 1000) : undefined;
+  const built: AnimationDefinition = { schemaVersion: ANIMATION_SCHEMA_VERSION, id: spec.id, name: spec.name, duration: spec.duration, loop: spec.loop, tracks: shown, drawings, ...(smears ? { smears } : {}) };
+  // Pixel art keeps the face upright (only a fall turns it): a rotated face is a redrawn face, and RotSprite cannot redraw.
+  return rig.metadata?.pixelArt === true && id !== "death" && anatomy.head ? keepFaceUpright(rig, built, anatomy.head.id) : built;
 }
 
 /** The standard clip set for a rig, each resolved against that rig's rest pose and facing. */

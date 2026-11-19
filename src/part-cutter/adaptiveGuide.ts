@@ -60,11 +60,12 @@ export type GuideProportions = "auto" | "chibi" | "adult";
 
 /**
  * Chibi or adult, from the silhouette alone: the median row width as a share of the figure's height. Chibi sprites are
- * squat (0.55-0.80 across the ten benchmark sprites); adult figures are slender (0.14-0.25 on the goblin and the
- * courier). The median ignores the few rows a weapon or shield widens. tests/rigging/guide-accuracy.test.ts checks this
+ * squat (0.55-0.80 across the ten benchmark sprites seen from the front, 0.36 for a chibi mage seen from the side, which
+ * is narrower); adult figures are slender (0.14-0.25 on the goblin and the courier). The cut-off sits between them. The
+ * median ignores the few rows a weapon or shield widens. tests/rigging/guide-accuracy.test.ts checks this
  * on every sprite in tests/fixtures/rigging/joint-ground-truth.json.
  */
-export const ADULT_MAX_MEDIAN_WIDTH = .4;
+export const ADULT_MAX_MEDIAN_WIDTH = .3;
 export function detectProportions(alpha: readonly number[], width: number, height: number): "chibi" | "adult" {
   const widths: number[] = [];
   for (let y = 0; y < height; y += 1) { let count = 0; for (let x = 0; x < width; x += 1) if (alpha[y * width + x]) count += 1; if (count) widths.push(count); }
@@ -464,6 +465,21 @@ export function heldObjectSeeds(guide: AnatomicalPartitionGuide, foreground: rea
  * other held items; pass all of them, so an arm zone drawn across another item does not count as that hand). Hands are
  * named by screen side, like the guide's limbs. Null when the mask is not a held object.
  */
+/**
+ * True when what a click-to-select model returned for a hand is mostly that arm itself (a sleeve and fist), not something
+ * the hand holds: most of its pixels lie inside the arm's own guide zones. A held item reaches well beyond the arm.
+ */
+export function armItself(guide: AnatomicalPartitionGuide, mask: { readonly width: number; readonly height: number; readonly alpha: readonly number[] }, bounds: { readonly x: number; readonly y: number }, hand: "left" | "right"): boolean {
+  const zones = guide.zones.filter((zone) => zone.semanticType === `${hand}UpperArm` || zone.semanticType === `${hand}Forearm` || zone.semanticType === `${hand}Hand`);
+  let total = 0; let inside = 0;
+  for (let y = 0; y < mask.height; y += 1) for (let x = 0; x < mask.width; x += 1) {
+    if (!(mask.alpha[y * mask.width + x] > 0)) continue; total += 1;
+    const gx = x + bounds.x; const gy = y + bounds.y;
+    if (zones.some((zone) => { const lx = gx - zone.bounds.x; const ly = gy - zone.bounds.y; if (lx < 0 || ly < 0 || lx >= zone.bounds.width || ly >= zone.bounds.height) return false; return !zone.mask || (zone.mask.alpha[Math.floor(ly) * zone.mask.width + Math.floor(lx)] ?? 0) > 0; })) inside += 1;
+  }
+  return total > 0 && inside / total >= .6;
+}
+
 export function heldObjectHand(guide: AnatomicalPartitionGuide, mask: SegmentationMask, maskBounds: Rect, foreground: readonly number[], found: readonly { readonly bounds: Rect; readonly mask: SegmentationMask }[] = []): "left" | "right" | null {
   const area = mask.alpha.reduce((sum, value) => sum + (value > 0 ? 1 : 0), 0); const visible = foreground.reduce((sum, value) => sum + (value > 0 ? 1 : 0), 0);
   if (!area || area > visible * .3 || area < visible * .002) return null;
@@ -476,7 +492,10 @@ export function heldObjectHand(guide: AnatomicalPartitionGuide, mask: Segmentati
   const bodyZones = guide.zones.filter((zone) => zone.mask && !/(Hand|Forearm)$/.test(zone.semanticType));
   let onBody = 0;
   for (let y = 0; y < mask.height; y += 1) for (let x = 0; x < mask.width; x += 1) if (mask.alpha[y * mask.width + x] && bodyZones.some((zone) => has({ bounds: zone.bounds, mask: zone.mask! }, maskBounds.x + x, maskBounds.y + y))) onBody += 1;
-  if (onBody > area * .5) return null;
+  // A long thin object (a staff, a spear) can lie across the guide's body zones for most of its length and still be held:
+  // it is judged by its ends below, one of which must be at a hand.
+  const elongated = (() => { let n = 0; let sx = 0; let sy = 0; let sxx = 0; let syy = 0; let sxy = 0; for (let y = 0; y < mask.height; y += 1) for (let x = 0; x < mask.width; x += 1) if (mask.alpha[y * mask.width + x]) { n += 1; sx += x; sy += y; sxx += x * x; syy += y * y; sxy += x * y; } if (n < 8) return false; const mx = sx / n; const my = sy / n; const vxx = sxx / n - mx * mx; const vyy = syy / n - my * my; const vxy = sxy / n - mx * my; const spread = Math.sqrt(((vxx - vyy) / 2) ** 2 + vxy ** 2); return Math.sqrt(((vxx + vyy) / 2 + spread) / Math.max(1e-6, (vxx + vyy) / 2 - spread)) >= 3; })();
+  if (onBody > area * .5 && !elongated) return null;
   const figure = guide.adaptiveMetadata?.proportionDescriptor.foregroundBounds ?? { x: 0, y: 0, width: guide.sourceCanvasSize.width, height: guide.sourceCanvasSize.height };
   // Generous: a wrist estimated from the silhouette alone can sit well above the hand actually drawn (an adult arm hangs
   // past the hip line), and the nearest hand still wins.

@@ -214,39 +214,6 @@
   ],
   "slots": [
     {
-      "id": "right-upper-arm-far-slot",
-      "boneId": "right-upper-arm",
-      "attachmentId": "left-upper-arm",
-      "zIndex": -21,
-      "visible": true,
-      "blendMode": "normal",
-      "tint": 9079434,
-      "pivotX": 110.34156716643491,
-      "pivotY": 50.417446043165455
-    },
-    {
-      "id": "right-lower-arm-far-slot",
-      "boneId": "right-lower-arm",
-      "attachmentId": "left-forearm",
-      "zIndex": -20,
-      "visible": true,
-      "blendMode": "normal",
-      "tint": 9079434,
-      "pivotX": 135.45289855072463,
-      "pivotY": 68.4021739130435
-    },
-    {
-      "id": "right-hand-far-slot",
-      "boneId": "right-hand",
-      "attachmentId": "left-hand",
-      "zIndex": -19,
-      "visible": true,
-      "blendMode": "normal",
-      "tint": 9079434,
-      "pivotX": 123.25630252100844,
-      "pivotY": 154.07563025210084
-    },
-    {
       "id": "head-slot",
       "boneId": "head",
       "attachmentId": "head",
@@ -388,6 +355,39 @@
       "tint": 16777215,
       "pivotX": 103.35263157894735,
       "pivotY": 276.3578947368421
+    },
+    {
+      "id": "right-upper-arm-hidden-slot",
+      "boneId": "right-upper-arm",
+      "attachmentId": null,
+      "zIndex": -20,
+      "visible": false,
+      "blendMode": "normal",
+      "tint": 16777215,
+      "pivotX": 0,
+      "pivotY": 0
+    },
+    {
+      "id": "right-lower-arm-hidden-slot",
+      "boneId": "right-lower-arm",
+      "attachmentId": null,
+      "zIndex": -20,
+      "visible": false,
+      "blendMode": "normal",
+      "tint": 16777215,
+      "pivotX": 0,
+      "pivotY": 0
+    },
+    {
+      "id": "right-hand-hidden-slot",
+      "boneId": "right-hand",
+      "attachmentId": null,
+      "zIndex": -20,
+      "visible": false,
+      "blendMode": "normal",
+      "tint": 16777215,
+      "pivotX": 0,
+      "pivotY": 0
     }
   ],
   "attachments": [
@@ -618,9 +618,6 @@
       "id": "default",
       "name": "Default",
       "slotAttachments": {
-        "right-upper-arm-far-slot": "left-upper-arm",
-        "right-lower-arm-far-slot": "left-forearm",
-        "right-hand-far-slot": "left-hand",
         "head-slot": "head",
         "torso-slot": "torso",
         "left-upper-arm-slot": "left-upper-arm",
@@ -633,7 +630,10 @@
         "right-lower-leg-slot": "right-lower-leg",
         "right-foot-slot": "right-foot",
         "main-hand-equipment-slot": "main-hand-equipment",
-        "off-hand-equipment-slot": "off-hand-equipment"
+        "off-hand-equipment-slot": "off-hand-equipment",
+        "right-upper-arm-hidden-slot": null,
+        "right-lower-arm-hidden-slot": null,
+        "right-hand-hidden-slot": null
       }
     }
   ],
@@ -844,7 +844,7 @@
       "right-hand"
     ],
     "farLegFrom": null,
-    "farArmFrom": "left",
+    "farArmFrom": null,
     "artPreparation": 4,
     "expectedAnimationTargets": [
       "root",

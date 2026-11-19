@@ -1,4 +1,5 @@
 import { drawingTime, evaluateAnimationAtTime } from "./evaluate";
+import { smearOrigin } from "../export/pixelFrames";
 import type { AnimationDefinition } from "../schema/types";
 import type { RigPose } from "../runtime/types";
 import { RigRuntime } from "../runtime/RigRuntime";
@@ -96,6 +97,8 @@ export class AnimationPlayer {
   private applyPose(): void {
     if (!this.animation) return;
     const setupPose: RigPose = this.runtime.getSetupPose();
-    this.runtime.setPose(evaluateAnimationAtTime(this.animation, setupPose, drawingTime(this.animation, this.time)));
+    const shown = drawingTime(this.animation, this.time);
+    this.runtime.setPose(evaluateAnimationAtTime(this.animation, setupPose, shown));
+    this.runtime.smearFrom = smearOrigin(this.animation, setupPose, shown) ?? null;
   }
 }

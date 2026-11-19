@@ -101,7 +101,11 @@ export function buildRigProposal(input: RigProposalBuildInput): RigProposal {
   const drawn = (semantic: string) => accepted.some((part) => part.semanticType === semantic);
   const backmost = Math.min(0, ...visibleSlots.map((slot) => slot.zIndex));
   const farSide = (limb: typeof LIMBS[number]) => (["left", "right"] as const).find((side) => limb[side].every((semantic) => !drawn(semantic)) && limb[side === "left" ? "right" : "left"].some(drawn));
-  const farLeg = farSide(LIMBS[0]); const farArm = farSide(LIMBS[1]);
+  const farLeg = farSide(LIMBS[0]);
+  // An arm hidden behind the item its hand holds (a shield held toward the viewer) needs no stand-in: the item covers it and
+  // moves with the hand. A copy of the other arm would show as a dark limb behind the body whenever that arm moves.
+  const holds = (side: "left" | "right") => drawn(side === "right" ? "mainHandEquipment" : "offHandEquipment");
+  const hiddenArm = farSide(LIMBS[1]); const farArm = hiddenArm && !holds(hiddenArm) ? hiddenArm : undefined;
   const farLegSlots: SlotDefinition[] = LIMBS.flatMap((limb, limbIndex) => {
     const far = limbIndex === 0 ? farLeg : farArm;
     if (!far) return [];

@@ -36,7 +36,7 @@ import {
   startGuidedBenchmarkCharacter, unresolvedComponents,
   type AnatomicalLandmarkId, type PartCutMode, type PartCutRecord, type PartCutterState, type PartSemanticType, type ManualSelectionMode, type PrepareWorkflowState,
   type GuidedBenchmarkAction, type GuidedBenchmarkRun, type GuidedSelection,
-  chooseHeldObjects, commitHeldObjects, heldObjectHand, heldObjectSeeds, hiddenGuideSemantics, selectionFromCanvasMask, validatePrepare, validateReassembly, validateReconstructionAsset, viewportPointToSource, PART_CUTTER_IMPORT_KEY, type AnatomyProfile, type PartCutterImportPayload, type PrepareIssue,
+  chooseHeldObjects, mergeHeldPieces, foldLegsIntoSkirt, SKIRT_WORDS, commitHeldObjects, heldObjectHand, armItself, heldObjectSeeds, hiddenGuideSemantics, selectionFromCanvasMask, validatePrepare, validateReassembly, validateReconstructionAsset, viewportPointToSource, PART_CUTTER_IMPORT_KEY, type AnatomyProfile, type PartCutterImportPayload, type PrepareIssue,
 } from "@/src/part-cutter";
 import { StudioCommandPalette, type StudioCommand } from "@/app/studio-ui/StudioCommandPalette";
 import type { StageStatuses, StudioMode } from "@/app/studio-ui/StudioModeNav";
@@ -79,7 +79,7 @@ function maskSvgPath(mask: SegmentationMask, bounds: Rect): string {
 }
 type PartStatus = "ready" | "missing" | "review" | "hidden";
 // "hidden": the guide found this part behind its twin (the far leg of a side view); the rig draws it from the near one.
-const PART_STATUS: Readonly<Record<PartStatus, { readonly glyph: string; readonly word: string }>> = { ready: { glyph: "✓", word: "Ready" }, missing: { glyph: "○", word: "Missing" }, review: { glyph: "!", word: "Needs review" }, hidden: { glyph: "◌", word: "Hidden behind the near leg" } };
+const PART_STATUS: Readonly<Record<PartStatus, { readonly glyph: string; readonly word: string }>> = { ready: { glyph: "✓", word: "Ready" }, missing: { glyph: "○", word: "Missing" }, review: { glyph: "!", word: "Needs review" }, hidden: { glyph: "◌", word: "Hidden" } };
 const BODY_CHECKLIST: readonly { readonly heading?: string; readonly rows: readonly (readonly [PartSemanticType, string])[] }[] = [
   { rows: [["head", "Head"], ["torso", "Torso"]] },
   { heading: "Left arm", rows: [["leftUpperArm", "Upper arm"], ["leftForearm", "Forearm"], ["leftHand", "Hand"]] },
@@ -315,13 +315,18 @@ export function PartCutterWorkspace() {
     setMessage("Finding the character's joints…");
     const pose = await findPose();
     const posed = pose && Object.keys(pose.joints).length ? pose : null;
-    let outcome: ReturnType<typeof guideAllBodyParts> | null = null;
+    let outcome: ReturnType<typeof guideAllBodyParts> | null = null; let robed = false;
     execute("Cut all parts", (current) => {
       // A guide with joints placed by hand is kept; otherwise it is rebuilt, so the chosen proportions apply.
       const handPlaced = current.anatomicalGuide?.adaptiveMetadata && current.anatomicalGuide.landmarks.some((landmark) => landmark.source === "manual");
       const guide = handPlaced ? current.anatomicalGuide! : createAdaptiveGuide(current);
       const anatomicalGuide = posed ? applyPoseLandmarks(guide, posed.joints, foreground) : guide;
       outcome = guideAllBodyParts({ ...current, anatomicalGuide }, foreground);
+      // A character described in a long robe or dress keeps the cloth over its legs in one piece (see foldLegsIntoSkirt).
+      if (SKIRT_WORDS.test(project.originalUserPrompt ?? "")) {
+        const folded = foldLegsIntoSkirt(outcome.state, foreground, sourceColoursRef.current ?? undefined);
+        if (folded.folded.length) { robed = true; outcome = { ...outcome, state: folded.state }; }
+      }
       return outcome.state;
     });
     const result = outcome as ReturnType<typeof guideAllBodyParts> | null;
@@ -333,7 +338,7 @@ export function PartCutterWorkspace() {
     const fromModel = posed ? Object.keys(posed.joints).length : 0;
     const how = fromModel ? `${fromModel} joints from the pose model, the rest from the outline with ${laidOut} proportions${posed?.view ? ` · ${posed.view.view} view` : ""}` : `Joints from the outline with ${laidOut} proportions (the pose model was not sure of any)`;
     const summary = !result.cut.length ? "Nothing to cut: every part is already done or has no outline." : `Cut ${result.cut.length} ${result.cut.length === 1 ? "part" : "parts"}. ${how}.${missed.length ? ` Draw these yourself: ${missed.join(", ")}.` : ""}${result.hidden.length ? " One leg is hidden behind the other, so it was not cut; the rig draws it from the near leg." : ""}`;
-    setMessage(`${summary} Check each one and fix any that are wrong with Add or Remove.`);
+    setMessage(`${summary}${robed ? " The robe is kept in one piece with the body; the feet show the steps." : ""} Check each one and fix any that are wrong with Add or Remove.`);
     // Also when the body was already cut: what the character holds may still be missing (it returns at once when not).
     await cutHeldObjects(result.state, summary);
   };
@@ -354,13 +359,23 @@ export function PartCutterWorkspace() {
     try {
       // First every distinct object the seeds point at, then each one's hand, judged knowing all the others (an arm zone
       // drawn across the shield must not pull the sword into the shield hand).
-      const objects: (GuidedSelection & { readonly fromHand?: boolean })[] = [];
+      const objects: (GuidedSelection & { readonly fromHand?: boolean })[] = []; const loose: GuidedSelection[] = [];
       for (const seed of seeds) {
         const result = await provider.segmentAtPoints({ image: source.image, width: source.width, height: source.height, positive: seed.points.map((point) => ({ x: Math.round(point.x), y: Math.round(point.y) })), generationId: source.generationId });
         const selection = selectionFromCanvasMask(result.alpha, result.width, result.height, seed.point);
-        if (selection && heldObjectHand(guide, selection.mask, selection.bounds, foreground, objects) !== null) objects.push({ ...selection, fromHand: seed.fromHand });
+        const hand = selection ? heldObjectHand(guide, selection.mask, selection.bounds, foreground, objects) : null;
+        if (process.env.NODE_ENV !== "production") { const log = ((window as unknown as { __RIG_STUDIO_HELD_DEBUG__?: unknown[] }).__RIG_STUDIO_HELD_DEBUG__ ??= []); log.push({ seed: seed.points, fromHand: seed.fromHand, bounds: selection?.bounds ?? null, maskPixels: result.alpha.filter((value) => value > 0).length, hand, armItself: selection && hand ? armItself(guide, selection.mask, selection.bounds, hand) : null }); }
+        // A model prompted at a hand can return the sleeve and fist; that is the arm, not something held.
+        if (selection && hand !== null && !armItself(guide, selection.mask, selection.bounds, hand)) objects.push({ ...selection, fromHand: seed.fromHand });
+        else if (selection && hand === null) loose.push(selection);
       }
       const classified = objects.flatMap((object) => { const hand = heldObjectHand(guide, object.mask, object.bounds, foreground, objects.filter((other) => other !== object)); return hand ? [{ ...object, hand }] : []; });
+      // Pieces of a held object the model returned on their own (a staff's crystal apart from its shaft) join the object
+      // they touch, though alone they reach no hand.
+      for (const piece of loose) {
+        const owner = classified.find((object) => mergeHeldPieces([object, { ...piece, hand: object.hand }], 12).length === 1);
+        if (owner) classified.push({ ...piece, hand: owner.hand, fromHand: owner.fromHand });
+      }
       for (const item of chooseHeldObjects(classified)) if (!owned.has(item.hand === "right" ? "mainHandEquipment" : "offHandEquipment")) found.push(item);
     } catch (reason: unknown) {
       setMessage(`${summary} Held items were not cut (${reason instanceof Error ? reason.message : String(reason)}); click them in the equipment step instead.`);
@@ -552,8 +567,10 @@ export function PartCutterWorkspace() {
     else setTool("select");
   };
   const partRow = (semanticType: PartSemanticType, label: string, part: PartCutRecord | undefined, key: string) => {
-    const status: PartStatus = !part && hiddenSemantics.has(semanticType) ? "hidden" : partStatus(part); const current = guidedProgress ? guidedProgress.currentSemantic === semanticType : Boolean(part && part.partId === selectedPartId);
-    return <button key={key} type="button" className="part-row" data-status={status} data-semantic={semanticType} aria-current={current ? "true" : undefined} aria-label={`${part && !isBodySemantic(semanticType) ? label : semanticLabel(semanticType)}, ${PART_STATUS[status].word}`} onClick={() => jumpToTarget(semanticType, part?.partId)}><i aria-hidden="true">{PART_STATUS[status].glyph}</i><span>{label}</span></button>;
+    const status: PartStatus = !part && hiddenSemantics.has(semanticType) ? "hidden" : partStatus(part);
+    // What hides it, in words: a side view's far leg is behind the near one; an arm is behind the item it holds.
+    const hiddenBy = status === "hidden" ? (/Arm|Forearm|Hand/.test(semanticType) ? "behind what it holds, drawn from the other arm" : state?.parts.some((candidate) => /Thigh|LowerLeg/.test(candidate.semanticType)) ? "behind the near leg, drawn from it" : "under the robe; the feet show the steps") : null; const current = guidedProgress ? guidedProgress.currentSemantic === semanticType : Boolean(part && part.partId === selectedPartId);
+    return <button key={key} type="button" className="part-row" title={hiddenBy ? `Hidden ${hiddenBy}` : undefined} data-status={status} data-semantic={semanticType} aria-current={current ? "true" : undefined} aria-label={`${part && !isBodySemantic(semanticType) ? label : semanticLabel(semanticType)}, ${PART_STATUS[status].word}${hiddenBy ? ` ${hiddenBy}` : ""}`} onClick={() => jumpToTarget(semanticType, part?.partId)}><i aria-hidden="true">{PART_STATUS[status].glyph}</i><span>{label}</span></button>;
   };
   const reassembleSource = () => { if (!state) return; const result = validateReassembly(state, foreground); setShowParts(true); setShowCoverage(true); setSelection(null); setPath([]); setZoom(1); setMessage(result.passed ? "Reassembly matches the source with no gaps, duplicates, or coordinate drift" : `Reassembly check: ${result.diagnostics.join("; ")}`); };
   const restoreSourceView = () => { setSelection(null); setPath([]); setShowParts(false); setShowCoverage(false); setZoom(1); setMessage("Restored the untouched source view. Existing parts remain available."); };

@@ -338,6 +338,65 @@ function withOutline(selection: GuidedSelection, foreground: readonly number[], 
   return { bounds, mask: { width: bounds.width, height: bounds.height, alpha } };
 }
 
+/** Clothing that hangs over the legs as one piece of cloth, named in a character's description. */
+export const SKIRT_WORDS = /\b(robes?|gown|dress|long skirt|cassock|kimono|frock|habit)\b/i;
+
+/**
+ * A character in a long robe or dress: the cloth over the legs is one piece, and cutting it into thighs and lower legs
+ * tears it apart as soon as the legs move. When the legs show no gap between them for most of their height, the thigh and
+ * lower-leg pixels join the torso (the cloth moves with the body) and only the feet stay as leg parts, peeking out under
+ * the hem as the hidden leg bones walk. That is how a hand animator treats a robe.
+ */
+export function foldLegsIntoSkirt(state: PartCutterState, foreground: readonly number[], colours?: ArrayLike<number>): { readonly state: PartCutterState; readonly folded: readonly PartSemanticType[] } {
+  const torso = state.parts.find((part) => part.semanticType === "torso");
+  const legs = state.parts.filter((part) => /^(left|right)(Thigh|LowerLeg)$/.test(part.semanticType));
+  if (!torso || legs.length < 2) return { state, folded: [] };
+  const { width, height } = state.sourceCanvasSize; const pixels = new Uint8Array(width * height);
+  for (const part of legs) for (let y = 0; y < part.mask.height; y += 1) for (let x = 0; x < part.mask.width; x += 1) {
+    if (!(part.mask.alpha[y * part.mask.width + x] > 0)) continue;
+    const gx = Math.round(part.boundingBox.x) + x; const gy = Math.round(part.boundingBox.y) + y; if (gx >= 0 && gy >= 0 && gx < width && gy < height) pixels[gy * width + gx] = 1;
+  }
+  let rows = 0; let gapRows = 0; let top = height; let bottom = -1; let left = width; let right = -1;
+  for (let y = 0; y < height; y += 1) {
+    let first = -1; let last = -1;
+    for (let x = 0; x < width; x += 1) if (pixels[y * width + x]) { if (first < 0) first = x; last = x; }
+    if (first < 0) continue;
+    rows += 1; top = Math.min(top, y); bottom = Math.max(bottom, y); left = Math.min(left, first); right = Math.max(right, last);
+    for (let x = first; x <= last; x += 1) if (!((foreground[y * width + x] ?? 0) > 0)) { gapRows += 1; break; }
+  }
+  if (!rows || gapRows / rows >= .4) return { state, folded: [] };
+  // The hem: pixels of the feet in the robe's own colours belong to the cloth, not to the boots, or they tear off with the
+  // feet when the hidden legs step.
+  if (colours) {
+    const key = (index: number) => ((colours[index * 4] >> 3) << 10) | ((colours[index * 4 + 1] >> 3) << 5) | (colours[index * 4 + 2] >> 3);
+    const robe = new Map<number, number>(); let robePixels = 0;
+    for (let i = 0; i < pixels.length; i += 1) if (pixels[i]) { robe.set(key(i), (robe.get(key(i)) ?? 0) + 1); robePixels += 1; }
+    // Robe colours: common in the folded cloth (3% or more) and not the dark outline every shape shares.
+    const dark = (index: number) => colours[index * 4] * .299 + colours[index * 4 + 1] * .587 + colours[index * 4 + 2] * .114 < 60;
+    for (const part of state.parts.filter((candidate) => /^(left|right)Foot$/.test(candidate.semanticType))) {
+      const hem: number[] = []; let footPixels = 0;
+      for (let y = 0; y < part.mask.height; y += 1) for (let x = 0; x < part.mask.width; x += 1) {
+        if (!(part.mask.alpha[y * part.mask.width + x] > 0)) continue;
+        const gx = Math.round(part.boundingBox.x) + x; const gy = Math.round(part.boundingBox.y) + y; if (gx < 0 || gy < 0 || gx >= width || gy >= height) continue;
+        footPixels += 1; const index = gy * width + gx;
+        if (!dark(index) && (robe.get(key(index)) ?? 0) >= robePixels * .03) hem.push(index);
+      }
+      // The boot stays a foot: a "foot" that is mostly robe colour is left alone rather than emptied.
+      if (hem.length > footPixels * .6) continue;
+      for (const index of hem) { const gx = index % width; const gy = (index - gx) / width; pixels[index] = 1; top = Math.min(top, gy); bottom = Math.max(bottom, gy); left = Math.min(left, gx); right = Math.max(right, gx); }
+    }
+  }
+  const bounds = { x: left, y: top, width: right - left + 1, height: bottom - top + 1 };
+  const alpha = new Array<number>(bounds.width * bounds.height).fill(0);
+  for (let y = top; y <= bottom; y += 1) for (let x = left; x <= right; x += 1) if (pixels[y * width + x]) alpha[(y - top) * bounds.width + x - left] = 255;
+  let current = assignOwnershipSelection(state, torso.partId, bounds, { width: bounds.width, height: bounds.height, alpha }, { actor: "ai", action: "assign" }).state;
+  const folded = legs.map((part) => part.semanticType);
+  for (const part of legs) if (current.parts.some((candidate) => candidate.partId === part.partId)) current = removeOwnershipRegion(current, part.partId, "ai");
+  const progress = current.guidedManual;
+  if (progress) current = { ...current, guidedManual: { ...progress, completedSemantics: progress.completedSemantics.filter((semantic) => !folded.includes(semantic)), skippedSemantics: [...new Set([...progress.skippedSemantics, ...folded])] } };
+  return { state: current, folded };
+}
+
 /**
  * An arm hidden behind the item it holds (the shield arm of a character facing the viewer): its cut parts are slivers of
  * outline, a small fraction of its twin's, and rotating slivers draws debris. Such an arm is treated as hidden: its
@@ -486,6 +545,6 @@ export function chooseHeldObjects(items: readonly (GuidedSelection & { readonly 
   const silhouetteHands = new Set(items.filter((item) => !item.fromHand).map((item) => item.hand));
   const usable = items.filter((item) => !item.fromHand || !silhouetteHands.has(item.hand));
   const size = (item: GuidedSelection) => item.mask.alpha.reduce((sum, value) => sum + (value > 0 ? 1 : 0), 0);
-  const merged = mergeHeldPieces(usable).sort((a, b) => size(b) - size(a));
+  const merged = mergeHeldPieces(usable, 12).sort((a, b) => size(b) - size(a)); // 12 px: three art pixels of 4x pixel art
   return merged.filter((item, index) => merged.findIndex((other) => other.hand === item.hand) === index);
 }

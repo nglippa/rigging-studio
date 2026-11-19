@@ -85,7 +85,8 @@ export function validatePrepare(
 export function hiddenGuideSemantics(state: Pick<PartCutterState, "anatomicalGuide"> & { readonly guidedManual?: PartCutterState["guidedManual"] }): readonly PartCutterState["parts"][number]["semanticType"][] {
   const fromGuide = (state.anatomicalGuide?.zones ?? []).filter((zone) => zone.optional && !zone.mask?.alpha.some(Boolean)).map((zone) => zone.semanticType);
   // An arm left out because the item it holds covers it is drawn from its twin too (guidedManual.hideCoveredArms).
-  const covered = (state.guidedManual?.skippedSemantics ?? []).filter((semantic) => /^(left|right)(UpperArm|Forearm|Hand)$/.test(semantic));
+  // ... and legs folded into a robe (guidedManual.foldLegsIntoSkirt): the feet below the hem carry them.
+  const covered = (state.guidedManual?.skippedSemantics ?? []).filter((semantic) => /^(left|right)(UpperArm|Forearm|Hand|Thigh|LowerLeg)$/.test(semantic));
   return [...new Set([...fromGuide, ...covered])];
 }
 

@@ -115,7 +115,7 @@ export const isPixelArtRig = (rig: RigDefinition): boolean => rig.metadata?.pixe
  * Draws one pose. `pixels` holds each attachment's texture by attachment id (the same image the game loads); `window` is
  * the area of the rig's canvas to draw (default: the whole canvas).
  */
-export function renderPixelFrame(rig: RigDefinition, pose: RigPose, pixels: PartPixels, window?: FrameWindow, cache = new Map<string, { image: RgbaImage; pivot: { x: number; y: number } }>()): RgbaImage {
+export function renderPixelFrame(rig: RigDefinition, pose: RigPose, pixels: PartPixels, window?: FrameWindow, cache = new Map<string, { image: RgbaImage; pivot: { x: number; y: number } }>(), smearFrom?: RigPose): RgbaImage {
   const full = window ?? { x: 0, y: 0, width: rig.canvas?.width ?? 256, height: rig.canvas?.height ?? 256 };
   const k = pixelScaleOf(rig);
   // True pixel art drawn k times larger is composed at its own resolution: every part on the one art-pixel grid.
@@ -123,9 +123,11 @@ export function renderPixelFrame(rig: RigDefinition, pose: RigPose, pixels: Part
   const data = new Uint8ClampedArray(area.width * area.height * 4);
   const world = computeWorldTransforms(rig, pose); const pixelArt = isPixelArtRig(rig);
   const palette = pixelArt ? paletteCache.get(pixels) ?? (() => { const made = rigPalette(pixels); paletteCache.set(pixels, made); return made; })() : undefined;
+  const weapons = smearFrom && pixelArt ? weaponAttachments(rig) : null; const smears: { readonly swept: Uint8Array; readonly colour: readonly number[] }[] = [];
   for (const { slot, attachment } of resolveSlots(rig)) {
     const bone = world[slot.boneId]; if (!slot.visible || !attachment || !bone) continue;
     const source = pixels[attachment.id]; if (!source) continue;
+    if (weapons?.has(attachment.id)) smears.push(drawSmear(rig, smearFrom!, pose, slot, attachment, source, data, area, k, cache));
     const attachmentMatrix = matrixFromTransform({
       x: attachment.offsetX, y: attachment.offsetY, rotation: degreesToRadians(attachment.rotation),
       scaleX: attachment.scaleX * attachment.width / Math.max(1, source.width), scaleY: attachment.scaleY * attachment.height / Math.max(1, source.height),
@@ -145,10 +147,81 @@ export function renderPixelFrame(rig: RigDefinition, pose: RigPose, pixels: Part
       blit(data, area, rotated.image, Math.round(matrix.tx) - rotated.pivot.x, Math.round(matrix.ty) - rotated.pivot.y, slot.tint, palette);
     } else affine(data, area, texture, matrix, pivotX, pivotY, slot.tint, palette);
   }
+  for (const smear of smears) fillSmearPockets(data, area, smear.swept, smear.colour);
   return { width: area.width, height: area.height, data };
 }
 
 const paletteCache = new WeakMap<PartPixels, Palette>();
+
+/** Held items long enough to smear when swung (a blade, a spear): their recorded shape is elongated. */
+function weaponAttachments(rig: RigDefinition): ReadonlySet<string> {
+  const shapes = (rig.metadata?.equipmentElongation ?? {}) as Record<string, unknown>;
+  return new Set(rig.attachments.filter((attachment) => attachment.category === "equipment" && typeof shapes[attachment.id] === "number" && (shapes[attachment.id] as number) >= 2.5).map((attachment) => attachment.id));
+}
+
+/** A pose between two poses: each bone's values interpolated. */
+function between(from: RigPose, to: RigPose, t: number): RigPose {
+  return { bones: Object.fromEntries(Object.entries(to.bones).map(([id, end]) => { const start = from.bones[id] ?? end; return [id, { x: start.x + (end.x - start.x) * t, y: start.y + (end.y - start.y) * t, rotation: start.rotation + (end.rotation - start.rotation) * t, scaleX: start.scaleX + (end.scaleX - start.scaleX) * t, scaleY: start.scaleY + (end.scaleY - start.scaleY) * t }]; })) };
+}
+
+/**
+ * A smear (pixel-art practice for fast strikes): the area the weapon swept between the previous drawing and this one,
+ * filled with its lightest colour and drawn just under it, so the blow reads as one fast arc rather than a jump.
+ */
+function drawSmear(rig: RigDefinition, from: RigPose, to: RigPose, slot: RigDefinition["slots"][number], attachment: RigDefinition["attachments"][number], source: RgbaImage, data: Uint8ClampedArray, area: FrameWindow, k: number, cache: Map<string, { image: RgbaImage; pivot: { x: number; y: number } }>): { readonly swept: Uint8Array; readonly colour: readonly number[] } {
+  // A light colour of the item itself, not its single brightest highlight (a crystal's glint would paint the smear white).
+  const shades: { readonly lum: number; readonly rgb: readonly number[] }[] = [];
+  for (let i = 0; i < source.data.length; i += 4) if (source.data[i + 3] >= 128) shades.push({ lum: source.data[i] * .299 + source.data[i + 1] * .587 + source.data[i + 2] * .114, rgb: [source.data[i], source.data[i + 1], source.data[i + 2]] });
+  shades.sort((a, b) => a.lum - b.lum);
+  const lightest = shades.length ? shades[Math.floor(shades.length * .75)].rgb : [255, 255, 255];
+  const swept = new Uint8Array(area.width * area.height);
+  // Enough in-between positions that the swept area is one solid crescent, not a fan of separate blades (one per ~4°).
+  const angleAt = (pose: RigPose) => { const bone = computeWorldTransforms(rig, pose)[slot.boneId]; return bone ? Math.atan2(bone.matrix.b, bone.matrix.a) * 180 / Math.PI : 0; };
+  let turned = Math.abs(angleAt(to) - angleAt(from)); if (turned > 180) turned = 360 - turned;
+  const steps = Math.min(48, Math.max(6, Math.ceil(turned / 4)));
+  for (const t of Array.from({ length: steps }, (_, index) => (index + 1) / (steps + 1))) {
+    const world = computeWorldTransforms(rig, between(from, to, t)); const bone = world[slot.boneId]; if (!bone) continue;
+    const full = multiplyMatrices(bone.matrix, matrixFromTransform({ x: attachment.offsetX, y: attachment.offsetY, rotation: degreesToRadians(attachment.rotation), scaleX: attachment.scaleX * attachment.width / Math.max(1, source.width), scaleY: attachment.scaleY * attachment.height / Math.max(1, source.height) })) as Matrix;
+    const sourcePivotX = slot.pivotX / attachment.width * source.width; const sourcePivotY = slot.pivotY / attachment.height * source.height;
+    const native = k > 1 ? nativePart(rig, slot.id, attachment.id, source, sourcePivotX, sourcePivotY, k, cache) : null;
+    const texture = native?.image ?? source; const pivotX = native?.pivot.x ?? sourcePivotX; const pivotY = native?.pivot.y ?? sourcePivotY;
+    const angle = snapAngle(Math.atan2(full.b, full.a) * 180 / Math.PI);
+    const key = `${attachment.id}:${k}:${angle}:${pivotX.toFixed(1)},${pivotY.toFixed(1)}`;
+    let rotated = cache.get(key); if (!rotated) { rotated = rotsprite(texture, angle, { x: pivotX, y: pivotY }); cache.set(key, rotated); }
+    const left = Math.round((k > 1 ? full.tx / k : full.tx)) - rotated.pivot.x - area.x; const top = Math.round((k > 1 ? full.ty / k : full.ty)) - rotated.pivot.y - area.y;
+    // Only the outer third of the swing smears (the tip travels far; the grip hardly moves), as a crescent.
+    let reach = 0;
+    for (let y = 0; y < rotated.image.height; y += 1) for (let x = 0; x < rotated.image.width; x += 1) if (rotated.image.data[(y * rotated.image.width + x) * 4 + 3] >= 128) reach = Math.max(reach, Math.hypot(x - rotated.pivot.x, y - rotated.pivot.y));
+    for (let y = 0; y < rotated.image.height; y += 1) for (let x = 0; x < rotated.image.width; x += 1) {
+      if (rotated.image.data[(y * rotated.image.width + x) * 4 + 3] < 128 || Math.hypot(x - rotated.pivot.x, y - rotated.pivot.y) < reach * .65) continue;
+      const tx = left + x; const ty = top + y; if (tx >= 0 && ty >= 0 && tx < area.width && ty < area.height) swept[ty * area.width + tx] = 1;
+    }
+  }
+  for (let i = 0; i < swept.length; i += 1) if (swept[i]) { data[i * 4] = lightest[0]; data[i * 4 + 1] = lightest[1]; data[i * 4 + 2] = lightest[2]; data[i * 4 + 3] = 255; }
+  return { swept, colour: lightest };
+}
+
+/** A smear is drawn solid: see-through pockets it closes off against the body are filled with it (other holes stay). */
+function fillSmearPockets(data: Uint8ClampedArray, area: FrameWindow, swept: Uint8Array, colour: readonly number[]): void {
+  const { width, height } = area; const outside = new Uint8Array(width * height); const queue: number[] = [];
+  const push = (index: number) => { if (!outside[index] && data[index * 4 + 3] < 128) { outside[index] = 1; queue.push(index); } };
+  for (let x = 0; x < width; x += 1) { push(x); push((height - 1) * width + x); }
+  for (let y = 0; y < height; y += 1) { push(y * width); push(y * width + width - 1); }
+  for (let cursor = 0; cursor < queue.length; cursor += 1) { const i = queue[cursor]; const x = i % width; const y = (i - x) / width; if (x > 0) push(i - 1); if (x + 1 < width) push(i + 1); if (y > 0) push(i - width); if (y + 1 < height) push(i + width); }
+  const seen = new Uint8Array(width * height);
+  for (let start = 0; start < width * height; start += 1) {
+    if (seen[start] || outside[start] || data[start * 4 + 3] >= 128) continue;
+    const pocket = [start]; seen[start] = 1; let touches = false;
+    for (let cursor = 0; cursor < pocket.length; cursor += 1) {
+      const i = pocket[cursor]; const x = i % width; const y = (i - x) / width;
+      for (const next of [x > 0 ? i - 1 : -1, x + 1 < width ? i + 1 : -1, y > 0 ? i - width : -1, y + 1 < height ? i + width : -1]) {
+        if (next < 0) continue; if (swept[next]) touches = true;
+        if (!seen[next] && !outside[next] && data[next * 4 + 3] < 128) { seen[next] = 1; pocket.push(next); }
+      }
+    }
+    if (touches) for (const i of pocket) { data[i * 4] = colour[0]; data[i * 4 + 1] = colour[1]; data[i * 4 + 2] = colour[2]; data[i * 4 + 3] = 255; }
+  }
+}
 
 /** The art pixel size of a rig made from true pixel art drawn larger (metadata.pixelScale), else 1. */
 export const pixelScaleOf = (rig: RigDefinition): number => {
@@ -185,8 +258,18 @@ function nativePart(rig: RigDefinition, slotId: string, attachmentId: string, so
 export function renderClip(rig: RigDefinition, animation: AnimationDefinition, pixels: PartPixels, options: { readonly fps?: number; readonly window?: FrameWindow } = {}): { readonly frames: RgbaImage[]; readonly fps: number } {
   const fps = options.fps ?? 60; const count = Math.max(1, Math.round(animation.duration * fps));
   const base = createRestPose(rig); const cache = new Map<string, { image: RgbaImage; pivot: { x: number; y: number } }>();
-  const frames = Array.from({ length: count }, (_, index) => renderPixelFrame(rig, evaluateAnimationAtTime(animation, base, drawingTime(animation, Math.min(animation.duration, index / fps))), pixels, options.window, cache));
+  const frames = Array.from({ length: count }, (_, index) => {
+    const shown = drawingTime(animation, Math.min(animation.duration, index / fps));
+    return renderPixelFrame(rig, evaluateAnimationAtTime(animation, base, shown), pixels, options.window, cache, smearOrigin(animation, base, shown));
+  });
   return { frames, fps };
+}
+
+/** For a drawing that shows a smear, the pose of the drawing before it (where the swing came from). */
+export function smearOrigin(animation: AnimationDefinition, base: RigPose, shown: number): RigPose | undefined {
+  if (!animation.smears?.some((at) => Math.abs(at - shown) < 1e-6) || !animation.drawings) return undefined;
+  const index = animation.drawings.findIndex((at) => Math.abs(at - shown) < 1e-6);
+  return index > 0 ? evaluateAnimationAtTime(animation, base, animation.drawings[index - 1]) : undefined;
 }
 
 /** The smallest window holding every opaque pixel of the given frames, padded. */

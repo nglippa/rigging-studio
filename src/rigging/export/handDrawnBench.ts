@@ -7,7 +7,8 @@
  *   newColours  share of drawn pixels whose colour the still drawing does not use (resampling blends, smoothing)
  *   flicker     specks that appear for a single drawing and vanish (per 1,000 drawn pixels); moving shapes are not specks
  *   strays      lone pixels belonging to no shape, beyond those the still drawing itself has (per 1,000 drawn pixels)
- *   gaps        see-through holes inside the figure that the still drawing does not have (per 1,000 drawn pixels)
+ *   gaps        see-through cracks inside the figure that the still drawing does not have (per 1,000 drawn pixels);
+ *               small slivers only, since large enclosed areas are negative space between shapes
  *   drawingsPerSecond, holdVariation   timing: hand animation shows a few drawings per second, and attacks hold their
  *               extremes (varied hold lengths); sampled motion changes every display tick at an even pace
  *
@@ -100,7 +101,19 @@ function enclosedHoles(frame: RgbaImage): number {
     const index = queue[cursor]; const x = index % width; const y = (index - x) / width;
     if (x > 0) push(index - 1); if (x + 1 < width) push(index + 1); if (y > 0) push(index - width); if (y + 1 < height) push(index + width);
   }
-  let holes = 0; for (let i = 0; i < width * height; i += 1) if (!outside[i] && frame.data[i * 4 + 3] < 128) holes += 1;
+  // Cracks only: a joint opening is a small sliver. Large enclosed regions are negative space between shapes (a staff
+  // held away from the face), which hand-drawn figures have too.
+  let drawn = 0; for (let i = 3; i < frame.data.length; i += 4) if (frame.data[i] >= 128) drawn += 1;
+  const limit = Math.max(4, drawn * .006); const seen = new Uint8Array(width * height); let holes = 0;
+  for (let start = 0; start < width * height; start += 1) {
+    if (seen[start] || outside[start] || frame.data[start * 4 + 3] >= 128) continue;
+    const component = [start]; seen[start] = 1;
+    for (let cursor = 0; cursor < component.length; cursor += 1) {
+      const index = component[cursor]; const x = index % width; const y = (index - x) / width;
+      for (const next of [x > 0 ? index - 1 : -1, x + 1 < width ? index + 1 : -1, y > 0 ? index - width : -1, y + 1 < height ? index + width : -1]) if (next >= 0 && !seen[next] && !outside[next] && frame.data[next * 4 + 3] < 128) { seen[next] = 1; component.push(next); }
+    }
+    if (component.length <= limit) holes += component.length;
+  }
   return holes;
 }
 

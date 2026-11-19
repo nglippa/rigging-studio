@@ -70,7 +70,10 @@ export function CreateCharacterWorkspace() {
   const agentSession = useAgentBridge(commandService);
   const characterStorage = useMemo(() => getGeneratedCharacterStorage(), []);
   const [project, setProject] = useState<GeneratedCharacterProject>(() => createGeneratedCharacterProject("Fantasy Knight", TEST_PROMPT));
-  const [controls, setControls] = useState<CharacterPromptControls>({ style: "chibi-pixel-art", bodyProportions: "oversized head, compact torso, short separated limbs", viewDirection: "right", mainHandEquipment: "simple iron sword", offHandEquipment: "round blue shield", hair: "short brown hair", headwear: "polished silver helmet", characterScale: "small", artResolution: "512", background: "transparent" });
+  // Only what applies to every character. Equipment, hair, headwear and facing come from the description unless the user
+  // sets them in Advanced: defaults there (a sword, a shield, a helmet) were added to every prompt and overrode what was
+  // described, so an elf mage with a staff came out with a knight's helmet and shield.
+  const [controls, setControls] = useState<CharacterPromptControls>({ style: "chibi-pixel-art", bodyProportions: "oversized head, compact torso, short separated limbs", characterScale: "small", artResolution: "512", background: "transparent" });
   const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
   const [selectedBoneId, setSelectedBoneId] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);

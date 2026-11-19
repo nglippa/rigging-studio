@@ -16,9 +16,10 @@ import { pixelize } from "../pixel/pixelize";
 import { removePlainBackground } from "../profiles/plainBackground";
 import { bindProfile, coerceParam, CUTOUT_PROFILE_ID, DEFAULT_PROFILE_ID, findProfile, listProfiles, PROFILE_GUIDANCE, profilePrompt, profileRequirements, tunableParams, type CcMediaProfile } from "../profiles/ccMediaProfile";
 
+// Only what applies to every character: a description decides equipment, hair, headwear and facing (a default "separable
+// shield" here gave every character a shield).
 const DEFAULT_CONTROLS: CharacterPromptControls = {
-  style: "chibi-pixel-art", bodyProportions: "oversized head, compact torso, short separated limbs", viewDirection: "right",
-  mainHandEquipment: "separable weapon", offHandEquipment: "separable shield", hair: "readable modular hair", headwear: "optional modular headwear",
+  style: "chibi-pixel-art", bodyProportions: "oversized head, compact torso, short separated limbs",
   characterScale: "medium", artResolution: "1024", background: "flat-contrast",
 };
 
@@ -91,6 +92,9 @@ function profileWorkflow(profile: CcMediaProfile, capability: ImageProductionCap
     workflow: profile.graph as unknown as LoadedTrustedWorkflow["workflow"], manifestPath: `profile:${profile.id}`, workflowPath: `profile:${profile.id}`,
   };
 }
+
+/** A prompt the app already built from a description (it carries the builder's brief), which must not be wrapped again. */
+const alreadyBuilt = (prompt: string) => /Character brief:/.test(prompt);
 
 /** The candidate as true pixel art (see pixelize), or null when it is not a PNG or shows no pixel grid. */
 function truePixels(image: { readonly bytes: Uint8Array; readonly mimeType: string }): { readonly bytes: Uint8Array; readonly scale: number; readonly nativeWidth: number; readonly nativeHeight: number; readonly colours: number } | null {
@@ -258,7 +262,7 @@ export class ImageProductionService {
       repairBindings = { sourceImage, maskImage };
     }
 
-    const built = buildCharacterGenerationPrompt({ description: request.prompt, controls: DEFAULT_CONTROLS });
+    const built = alreadyBuilt(request.prompt) ? { prompt: request.prompt, negativePrompt: buildCharacterGenerationPrompt({ description: "character", controls: DEFAULT_CONTROLS }).negativePrompt, preset: "MODULAR_2D_RIG_CHARACTER" as const } : buildCharacterGenerationPrompt({ description: request.prompt, controls: DEFAULT_CONTROLS });
     const prompt = capability === "CHARACTER_GENERATION" || capability === "CHARACTER_VARIANT" ? built.prompt : request.prompt;
     const negativePrompt = request.negativePrompt ?? built.negativePrompt;
     const proposalId = `proposal-${crypto.randomUUID()}`;
@@ -361,7 +365,7 @@ export class ImageProductionService {
     const parent = request.parentProposalId ? await this.storage.readProposal(request.parentProposalId) : undefined;
     if (parent && parent.projectId !== request.projectId) throw new Error("Parent proposal belongs to another project");
     if (parent && parent.proposalRound >= 2) throw new Error("The maximum of 2 image proposal rounds has been reached");
-    const built = buildCharacterGenerationPrompt({ description: request.prompt, controls: DEFAULT_CONTROLS });
+    const built = alreadyBuilt(request.prompt) ? { prompt: request.prompt, negativePrompt: buildCharacterGenerationPrompt({ description: "character", controls: DEFAULT_CONTROLS }).negativePrompt, preset: "MODULAR_2D_RIG_CHARACTER" as const } : buildCharacterGenerationPrompt({ description: request.prompt, controls: DEFAULT_CONTROLS });
     const prompt = built.prompt;
     const negativePrompt = request.negativePrompt ?? built.negativePrompt;
     const proposalId = `proposal-${crypto.randomUUID()}`;

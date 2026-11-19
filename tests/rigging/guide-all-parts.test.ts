@@ -74,3 +74,34 @@ describe("Cut all parts", () => {
     expect(guideAllBodyParts(state, foreground, AT).hidden).toEqual([]);
   });
 });
+
+describe("characters in a long robe", () => {
+  const figure = (gapBetweenLegs: boolean) => {
+    const width = 60; const height = 120; const foreground: number[] = new Array(width * height).fill(0);
+    for (let y = 4; y < 116; y += 1) for (let x = 0; x < width; x += 1) {
+      const head = y < 40 && Math.hypot(x - 30, y - 22) < 18;
+      const body = y >= 40 && y < 70 && x >= 16 && x < 44;
+      const lower = y >= 70 && y < 108 && x >= 14 && x < 46 && !(gapBetweenLegs && x >= 28 && x < 32 && y >= 74);
+      const feet = y >= 108 && ((x >= 14 && x < 27) || (x >= 33 && x < 46));
+      if (head || body || lower || feet) foreground[y * width + x] = 255;
+    }
+    const base = createPartCutterState("robe", width, height, "manual", AT);
+    const state = initializeGuidedManual({ ...base, anatomicalGuide: buildAdaptiveAnatomicalPartitionGuide(base, foreground, "humanoid", undefined, "chibi") }, AT);
+    return { state: guideAllBodyParts(state, foreground, AT).state, foreground };
+  };
+
+  it("folds the legs into the torso when the cloth hangs in one piece, keeping the feet", async () => {
+    const { foldLegsIntoSkirt } = await import("../../src/part-cutter");
+    const { state, foreground } = figure(false);
+    const result = foldLegsIntoSkirt(state, foreground);
+    expect(result.folded.length).toBeGreaterThanOrEqual(2);
+    expect(result.state.parts.some((part) => /Thigh|LowerLeg/.test(part.semanticType))).toBe(false);
+    expect(result.state.parts.some((part) => /Foot/.test(part.semanticType))).toBe(true);
+  });
+
+  it("leaves legs that show a gap between them alone", async () => {
+    const { foldLegsIntoSkirt } = await import("../../src/part-cutter");
+    const { state, foreground } = figure(true);
+    expect(foldLegsIntoSkirt(state, foreground).folded).toEqual([]);
+  });
+});

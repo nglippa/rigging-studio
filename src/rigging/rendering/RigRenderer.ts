@@ -220,9 +220,10 @@ export class RigRenderer {
       composite.pixels = pixels;
     }
     const pose = this.runtime.getPose();
-    const key = Object.entries(pose.bones).map(([id, bone]) => `${id}:${bone.x.toFixed(2)},${bone.y.toFixed(2)},${bone.rotation.toFixed(4)},${bone.scaleX.toFixed(3)},${bone.scaleY.toFixed(3)}`).join("|");
+    const smear = this.runtime.smearFrom;
+    const key = `${smear ? "smear|" : ""}${Object.entries(pose.bones).map(([id, bone]) => `${id}:${bone.x.toFixed(2)},${bone.y.toFixed(2)},${bone.rotation.toFixed(4)},${bone.scaleX.toFixed(3)},${bone.scaleY.toFixed(3)}`).join("|")}`;
     if (key !== composite.lastKey) {
-      const frame = renderPixelFrame(this.runtime.definition, pose, composite.pixels, composite.window, composite.cache);
+      const frame = renderPixelFrame(this.runtime.definition, pose, composite.pixels, composite.window, composite.cache, smear ?? undefined);
       composite.context.putImageData(new ImageData(new Uint8ClampedArray(frame.data), frame.width, frame.height), 0, 0);
       composite.texture.source.update(); composite.lastKey = key;
     }

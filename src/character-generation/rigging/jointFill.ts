@@ -38,6 +38,8 @@ const JOINTS: readonly (readonly [PartType, PartType])[] = [
 const SKIP_JOINTS: readonly (readonly [PartType, PartType, PartType])[] = [
   ["torso", "leftForearm", "leftUpperArm"], ["leftUpperArm", "leftHand", "leftForearm"], ["torso", "rightForearm", "rightUpperArm"], ["rightUpperArm", "rightHand", "rightForearm"],
   ["torso", "leftLowerLeg", "leftThigh"], ["leftThigh", "leftFoot", "leftLowerLeg"], ["torso", "rightLowerLeg", "rightThigh"], ["rightThigh", "rightFoot", "rightLowerLeg"],
+  // A robe: the legs were folded into the torso (guidedManual.foldLegsIntoSkirt), so the hem meets the boots directly.
+  ["torso", "leftFoot", "leftLowerLeg"], ["torso", "rightFoot", "rightLowerLeg"],
 ];
 const pairs = (a: PartType, b: PartType, first: PartType, second: PartType): boolean => (first === a && second === b) || (first === b && second === a);
 const jointedAmong = (present: ReadonlySet<PartType>) => (a: PartType, b: PartType): boolean =>

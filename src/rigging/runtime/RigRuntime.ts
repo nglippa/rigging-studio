@@ -52,6 +52,8 @@ export class RigRuntime {
   readonly bones = new Map<string, RuntimeBoneNode>();
   readonly slots = new Map<string, RuntimeSlotNode>();
   private readonly setupPose: RigPose;
+  /** On a drawing that shows a motion smear, the pose of the drawing before it; the pixel-art renderer draws the swing. */
+  smearFrom: RigPose | null = null;
   private skinId: string;
 
   constructor(readonly definition: RigDefinition) {

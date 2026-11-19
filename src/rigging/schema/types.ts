@@ -87,4 +87,6 @@ export type AnimationDefinition = {
    * next instead of moving every display tick, as hand animation does (a few drawings a second, holds on the extremes).
    */
   readonly drawings?: readonly number[];
+  /** Drawing times that also show a motion smear: the arc a held weapon swept since the previous drawing. */
+  readonly smears?: readonly number[];
 };
