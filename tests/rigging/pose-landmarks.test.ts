@@ -52,6 +52,18 @@ describe("pose keypoints to guide joints", () => {
     expect(forearm.bounds.x).toBeLessThanOrEqual(Math.max(elbow.point.x, Math.min(wrist.x, 779)));
     expect(forearm.bounds.x + forearm.bounds.width).toBeGreaterThanOrEqual(Math.min(elbow.point.x, 779));
   });
+  it("ignores a limb joint the pose model puts on empty background", () => {
+    // Photo-trained pose models place a hidden far leg, or a limb confused with a held weapon, out in empty space.
+    const width = 200; const height = 300;
+    const foreground = new Array<number>(width * height).fill(0);
+    for (let y = 20; y < 290; y += 1) for (let x = 70; x < 130; x += 1) foreground[y * width + x] = 255;
+    const base = createPartCutterState("pose-guide", width, height, "manual", "2026-11-17T12:00:00.000Z");
+    const guide = buildAdaptiveAnatomicalPartitionGuide(base, foreground, "humanoid");
+    const before = guide.landmarks.find((landmark) => landmark.landmarkId === "rightKnee")!;
+    const posed = applyPoseLandmarks(guide, { rightKnee: { point: { x: 185, y: 220 }, confidence: .9 }, leftKnee: { point: { x: 90, y: 220 }, confidence: .9 } }, foreground);
+    expect(posed.landmarks.find((landmark) => landmark.landmarkId === "rightKnee")!.point).toEqual(before.point);
+    expect(posed.landmarks.find((landmark) => landmark.landmarkId === "leftKnee")!.point).toEqual({ x: 90, y: 220 });
+  });
 });
 
 describe("which way the character faces", () => {

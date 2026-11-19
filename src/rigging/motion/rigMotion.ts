@@ -45,6 +45,8 @@ type Limb = {
   readonly restBend: number;
   readonly length: number;
   readonly carriesEquipment: boolean;
+  /** How long and thin the longest piece of equipment on this arm is (length over width; 0 with none). A blade is long, a shield round. */
+  readonly equipmentElongation: number;
   /** The local scale axis that runs along each segment, used to foreshorten a limb that swings toward the viewer. */
   readonly upperAxis: "scaleX" | "scaleY";
   readonly lowerAxis: "scaleX" | "scaleY";
@@ -84,6 +86,11 @@ const dot = (a: Point, b: Point): number => a.x * b.x + a.y * b.y;
 const angleTo = (from: Point, to: Point): number => deg(Math.atan2(cross(from, to), dot(from, to)));
 /** The rotation sign that moves a segment pointing along `direction` toward `toward`. */
 const turn = (direction: Point, toward: Point): 1 | -1 => cross(direction, toward) >= 0 ? 1 : -1;
+/**
+ * Shoulder to hand. Which way an arm turns is judged from the whole arm, not the upper arm alone: on a chibi the upper arm
+ * is a short, nearly level stub, so its own direction cannot tell "out and up" from "in across the face".
+ */
+const wholeArm = (arm: { readonly upperDir: Point; readonly lowerDir: Point }): Point => ({ x: arm.upperDir.x + arm.lowerDir.x, y: arm.upperDir.y + arm.lowerDir.y });
 const round = (value: number): number => { const next = Number(value.toFixed(3)); return Object.is(next, -0) ? 0 : next; };
 
 type World = ReturnType<typeof computeWorldTransforms>;
@@ -106,6 +113,11 @@ const carriesEquipment = (rig: RigDefinition, boneId: string): boolean => rig.sl
   const attachment = rig.attachments.find((candidate) => candidate.id === slot.attachmentId);
   return attachment?.category === "equipment";
 });
+const equipmentElongation = (rig: RigDefinition, boneId: string): number => Math.max(0, ...rig.slots.flatMap((slot) => {
+  if (slot.boneId !== boneId) return [];
+  const attachment = rig.attachments.find((candidate) => candidate.id === slot.attachmentId);
+  return attachment?.category === "equipment" ? [Math.max(attachment.width, attachment.height) / Math.max(1, Math.min(attachment.width, attachment.height))] : [];
+}));
 
 function limb(rig: RigDefinition, world: World, side: Side, kind: "arm" | "leg", facingSign: number): Limb | null {
   const on = (pattern: RegExp): BoneDefinition | null => rig.bones.find((bone) => bone.id.toLowerCase().includes(side) && pattern.test(bone.id)) ?? null;
@@ -129,7 +141,7 @@ function limb(rig: RigDefinition, world: World, side: Side, kind: "arm" | "leg",
   const alongAxis = (bone: BoneDefinition, direction: Point): "scaleX" | "scaleY" => { const rotation = world[bone.id].rotation; return Math.abs(direction.x * Math.cos(rotation) + direction.y * Math.sin(rotation)) > Math.abs(-direction.x * Math.sin(rotation) + direction.y * Math.cos(rotation)) ? "scaleX" : "scaleY"; };
   return {
     side, upper, lower, end, upperDir, lowerDir, outward, bendSign, restBend: Math.abs(restAngle), length: len(upperDir) + (lower ? len(lowerDir) : 0),
-    carriesEquipment: [upper, lower, end].some((bone) => bone && carriesEquipment(rig, bone.id)), upperAxis: alongAxis(upper, upperDir), lowerAxis: lower ? alongAxis(lower, lowerDir) : "scaleY",
+    carriesEquipment: [upper, lower, end].some((bone) => bone && carriesEquipment(rig, bone.id)), equipmentElongation: Math.max(0, ...[upper, lower, end].map((bone) => bone ? equipmentElongation(rig, bone.id) : 0)), upperAxis: alongAxis(upper, upperDir), lowerAxis: lower ? alongAxis(lower, lowerDir) : "scaleY",
   };
 }
 
@@ -282,6 +294,8 @@ const cosDeg = (degrees: number): number => Math.max(.35, Math.cos(degreesToRadi
  */
 const ARM_SWING = (run: boolean): number => run ? 1.35 : 1.6;
 /** Overlap: the forearm follows the upper arm this share of a cycle later; the head counters the chest this much later. */
+/** Equipment at least this many times longer than it is wide counts as a weapon to strike with (a shield is about 1). */
+const WEAPON_ELONGATION = 1.8;
 const ELBOW_DRAG = .06;
 const HEAD_LAG = .05;
 
@@ -402,12 +416,20 @@ function idle(anatomy: RigAnatomy, duration: number): AnimationTrack[] {
  * limb settles into each extreme. `delay` shifts the whole curve later, which is how one part lags another (overlap,
  * drag, and the proximal-to-distal order of a strike).
  */
-const curve = (keys: readonly (readonly [number, number])[], t: number, delay = 0): number => {
+/**
+ * How the segment ending at a key is eased (animation-coding skill ch01, Penner): "inOut" stops at both ends (a limb
+ * settling into a pose); "in" starts slow and arrives at full speed (a blow travelling into its target, fastest at
+ * contact); "out" leaves at full speed and slows to a stop (the follow-through after contact).
+ */
+type Ease = "inOut" | "in" | "out";
+type Key = readonly [time: number, value: number, ease?: Ease];
+const EASE: Readonly<Record<Ease, (u: number) => number>> = { inOut: (u) => u * u * (3 - 2 * u), in: (u) => u * u, out: (u) => 1 - (1 - u) * (1 - u) };
+const curve = (keys: readonly Key[], t: number, delay = 0): number => {
   const at = Math.min(1, Math.max(0, t - delay));
   if (at <= keys[0][0]) return keys[0][1];
   for (let index = 1; index < keys.length; index += 1) {
-    const [t1, v1] = keys[index]; const [t0, v0] = keys[index - 1];
-    if (at <= t1) { const u = (at - t0) / Math.max(1e-6, t1 - t0); const eased = u * u * (3 - 2 * u); return v0 + (v1 - v0) * eased; }
+    const [t1, v1, ease = "inOut"] = keys[index]; const [t0, v0] = keys[index - 1];
+    if (at <= t1) { const u = (at - t0) / Math.max(1e-6, t1 - t0); return v0 + (v1 - v0) * EASE[ease](u); }
   }
   return keys[keys.length - 1][1];
 };
@@ -436,7 +458,7 @@ function raiseArms(anatomy: RigAnatomy, duration: number): AnimationTrack[] {
     // Overhead, tipped slightly toward the side the arm travels through, so the arm goes round the body rather than through it.
     const through = forward ?? { x: arm.outward, y: 0 };
     const target = { x: through.x * .28, y: -1 };
-    const direction = turn(arm.upperDir, through);
+    const direction = turn(wholeArm(arm), through);
     let angle = angleTo(arm.upperDir, target);
     if (Math.sign(angle) !== direction && Math.abs(angle) > 25) angle += 360 * direction;
     const elevation = (t: number) => Math.abs(angle) * curve(lift, t);
@@ -462,38 +484,45 @@ function raiseArms(anatomy: RigAnatomy, duration: number): AnimationTrack[] {
 /**
  * A strike, built from how real strikes and throws move (skill ch08): a distinct wind-up away from the target, then the
  * power travels proximal to distal: the hips lead, the chest follows (hip-shoulder separation), then the shoulder, then
- * the elbow, which extends last, and the hand snaps through; everything overshoots past the target and settles back
+ * the elbow, which extends last, and the hand snaps through; everything carries on past the point of contact (follow-through) and settles back
  * with the parts arriving at different times. The body shifts its weight back and then lunges forward.
  */
 function attack(anatomy: RigAnatomy, duration: number): AnimationTrack[] {
   const { fractions, clip } = sampled(duration);
   const forward = facingVector(anatomy);
-  // Strike with the weapon arm; with no weapon, with the arm that is not holding anything; otherwise the right.
-  const arm = anatomy.arms.find((candidate) => candidate.carriesEquipment && anatomy.arms.some((other) => other !== candidate && !other.carriesEquipment))
+  // Strike with the weapon arm: the one holding the longest, thinnest piece of equipment (a blade, not a shield). With no
+  // weapon, with an arm that holds nothing rather than the shield arm; otherwise the right.
+  const weapon = [...anatomy.arms].filter((candidate) => candidate.equipmentElongation >= WEAPON_ELONGATION).sort((a, b) => b.equipmentElongation - a.equipmentElongation)[0];
+  const arm = weapon
+    ?? (anatomy.arms.some((candidate) => candidate.carriesEquipment) ? anatomy.arms.find((candidate) => !candidate.carriesEquipment) : undefined)
     ?? anatomy.arms.find((candidate) => candidate.side === "right") ?? anatomy.arms[0];
   if (!arm) return [];
   // From the side the blow travels forward; from the front it travels across the body.
-  const strike = forward ? forwardSign(arm.upperDir, forward) : turn(arm.upperDir, { x: -arm.outward, y: 0 });
+  const strike = forward ? forwardSign(arm.upperDir, forward) : turn(wholeArm(arm), { x: -arm.outward, y: 0 });
   const lean = turn(anatomy.torsoDir, forward ?? { x: -arm.outward, y: 0 });
   const toward = forward ? forward.x : -arm.outward;
-  // Wind-up extreme at 30%, contact at 44%, overshoot at 52%, settled by 88% (plus each part's delay). Each part's curve is delayed after the one
-  // that drives it, so the strike runs hips → chest → shoulder → elbow → hand.
-  const wind = (back: number, through: number, over: number): readonly (readonly [number, number])[] => [[0, 0], [.3, back], [.44, through], [.52, over], [.88, 0], [1, 0]];
+  // Wind-up extreme at 30% (a held anticipation: eased in and out), then the blow speeds up into contact at 44% (eased
+  // in, so it is fastest at the hit, not stopped there), carries on past it to the follow-through extreme at 54% (eased
+  // out), and settles by 88% (plus each part's delay). Each value pair is (contact, extreme) with the extreme further
+  // along the swing than contact. Each part's curve is delayed after the one that drives it, so the strike runs
+  // hips → chest → shoulder → elbow → hand. (animation-coding skill ch01; human-motion-rigging ch08.)
+  const wind = (back: number, contact: number, extreme: number): readonly Key[] => [[0, 0], [.3, back], [.44, contact, "in"], [.54, extreme, "out"], [.88, 0], [1, 0]];
   const t = (index: number) => fractions[index];
   if (!forward) return frontChop(anatomy, arm, fractions, clip, wind);
-  clip.add(anatomy.pelvis ?? anatomy.bodyBone, "rotation", (index) => curve(wind(-5, 6, 4), t(index)) * lean);
-  clip.add(anatomy.torso, "rotation", (index) => curve(wind(-16, 15, 11), t(index), .03) * lean);
-  clip.add(anatomy.head, "rotation", (index) => curve(wind(9, -6, -4), t(index), .08) * lean);
-  clip.add(arm.upper, "rotation", (index) => curve(wind(-70, 78, 62), t(index), .05) * strike);
-  // The elbow folds deep in the wind-up and extends last, just before contact.
-  clip.add(arm.lower, "rotation", (index) => curve([[0, 0], [.3, 55], [.41, 20], [.46, -arm.restBend * .9], [.54, -arm.restBend * .7], [.88, 0], [1, 0]], t(index), .07) * arm.bendSign);
+  if (arm.equipmentElongation >= WEAPON_ELONGATION) return sideChop(anatomy, arm, forward, fractions, clip, wind);
+  clip.add(anatomy.pelvis ?? anatomy.bodyBone, "rotation", (index) => curve(wind(-5, 4, 6), t(index)) * lean);
+  clip.add(anatomy.torso, "rotation", (index) => curve(wind(-16, 11, 15), t(index), .03) * lean);
+  clip.add(anatomy.head, "rotation", (index) => curve(wind(9, -4, -6), t(index), .08) * lean);
+  clip.add(arm.upper, "rotation", (index) => curve(wind(-70, 62, 82), t(index), .05) * strike);
+  // The elbow folds deep in the wind-up and snaps straight last, at contact, then eases off.
+  clip.add(arm.lower, "rotation", (index) => curve([[0, 0], [.3, 55], [.41, 20, "in"], [.46, -arm.restBend * .9, "in"], [.56, -arm.restBend * .7, "out"], [.88, 0], [1, 0]], t(index), .07) * arm.bendSign);
   // The wrist cocks back, then snaps through after the elbow.
-  if (arm.end) clip.add(arm.end, "rotation", (index) => curve(wind(18, -22, -12), t(index), .09) * strike);
+  if (arm.end) clip.add(arm.end, "rotation", (index) => curve(wind(18, -12, -24), t(index), .09) * strike);
   // The other arm counterbalances: back during the strike.
-  for (const other of anatomy.arms) if (other !== arm) clip.add(other.upper, "rotation", (index) => -curve(wind(12, -24, -18), t(index), .06) * strike);
+  for (const other of anatomy.arms) if (other !== arm) clip.add(other.upper, "rotation", (index) => -curve(wind(12, -18, -24), t(index), .06) * strike);
   // Weight: back over the rear foot in the wind-up, forward into the blow, and the body dips as the front leg takes it.
   if (anatomy.bodyBone) {
-    clip.add(anatomy.bodyBone, "x", (index) => curve(wind(-.025, .045, .05), t(index)) * anatomy.height * toward);
+    clip.add(anatomy.bodyBone, "x", (index) => curve(wind(-.025, .04, .05), t(index)) * anatomy.height * toward);
     clip.add(anatomy.bodyBone, "y", (index) => curve(wind(.008, .02, .022), t(index)) * anatomy.height);
   }
   // The front knee bends to take the weight at contact; the back leg straightens.
@@ -506,14 +535,60 @@ function attack(anatomy: RigAnatomy, duration: number): AnimationTrack[] {
 }
 
 /**
+ * A side-view strike with a blade (or any long weapon): an overhead chop, which reads far better on a sprite than a
+ * thrust, whose blade stays level and looks like a poke. The arm lifts up in front to above and behind the head (the
+ * shoulder rising with it, human-motion-rigging ch07) with the elbow folded and the wrist cocked; then it swings forward
+ * and down over the front, accelerating into contact (ease-in), and follows through low (ease-out), the elbow snapping
+ * straight last (ch08, proximal to distal). The chest leans back and rises into the wind-up, then drives forward and the
+ * knees dip into the cut; the other arm swings back to balance.
+ */
+function sideChop(anatomy: RigAnatomy, arm: Limb, forward: Point, fractions: readonly number[], clip: ClipBuilder, wind: (back: number, contact: number, extreme: number) => readonly Key[]): AnimationTrack[] {
+  const t = (index: number) => fractions[index];
+  // Positive rotation swings this arm forward (and, past horizontal, up and over), measured from where it rests.
+  const strike = forwardSign(arm.upperDir, forward);
+  const rest = angleTo(DOWN, arm.upperDir) * strike; // how far forward of hanging straight down the arm already is
+  // Wind-up: arm up and back to about 200° from hanging (overhead, past vertical); contact out in front at about 75°;
+  // follow-through forward and down at about 35°. All relative to the arm's own rest angle.
+  const upper = (index: number) => curve(wind(200 - rest, 75 - rest, 35 - rest), t(index), .05);
+  clip.add(arm.upper, "rotation", (index) => upper(index) * strike);
+  const torsoLength = len(anatomy.torsoDir);
+  const up = { x: anatomy.torsoDir.x / Math.max(1, torsoLength), y: anatomy.torsoDir.y / Math.max(1, torsoLength) };
+  // The shoulder rises as the arm goes above 90° (the shoulder blade turning up, ch07).
+  const lift = (index: number) => { const elevation = rest + upper(index); return elevation <= 90 ? 0 : Math.min(1, (elevation - 90) / 110) * torsoLength * .14; };
+  clip.add(arm.upper, "x", (index) => up.x * lift(index)); clip.add(arm.upper, "y", (index) => up.y * lift(index));
+  // The elbow folds behind the head in the wind-up, then snaps straight at contact and eases off.
+  clip.add(arm.lower, "rotation", (index) => curve([[0, 0], [.3, 75], [.41, 35, "in"], [.46, -arm.restBend * .9, "in"], [.56, -arm.restBend * .6, "out"], [.88, 0], [1, 0]], t(index), .07) * arm.bendSign);
+  // The wrist cocks back (blade pointing behind), then whips through after the elbow.
+  if (arm.end) clip.add(arm.end, "rotation", (index) => curve(wind(35, -10, -25), t(index), .09) * strike);
+  // The other arm swings back for balance as the blow comes down.
+  for (const other of anatomy.arms) if (other !== arm) clip.add(other.upper, "rotation", (index) => -curve(wind(10, -20, -28), t(index), .06) * forwardSign(other.upperDir, forward));
+  const lean = turn(anatomy.torsoDir, forward);
+  clip.add(anatomy.pelvis ?? anatomy.bodyBone, "rotation", (index) => curve(wind(-3, 4, 6), t(index)) * lean);
+  clip.add(anatomy.torso, "rotation", (index) => curve(wind(-10, 12, 16), t(index), .03) * lean);
+  clip.add(anatomy.head, "rotation", (index) => curve(wind(6, -5, -7), t(index), .08) * lean);
+  // Rise onto the toes in the wind-up, then drop and shift forward into the cut.
+  if (anatomy.bodyBone) {
+    clip.add(anatomy.bodyBone, "y", (index) => curve(wind(-.015, .022, .03), t(index)) * anatomy.height);
+    clip.add(anatomy.bodyBone, "x", (index) => curve(wind(-.015, .03, .04), t(index)) * anatomy.height * forward.x);
+  }
+  const front = anatomy.legs.find((leg) => Math.sign(leg.outward) === Math.sign(forward.x)) ?? anatomy.legs[0];
+  for (const leg of anatomy.legs) if (leg.lower) {
+    const weight = leg === front ? 1 : .6;
+    clip.add(leg.upper, "rotation", (index) => -curve(wind(-3, 10, 13), t(index)) * leg.bendSign * weight);
+    clip.add(leg.lower, "rotation", (index) => curve(wind(-4, 16, 20), t(index)) * leg.bendSign * weight);
+  }
+  return clip.tracks();
+}
+
+/**
  * A front-facing strike. Seen from the front, a body cannot show its twist, so a strike across the waist reads as a
  * shrug. Front-facing characters chop instead: the weapon arm rises up and back over the shoulder (the shoulder lifting
  * with it, ch07), then cuts down diagonally across the body past the other hip, the elbow extending last; the chest leans
  * into the cut and the knees dip to take it.
  */
-function frontChop(anatomy: RigAnatomy, arm: Limb, fractions: readonly number[], clip: ClipBuilder, wind: (back: number, through: number, over: number) => readonly (readonly [number, number])[]): AnimationTrack[] {
+function frontChop(anatomy: RigAnatomy, arm: Limb, fractions: readonly number[], clip: ClipBuilder, wind: (back: number, contact: number, extreme: number) => readonly Key[]): AnimationTrack[] {
   const t = (index: number) => fractions[index];
-  const across = turn(arm.upperDir, { x: -arm.outward, y: 0 });
+  const across = turn(wholeArm(arm), { x: -arm.outward, y: 0 });
   // Up and back over the shoulder (outward), then down across the body.
   const upper = (index: number) => curve(wind(-150, 40, 52), t(index), .05);
   clip.add(arm.upper, "rotation", (index) => upper(index) * across);
@@ -523,14 +598,14 @@ function frontChop(anatomy: RigAnatomy, arm: Limb, fractions: readonly number[],
   const lift = (index: number) => { const elevation = Math.abs(Math.min(0, upper(index))); return elevation <= 30 ? 0 : Math.min(1, (elevation - 30) / 120) * torsoLength * .16; };
   clip.add(arm.upper, "x", (index) => up.x * lift(index)); clip.add(arm.upper, "y", (index) => up.y * lift(index));
   // The elbow folds behind the head, then extends last into the cut.
-  clip.add(arm.lower, "rotation", (index) => curve([[0, 0], [.3, 80], [.41, 30], [.46, -arm.restBend * .9], [.54, -arm.restBend * .6], [.88, 0], [1, 0]], t(index), .07) * arm.bendSign);
-  if (arm.end) clip.add(arm.end, "rotation", (index) => curve(wind(-20, 25, 15), t(index), .09) * across);
+  clip.add(arm.lower, "rotation", (index) => curve([[0, 0], [.3, 80], [.41, 30, "in"], [.46, -arm.restBend * .9, "in"], [.56, -arm.restBend * .6, "out"], [.88, 0], [1, 0]], t(index), .07) * arm.bendSign);
+  if (arm.end) clip.add(arm.end, "rotation", (index) => curve(wind(-20, 15, 25), t(index), .09) * across);
   // The other arm comes up and out for balance, and drops as the blow lands.
-  for (const other of anatomy.arms) if (other !== arm) clip.add(other.upper, "rotation", (index) => curve(wind(-25, 15, 10), t(index), .06) * turn(other.upperDir, { x: -other.outward, y: 0 }));
+  for (const other of anatomy.arms) if (other !== arm) clip.add(other.upper, "rotation", (index) => curve(wind(-25, 10, 15), t(index), .06) * turn(wholeArm(other), { x: -other.outward, y: 0 }));
   // The chest leans away in the wind-up and into the cut; the head follows a beat later.
   const lean = arm.outward;
-  clip.add(anatomy.torso, "rotation", (index) => curve(wind(-7, 9, 8), t(index), .03) * lean);
-  clip.add(anatomy.head, "rotation", (index) => curve(wind(4, -5, -4), t(index), .08) * lean);
+  clip.add(anatomy.torso, "rotation", (index) => curve(wind(-7, 8, 9), t(index), .03) * lean);
+  clip.add(anatomy.head, "rotation", (index) => curve(wind(4, -4, -5), t(index), .08) * lean);
   // Rise slightly into the wind-up, then the knees dip as the blow lands.
   if (anatomy.bodyBone) clip.add(anatomy.bodyBone, "y", (index) => curve(wind(-.012, .025, .03), t(index)) * anatomy.height);
   for (const leg of anatomy.legs) if (leg.lower) {

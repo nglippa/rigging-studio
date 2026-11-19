@@ -284,7 +284,7 @@ Every character goes through the same steps, with nothing tuned for one sprite:
 
 **Adding a character to the benchmark.** Add it to `tests/fixtures/rigging/joint-ground-truth.json` with its image, view, proportions and hand-marked joints (screen-side names), or only its image and proportions under `proportionsOnly`. `tests/rigging/guide-accuracy.test.ts` then checks it like every other: proportions detected correctly, mean joint error at most 10% of the figure's height, and no worse than its recorded baseline. Record a new sprite's baseline, or lower baselines after an improvement, with `UPDATE_GUIDE_BASELINE=1 npx vitest run tests/rigging/guide-accuracy.test.ts`; recording never raises a baseline.
 
-Current baselines (mean / worst joint error): warrior 5.0% / 9.6%, goblin 6.2% / 10.0%, courier 5.95% / 12.7%, paladin 5.9% / 11.4%, rogue 3.8% / 8.2%.
+Current baselines (mean / worst joint error): warrior 5.0% / 9.6%, goblin 3.45% / 7.3%, courier 5.95% / 12.7%, paladin 5.9% / 11.4%, rogue 3.8% / 8.2%.
 
 **Wrists are traced** (`traceWrist`): each arm is followed down from its elbow, row by row, along the run of silhouette beside the torso nearest the previous row's (at first, nearest the guessed elbow; a short stretch where the arm still joins the body is skipped), and the wrist is the narrowest row in the middle of the trace (the last rows are fingertips). The courier went from 6.3% to 5.95%. Starting the trace at the shoulder was tried and rejected by the benchmark: where the arm still joins the body, the first separate run is the held weapon (the paladin 5.9% → 7.0%, the rogue 3.8% → 5.3%). The paladin's wrists stay about 4 px high: in 48 px art its raised hands merge with the mace and shield, so the silhouette cannot say where the arm ends. Place them by hand, or let Build rig put the hand at the equipment it carries.
 
@@ -314,4 +314,20 @@ Sources are in the `human-motion-rigging` skill, new chapters ch07 (shoulder: sc
 - **Walk / run**: arm swing is exaggerated over the measured values (×1.6 walk, ×1.35 run), the elbow drags 6% of a cycle behind, the chest lean oscillates ±3° walk / ±4.5° run, and the head counters it 5% later.
 - **Shoulder pivots**: a hand-cut upper arm pivots at the ball of the shoulder (`humeralHead`: from the seam, half the arm's width into the arm), not at the seam.
 - **Pixel art rendering** (`RigRenderer`, canvases of 256 px or less, or `metadata.pixelArt`): nearest-neighbour sampling, parts on whole pixels, and parts that are only rotated are drawn as RotSprite copies (`src/rigging/rendering/rotsprite.ts`) at the nearest 5°, cached per part and angle. Quarter turns are copied exactly.
-- **Known issue**: on 48 px chibis whose arms hang against the body (rogue), the torso's art carries hand-coloured patches at its sides, which stay behind when the arms rise. It comes from the cut or the hidden-area fill on tiny sprites, not from the motion.
+- **Chibi arms** (fixed): on 48 px chibis the upper arm is a short, nearly level stub, so which way an arm turns is judged from the whole arm (shoulder to hand, `wholeArm`), not the upper arm; before, one arm swung in across the face. And the joint fill only joins torso↔forearm (or thigh↔foot, etc.) when the middle part is missing; before, a forearm hanging against a chibi's body capped the torso, and its pixels stayed on the hips when the arm rose.
+- **Side views and held items** (fixed 2026-11-18; details in `docs/audit-motion-segmentation-2026-11-18.md`, S1/S6/A1):
+  - **Overlapping legs.** A run of silhouette counts as a leg only if it reaches the ground, so a sword held low is no longer taken for the far leg. Pose joints on empty background are ignored. When the legs overlap, the far leg is declared hidden: no art of its own, and the rig draws it from the near leg.
+  - **Held items.** Cut all parts finds points on held items from the silhouette and has SAM2 cut each as the holding hand's equipment, when the Studio is reachable.
+  - **Melee.** The strike uses the arm with the longest, thinnest equipment, never a lone shield. It accelerates into contact and follows through past it.
+  - **Shoulders** sit on the torso's own run of pixels, never on the bounding box that held items widen. In a side view (legs overlapping) they sit over the torso, ±20% of its width; in a front view, at its edges. The elbow is placed between that shoulder and the wrist.
+  - **Side-view melee with a long weapon** (equipment at least 1.8× longer than wide) is an overhead chop: lift up in front to behind the head, swing over the front, follow through low. Without a weapon it stays a forward strike; front views keep the cross-body chop.
+  - **Finding held items, for any sprite:**
+    - Seeds: runs outside the body zones (above the hips; below them only runs that do not reach the ground), plus a seed on each hand and two points along the arm past the wrist.
+    - Each seed prompts SAM2 with up to three points on the same patch, which avoids the subpart answer.
+    - A mask counts as held when it is near one hand (long items measured from their ends), is not mostly body, and reaches at least a forearm's length past the wrist (rejects gloves).
+    - Touching pieces in one hand are joined. Hand-grown masks are only a fallback. Each item is cut with its 1 px outline.
+  - **Small sprites** go to SAM2 enlarged with Scale2× (EPX) to at least 512 px, not nearest-neighbour; masks come back by majority vote. On the 48 px warrior: sword 7 px → 64 px.
+  - **Hidden-area fill** continues a part only between its own art (pixels on both sides along a row or column), so a box that spans a held item cannot paint a ghost of it.
+  - **Waking.** A request that fails mid-wake ("fetch failed") wakes the Studio and retries once.
+  - **Checked live** on goblin (side), courier (front, HD), warrior, paladin and rogue (48 px). Recorded SAM2 masks for the goblin and the warrior are test fixtures.
+  - **Baselines.** Goblin joint error: outline 3.5%, with the pose model 3.0%.

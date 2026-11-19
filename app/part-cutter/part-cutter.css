@@ -446,6 +446,7 @@
 .cutter-left .parts-checklist .part-row[data-status="ready"] i { color:var(--pc-green); }
 .cutter-left .parts-checklist .part-row[data-status="review"] i { color:var(--pc-amber); }
 .cutter-left .parts-checklist .part-row[data-status="missing"] { color:var(--pc-muted); }
+.cutter-left .parts-checklist .part-row[data-status="hidden"] { color:var(--pc-muted); font-style:italic; }
 .cutter-left .parts-checklist .part-row[aria-current="true"] { color:var(--space-text); background:rgba(84,232,255,.08); box-shadow:inset 2px 0 var(--space-cyan); font-weight:650; }
 .part-add>summary { min-height:40px; padding:0 14px; display:flex; align-items:center; color:var(--pc-cyan); cursor:pointer; list-style:none; font-size:var(--font-nav); }
 .part-add>summary::-webkit-details-marker,.parts-advanced>summary::-webkit-details-marker { display:none; }

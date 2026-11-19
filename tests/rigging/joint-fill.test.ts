@@ -110,6 +110,21 @@ describe("gap filling for moving parts", () => {
     expect(Array.from(context.data.subarray(shieldPixel, shieldPixel + 3))).not.toEqual(Array.from(shield.image.data.subarray(shieldLocal, shieldLocal + 3)));
   });
 
+  it("does not cap the torso with a forearm that hangs against it while the upper arm exists", () => {
+    // The forearm (x 8–15, y 16–27) touches the torso's side. Capping the torso with it would leave a copy of the forearm
+    // on the body whenever the arm moves (seen on 48 px chibis).
+    const torso = art("torso");
+    for (let y = 16; y < 28; y += 1) for (let x = 8; x < 16; x += 1) {
+      if (x < torso.bounds.x || y < torso.bounds.y || x >= torso.bounds.x + torso.bounds.width || y >= torso.bounds.y + torso.bounds.height) continue;
+      expect(torso.image.data[((y - torso.bounds.y) * torso.image.width + (x - torso.bounds.x)) * 4 + 3], `${x},${y}`).toBe(0);
+    }
+  });
+
+  it("still joins the torso and forearm when the upper arm is missing", () => {
+    const skipped = fillPartArt(image, [part("torso", "torso", 16, 4, 16, 24), part("fore", "leftForearm", 8, 16, 8, 12)]);
+    expect(skipped.find((candidate) => candidate.partId === "torso")!.capPixels).toBeGreaterThan(0);
+  });
+
   it("does not join parts that merely touch", () => {
     // Torso and forearm are not a joint here, because the upper arm sits between them anatomically but they share an edge.
     const alone = fillPartArt(image, [part("torso", "torso", 16, 4, 16, 24), part("hand", "leftHand", 8, 4, 8, 24)]);

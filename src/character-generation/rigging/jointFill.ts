@@ -29,17 +29,27 @@ const JOINTS: readonly (readonly [PartType, PartType])[] = [
   ["torso", "rightUpperArm"], ["rightUpperArm", "rightForearm"], ["rightForearm", "rightHand"],
   ["torso", "leftThigh"], ["leftThigh", "leftLowerLeg"], ["leftLowerLeg", "leftFoot"],
   ["torso", "rightThigh"], ["rightThigh", "rightLowerLeg"], ["rightLowerLeg", "rightFoot"],
-  // A limb whose middle part is hidden or was skipped still bends where its visible parts meet.
-  ["torso", "leftForearm"], ["leftUpperArm", "leftHand"], ["torso", "rightForearm"], ["rightUpperArm", "rightHand"],
-  ["torso", "leftLowerLeg"], ["leftThigh", "leftFoot"], ["torso", "rightLowerLeg"], ["rightThigh", "rightFoot"],
 ];
-const jointed = (a: PartType, b: PartType): boolean => JOINTS.some(([first, second]) => (first === a && second === b) || (first === b && second === a));
+/**
+ * A limb whose middle part is hidden or was skipped still bends where its visible parts meet: [outer, inner, middle].
+ * Only when the middle part is missing. When it exists, the outer parts merely touch (a forearm hanging against the side
+ * of a chibi's body), and capping one with the other would leave a copy of the forearm on the torso when the arm moves.
+ */
+const SKIP_JOINTS: readonly (readonly [PartType, PartType, PartType])[] = [
+  ["torso", "leftForearm", "leftUpperArm"], ["leftUpperArm", "leftHand", "leftForearm"], ["torso", "rightForearm", "rightUpperArm"], ["rightUpperArm", "rightHand", "rightForearm"],
+  ["torso", "leftLowerLeg", "leftThigh"], ["leftThigh", "leftFoot", "leftLowerLeg"], ["torso", "rightLowerLeg", "rightThigh"], ["rightThigh", "rightFoot", "rightLowerLeg"],
+];
+const pairs = (a: PartType, b: PartType, first: PartType, second: PartType): boolean => (first === a && second === b) || (first === b && second === a);
+const jointedAmong = (present: ReadonlySet<PartType>) => (a: PartType, b: PartType): boolean =>
+  JOINTS.some(([first, second]) => pairs(a, b, first, second))
+  || SKIP_JOINTS.some(([first, second, middle]) => !present.has(middle) && pairs(a, b, first, second));
 
 type Layer = { readonly part: ProposedCharacterPart; readonly owner: number; readonly z: number; readonly left: number; readonly top: number; readonly right: number; readonly bottom: number };
 
 export function fillPartArt(source: PixelImage, parts: readonly ProposedCharacterPart[]): readonly FilledPart[] {
   const { width, height } = source;
   const labels = new Int16Array(width * height);
+  const jointed = jointedAmong(new Set(parts.map((part) => part.semanticType)));
   const layers: Layer[] = parts.map((part, index) => {
     const left = Math.max(0, Math.floor(part.bounds.x)); const top = Math.max(0, Math.floor(part.bounds.y));
     const right = Math.min(width, left + Math.ceil(part.bounds.width)); const bottom = Math.min(height, top + Math.ceil(part.bounds.height));
@@ -110,6 +120,15 @@ export function fillPartArt(source: PixelImage, parts: readonly ProposedCharacte
     // across that edge pixel, back into the part. Mirroring carries the part's own texture and shading outward; copying the
     // edge pixel instead would smear every edge colour into a stripe. Where the mirror falls outside the part (a thin
     // part, or a fill reaching further than the part is deep) the edge colour is used, softened by its neighbours.
+    // Where this part can continue under something in front: between its own pixels, along a row or a column (art on
+    // both sides). Its bounding box alone is not enough: a part whose box spans a held sword (a chibi's head beside the
+    // raised blade) would otherwise paint the sword's whole shape, which shows as a dark ghost when the sword moves.
+    const ownRowMin = new Map<number, number>(); const ownRowMax = new Map<number, number>(); const ownColMin = new Map<number, number>(); const ownColMax = new Map<number, number>();
+    for (let y = layer.top; y < layer.bottom; y += 1) for (let x = layer.left; x < layer.right; x += 1) if (labels[y * width + x] === own) {
+      if (x < (ownRowMin.get(y) ?? Infinity)) ownRowMin.set(y, x); if (x > (ownRowMax.get(y) ?? -Infinity)) ownRowMax.set(y, x);
+      if (y < (ownColMin.get(x) ?? Infinity)) ownColMin.set(x, y); if (y > (ownColMax.get(x) ?? -Infinity)) ownColMax.set(x, y);
+    }
+    const betweenOwnArt = (x: number, y: number) => (x > (ownRowMin.get(y) ?? Infinity) && x < (ownRowMax.get(y) ?? -Infinity)) || (y > (ownColMin.get(x) ?? Infinity) && y < (ownColMax.get(x) ?? -Infinity));
     const painted = new Map<number, readonly [number, number, number]>();
     const originOf = new Map<number, number>();
     let frontier: number[] = [];
@@ -128,7 +147,7 @@ export function fillPartArt(source: PixelImage, parts: readonly ProposedCharacte
           if (front.z <= layer.z || jointed(front.part.semanticType, layer.part.semanticType)) continue;
           // Under another body part the fill completes this part inside its own extent. Under equipment it may also reach
           // across to the next body part, because a weapon often hides the whole strip between two parts.
-          const withinOwnExtent = nx >= layer.left && ny >= layer.top && nx < layer.right && ny < layer.bottom;
+          const withinOwnExtent = nx >= layer.left && ny >= layer.top && nx < layer.right && ny < layer.bottom && betweenOwnArt(nx, ny);
           if (!(withinOwnExtent || (isEquipment(front) && !isEquipment(layer) && insideBody(nx, ny)))) continue;
           originOf.set(neighbour, origin); next.push(neighbour);
           const ox = origin % width; const oy = (origin - ox) / width;

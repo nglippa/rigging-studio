@@ -11,12 +11,12 @@
   },
   "goblin": {
     "outline": {
-      "mean": 0.0619,
-      "worst": 0.0999
+      "mean": 0.0345,
+      "worst": 0.0732
     },
     "full": {
-      "mean": 0.0465,
-      "worst": 0.0999
+      "mean": 0.0303,
+      "worst": 0.0654
     }
   },
   "courier": {

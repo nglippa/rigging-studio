@@ -49,7 +49,10 @@ export function validatePrepare(
   const profile = options.profile ?? "humanoid";
   if (profile !== "custom") {
     const semantics = new Set(state.parts.map((part) => part.semanticType));
-    HUMANOID_PARTS.filter((semantic) => !semantics.has(semantic)).forEach((semantic) => add({
+    // A part the guide found hidden behind its twin (the far leg of a side view) is meant to have no art of its own: the
+    // rig draws it from the near one. It is not missing.
+    const hidden = new Set(hiddenGuideSemantics(state));
+    HUMANOID_PARTS.filter((semantic) => !semantics.has(semantic) && !hidden.has(semantic)).forEach((semantic) => add({
       id: `prepare-missing-${semantic}`,
       severity: "error",
       objectId: semantic,
@@ -76,6 +79,11 @@ export function validatePrepare(
     foregroundCoverage,
     overlapRatio,
   };
+}
+
+/** Parts the guide declared hidden behind others (no zone art), e.g. the far leg of a side view. */
+export function hiddenGuideSemantics(state: Pick<PartCutterState, "anatomicalGuide">): readonly PartCutterState["parts"][number]["semanticType"][] {
+  return (state.anatomicalGuide?.zones ?? []).filter((zone) => zone.optional && !zone.mask?.alpha.some(Boolean)).map((zone) => zone.semanticType);
 }
 
 /** "leftUpperArm" → "left upper arm". */

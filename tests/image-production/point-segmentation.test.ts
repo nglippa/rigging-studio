@@ -33,9 +33,17 @@ class FakeComfy implements ImageProductionProvider {
   constructor(private readonly mask: Uint8Array) {}
   async status(): Promise<ImageProviderStatus> { this.statusCalls += 1; this.onStatus?.(); return { provider: "comfyui", reachable: this.reachable, url: "http://127.0.0.1:8188", queue: { running: 0, pending: 0 }, message: this.reachable ? "ready" : "connection refused" }; }
   async inspectDependencies() { return { available: true, missingNodeClasses: [], missingModels: [] }; }
-  async uploadImage(name: string) { return name; }
+  /** Like ComfyUI, the mask comes back at the size of the image that was sent (which the service enlarges for small sprites). */
+  uploaded: { width: number; height: number } | null = null;
+  async uploadImage(name: string, bytes?: Uint8Array) { if (bytes) { const png = PNG.sync.read(Buffer.from(bytes)); this.uploaded = { width: png.width, height: png.height }; } return name; }
+  sized(): Uint8Array {
+    const mask = PNG.sync.read(Buffer.from(this.mask)); const target = this.uploaded ?? { width: mask.width, height: mask.height };
+    const out = new PNG({ width: target.width, height: target.height });
+    for (let y = 0; y < target.height; y += 1) for (let x = 0; x < target.width; x += 1) { const from = (Math.floor(y * mask.height / target.height) * mask.width + Math.floor(x * mask.width / target.width)) * 4; out.data.set(mask.data.subarray(from, from + 4), (y * target.width + x) * 4); }
+    return PNG.sync.write(out);
+  }
   async submit(workflow: ComfyApiWorkflow) { this.workflows.push(workflow); return { promptId: "p1" }; }
-  async waitForCompletion(promptId: string): Promise<ImageProviderExecutionResult> { return { promptId, outputs: [{ bytes: this.mask, mimeType: "image/png", providerAsset: { filename: "m.png", subfolder: "", type: "output" } }], warnings: [] }; }
+  async waitForCompletion(promptId: string): Promise<ImageProviderExecutionResult> { return { promptId, outputs: [{ bytes: this.sized(), mimeType: "image/png", providerAsset: { filename: "m.png", subfolder: "", type: "output" } }], warnings: [] }; }
 }
 
 async function serviceWith(provider: ImageProductionProvider, wake?: ConstructorParameters<typeof ComfyCharacterPipelineService>[1]) {
@@ -50,10 +58,11 @@ describe("POINT_SEGMENTATION", () => {
     await service.segmentAtPoints({ image: solidPng(6, 4), width: 6, height: 4, positive: [{ x: 2, y: 1 }, { x: 3, y: 2 }], negative: [{ x: 5, y: 3 }] });
     const [without, withNegative] = provider.workflows;
     expect(without?.["3"]?.inputs).not.toHaveProperty("coordinates_negative");
-    expect(JSON.parse(String(without?.["3"]?.inputs.coordinates_positive))).toEqual([{ x: 2, y: 1 }]);
+    // A 6×4 sprite is enlarged ×128 with Scale2× before SAM sees it; the prompt lands in the middle of the enlarged pixel.
+    expect(JSON.parse(String(without?.["3"]?.inputs.coordinates_positive))).toEqual([{ x: 2 * 128 + 64, y: 1 * 128 + 64 }]);
     expect(without?.["3"]?.inputs).toMatchObject({ keep_model_loaded: true, individual_objects: false });
     expect(without?.["2"]?.inputs.model).toBe("sam2.1_hiera_base_plus.safetensors");
-    expect(JSON.parse(String(withNegative?.["3"]?.inputs.coordinates_negative))).toEqual([{ x: 5, y: 3 }]);
+    expect(JSON.parse(String(withNegative?.["3"]?.inputs.coordinates_negative))).toEqual([{ x: 5 * 128 + 64, y: 3 * 128 + 64 }]);
     expect(JSON.parse(String(withNegative?.["3"]?.inputs.coordinates_positive))).toHaveLength(2);
   });
 
@@ -72,6 +81,20 @@ describe("POINT_SEGMENTATION", () => {
     expect([result.width, result.height]).toEqual([4, 2]);
     expect(result.alpha).toEqual([0, 0, 255, 255, 0, 0, 255, 255]);
     expect(result.runtimeMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("enlarges a small sprite with Scale2× before SAM and brings the mask back to sprite size by majority", async () => {
+    // The model's mask covers the left half of the enlarged image: the sprite's mask is its left three columns.
+    const provider = new FakeComfy(greyMask(2, 1, (x) => x === 0 ? 255 : 0)); const service = await serviceWith(provider);
+    const result = await service.segmentAtPoints({ image: solidPng(6, 4), width: 6, height: 4, positive: [{ x: 1, y: 1 }] });
+    expect(provider.uploaded).toEqual({ width: 6 * 128, height: 4 * 128 });
+    expect([result.width, result.height]).toEqual([6, 4]);
+    expect(result.alpha).toEqual([255, 255, 255, 0, 0, 0, 255, 255, 255, 0, 0, 0, 255, 255, 255, 0, 0, 0, 255, 255, 255, 0, 0, 0]);
+    // An image of 512 px or more is sent as it is.
+    const large = new FakeComfy(greyMask(4, 4, () => 255)); const largeService = await serviceWith(large);
+    await largeService.segmentAtPoints({ image: solidPng(600, 520), width: 600, height: 520, positive: [{ x: 10, y: 10 }] });
+    expect(large.uploaded).toEqual({ width: 600, height: 520 });
+    expect(JSON.parse(String(large.workflows[0]?.["3"]?.inputs.coordinates_positive))).toEqual([{ x: 10, y: 10 }]);
   });
 
   it("validates points before touching ComfyUI", async () => {
@@ -93,6 +116,18 @@ describe("POINT_SEGMENTATION", () => {
     const result = await service.segmentAtPoints({ image: solidPng(4, 4), width: 4, height: 4, positive: [{ x: 1, y: 1 }] });
     expect(wakeCalls).toEqual(["http://10.77.77.2:8193/"]);
     expect(result.alpha).toHaveLength(16);
+  });
+
+  it("wakes and retries once when the engine answers the status check but drops the request (still starting)", async () => {
+    const provider = new FakeComfy(greyMask(4, 4, () => 255)); let failures = 1;
+    const submit = provider.submit.bind(provider);
+    provider.submit = async (workflow) => { if (failures > 0) { failures -= 1; throw new TypeError("fetch failed"); } return submit(workflow); };
+    const wakeCalls: string[] = [];
+    const fetcher = (async (url: string) => { wakeCalls.push(String(url)); return new Response("ok"); }) as unknown as typeof fetch;
+    const service = await serviceWith(provider, { wakeUrl: "http://10.77.77.2:8193/", wakePollMs: 10, wakeTimeoutMs: 2_000, fetcher });
+    const result = await service.segmentAtPoints({ image: solidPng(600, 520), width: 600, height: 520, positive: [{ x: 1, y: 1 }] });
+    expect(wakeCalls).toEqual(["http://10.77.77.2:8193/"]);
+    expect(result.alpha).toHaveLength(600 * 520);
   });
 
   it("fails with the offline reason when the wake does not bring the engine up, and never wakes when unset", async () => {

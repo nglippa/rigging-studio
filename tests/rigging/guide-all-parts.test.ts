@@ -52,4 +52,25 @@ describe("Cut all parts", () => {
     // Re-cutting does not move the guided steps along.
     expect(result.state.guidedManual!.currentSemantic).toBe(cut.guidedManual!.currentSemantic);
   });
+
+  it("hides the far leg of a side view instead of cutting it as a scrap, and does not take a held sword for a leg", () => {
+    // The goblin stands in profile with one leg behind the other and a sword held low across them. The sword tip used to
+    // be read as the second leg; that leg's zone then held almost nothing (a 1 px lower leg) while its thigh took the
+    // skirt and the blade.
+    const { state, foreground } = sprite("../../public/rig-test/goblin/goblin-source.png");
+    const result = guideAllBodyParts(state, foreground, AT);
+    expect(result.missed).toEqual([]);
+    expect(result.hidden).toEqual(["rightThigh", "rightLowerLeg", "rightFoot"]);
+    const visible = foreground.filter(Boolean).length;
+    for (const part of result.state.parts) expect(part.mask.alpha.filter(Boolean).length / visible, part.semanticType).toBeGreaterThan(.01);
+    // The near leg is one column from hip to boot: knee and ankle stacked under the hip, not out under the blade.
+    const at = (id: string) => result.state.anatomicalGuide!.landmarks.find((landmark) => landmark.landmarkId === id)!.point;
+    expect(Math.abs(at("leftKnee").x - at("leftAnkle").x)).toBeLessThan(120);
+    expect(at("rightKnee")).toEqual(at("leftKnee"));
+  });
+
+  it("still cuts both legs of a front-facing sprite", () => {
+    const { state, foreground } = sprite("../../public/benchmark/guided-manual/rogue.png");
+    expect(guideAllBodyParts(state, foreground, AT).hidden).toEqual([]);
+  });
 });

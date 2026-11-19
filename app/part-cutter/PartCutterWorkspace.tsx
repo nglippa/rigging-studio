@@ -36,7 +36,7 @@ import {
   startGuidedBenchmarkCharacter, unresolvedComponents,
   type AnatomicalLandmarkId, type PartCutMode, type PartCutRecord, type PartCutterState, type PartSemanticType, type ManualSelectionMode, type PrepareWorkflowState,
   type GuidedBenchmarkAction, type GuidedBenchmarkRun, type GuidedSelection,
-  validatePrepare, validateReassembly, validateReconstructionAsset, viewportPointToSource, PART_CUTTER_IMPORT_KEY, type AnatomyProfile, type PartCutterImportPayload, type PrepareIssue,
+  chooseHeldObjects, commitHeldObjects, heldObjectHand, heldObjectSeeds, hiddenGuideSemantics, selectionFromCanvasMask, validatePrepare, validateReassembly, validateReconstructionAsset, viewportPointToSource, PART_CUTTER_IMPORT_KEY, type AnatomyProfile, type PartCutterImportPayload, type PrepareIssue,
 } from "@/src/part-cutter";
 import { StudioCommandPalette, type StudioCommand } from "@/app/studio-ui/StudioCommandPalette";
 import type { StageStatuses, StudioMode } from "@/app/studio-ui/StudioModeNav";
@@ -77,8 +77,9 @@ function maskSvgPath(mask: SegmentationMask, bounds: Rect): string {
   for (let y = 0; y < mask.height; y += 1) { let x = 0; while (x < mask.width) { while (x < mask.width && (mask.alpha[y * mask.width + x] ?? 0) === 0) x += 1; const start = x; while (x < mask.width && (mask.alpha[y * mask.width + x] ?? 0) > 0) x += 1; if (x > start) path.push(`M${left + start} ${top + y}h${x - start}v1h-${x - start}z`); } }
   return path.join("");
 }
-type PartStatus = "ready" | "missing" | "review";
-const PART_STATUS: Readonly<Record<PartStatus, { readonly glyph: string; readonly word: string }>> = { ready: { glyph: "✓", word: "Ready" }, missing: { glyph: "○", word: "Missing" }, review: { glyph: "!", word: "Needs review" } };
+type PartStatus = "ready" | "missing" | "review" | "hidden";
+// "hidden": the guide found this part behind its twin (the far leg of a side view); the rig draws it from the near one.
+const PART_STATUS: Readonly<Record<PartStatus, { readonly glyph: string; readonly word: string }>> = { ready: { glyph: "✓", word: "Ready" }, missing: { glyph: "○", word: "Missing" }, review: { glyph: "!", word: "Needs review" }, hidden: { glyph: "◌", word: "Hidden behind the near leg" } };
 const BODY_CHECKLIST: readonly { readonly heading?: string; readonly rows: readonly (readonly [PartSemanticType, string])[] }[] = [
   { rows: [["head", "Head"], ["torso", "Torso"]] },
   { heading: "Left arm", rows: [["leftUpperArm", "Upper arm"], ["leftForearm", "Forearm"], ["leftHand", "Hand"]] },
@@ -328,7 +329,44 @@ export function PartCutterWorkspace() {
     const laidOut = (result.state.anatomicalGuide?.adaptiveMetadata?.proportions ?? "chibi") === "adult" ? "adult" : "chibi";
     const fromModel = posed ? Object.keys(posed.joints).length : 0;
     const how = fromModel ? `${fromModel} joints from the pose model, the rest from the outline with ${laidOut} proportions${posed?.view ? ` · ${posed.view.view} view` : ""}` : `Joints from the outline with ${laidOut} proportions (the pose model was not sure of any)`;
-    setMessage(!result.cut.length ? "Nothing to cut: every part is already done or has no outline." : `Cut ${result.cut.length} ${result.cut.length === 1 ? "part" : "parts"}. ${how}.${missed.length ? ` Draw these yourself: ${missed.join(", ")}.` : ""} Check each one and fix any that are wrong with Add or Remove.`);
+    const summary = !result.cut.length ? "Nothing to cut: every part is already done or has no outline." : `Cut ${result.cut.length} ${result.cut.length === 1 ? "part" : "parts"}. ${how}.${missed.length ? ` Draw these yourself: ${missed.join(", ")}.` : ""}${result.hidden.length ? " One leg is hidden behind the other, so it was not cut; the rig draws it from the near leg." : ""}`;
+    setMessage(`${summary} Check each one and fix any that are wrong with Add or Remove.`);
+    if (result.cut.length) await cutHeldObjects(result.state, summary);
+  };
+  /**
+   * After the body is cut, finds what the character holds (a sword, a shield) from the silhouette and has click-to-select
+   * cut each one, attached to the hand holding it. Needs the Studio's segmentation model; without it nothing changes and
+   * the user can still click items in the equipment step.
+   */
+  const cutHeldObjects = async (afterBody: PartCutterState, summary: string) => {
+    const guide = afterBody.anatomicalGuide;
+    if (!clickSelectAvailable || !provider.segmentAtPoints || !source || !foreground || !guide) return;
+    const owned = new Set(afterBody.parts.filter((part) => !isBodySemantic(part.semanticType)).map((part) => part.semanticType));
+    if (owned.has("mainHandEquipment") && owned.has("offHandEquipment")) return;
+    const seeds = heldObjectSeeds(guide, foreground);
+    if (!seeds.length) return;
+    setClickBusy(true); setMessage(`${summary} Looking for held items (the Studio may take a minute to wake)…`);
+    const found: (GuidedSelection & { readonly hand: "left" | "right" })[] = [];
+    try {
+      // First every distinct object the seeds point at, then each one's hand, judged knowing all the others (an arm zone
+      // drawn across the shield must not pull the sword into the shield hand).
+      const objects: (GuidedSelection & { readonly fromHand?: boolean })[] = [];
+      for (const seed of seeds) {
+        const result = await provider.segmentAtPoints({ image: source.image, width: source.width, height: source.height, positive: seed.points.map((point) => ({ x: Math.round(point.x), y: Math.round(point.y) })), generationId: source.generationId });
+        const selection = selectionFromCanvasMask(result.alpha, result.width, result.height, seed.point);
+        if (selection && heldObjectHand(guide, selection.mask, selection.bounds, foreground, objects) !== null) objects.push({ ...selection, fromHand: seed.fromHand });
+      }
+      const classified = objects.flatMap((object) => { const hand = heldObjectHand(guide, object.mask, object.bounds, foreground, objects.filter((other) => other !== object)); return hand ? [{ ...object, hand }] : []; });
+      for (const item of chooseHeldObjects(classified)) if (!owned.has(item.hand === "right" ? "mainHandEquipment" : "offHandEquipment")) found.push(item);
+    } catch (reason: unknown) {
+      setMessage(`${summary} Held items were not cut (${reason instanceof Error ? reason.message : String(reason)}); click them in the equipment step instead.`);
+      return;
+    } finally { setClickBusy(false); }
+    if (!found.length) { setMessage(`${summary} No held items found. Check each part and fix any that are wrong with Add or Remove.`); return; }
+    let cut: readonly PartSemanticType[] = [];
+    execute("Cut held items", (current) => { const outcome = commitHeldObjects(current, found, foreground); cut = outcome.cut; return outcome.state; });
+    const names = cut.map((semantic) => SEMANTIC_TAXONOMY[semantic].label.toLowerCase());
+    setMessage(`${summary}${names.length ? ` Cut what the character holds as ${names.join(" and ")}, so it moves with the hand.` : ""} Check each one and fix any that are wrong with Add or Remove.`);
   };
   /**
    * Click to select: asks SAM2 for the object under the click and applies it to the current part with the chosen
@@ -477,8 +515,9 @@ export function PartCutterWorkspace() {
   const prepareValidation = useMemo(() => state ? validatePrepare(state, { foreground, profile: anatomyProfile }) : null, [anatomyProfile, foreground, state]);
   const reviewObjectIds = useMemo(() => new Set(prepareValidation?.issues.map((issue) => issue.objectId) ?? []), [prepareValidation]);
   const partStatus = (part: PartCutRecord | undefined): PartStatus => !part ? "missing" : reviewObjectIds.has(part.partId) || !part.accepted || (part.provenance === "ai" && state?.ownership?.reviewStatus !== "accepted" && (part.confidence === null || part.confidence < .8)) ? "review" : "ready";
-  const bodyStatuses = GUIDED_BODY_ORDER.map((semanticType) => ({ semanticType, status: partStatus(state?.parts.find((part) => part.semanticType === semanticType)) }));
-  const bodyReady = bodyStatuses.filter((item) => item.status === "ready").length; const bodyTotal = bodyStatuses.length;
+  const hiddenSemantics = useMemo(() => new Set(state ? hiddenGuideSemantics(state) : []), [state]);
+  const bodyStatuses = GUIDED_BODY_ORDER.map((semanticType) => { const part = state?.parts.find((candidate) => candidate.semanticType === semanticType); return { semanticType, status: !part && hiddenSemantics.has(semanticType) ? "hidden" as const : partStatus(part) }; });
+  const bodyReady = bodyStatuses.filter((item) => item.status === "ready" || item.status === "hidden").length; const bodyTotal = bodyStatuses.length;
   const equipmentParts = state?.parts.filter((part) => !isBodySemantic(part.semanticType)) ?? [];
   const needsReview = bodyStatuses.some((item) => item.status === "review") || equipmentParts.some((part) => partStatus(part) === "review");
   const stageStatuses: StageStatuses = { prepare: needsReview ? "attention" : bodyReady === bodyTotal ? "done" : "todo" };
@@ -502,7 +541,7 @@ export function PartCutterWorkspace() {
     else setTool("select");
   };
   const partRow = (semanticType: PartSemanticType, label: string, part: PartCutRecord | undefined, key: string) => {
-    const status = partStatus(part); const current = guidedProgress ? guidedProgress.currentSemantic === semanticType : Boolean(part && part.partId === selectedPartId);
+    const status: PartStatus = !part && hiddenSemantics.has(semanticType) ? "hidden" : partStatus(part); const current = guidedProgress ? guidedProgress.currentSemantic === semanticType : Boolean(part && part.partId === selectedPartId);
     return <button key={key} type="button" className="part-row" data-status={status} data-semantic={semanticType} aria-current={current ? "true" : undefined} aria-label={`${part && !isBodySemantic(semanticType) ? label : semanticLabel(semanticType)}, ${PART_STATUS[status].word}`} onClick={() => jumpToTarget(semanticType, part?.partId)}><i aria-hidden="true">{PART_STATUS[status].glyph}</i><span>{label}</span></button>;
   };
   const reassembleSource = () => { if (!state) return; const result = validateReassembly(state, foreground); setShowParts(true); setShowCoverage(true); setSelection(null); setPath([]); setZoom(1); setMessage(result.passed ? "Reassembly matches the source with no gaps, duplicates, or coordinate drift" : `Reassembly check: ${result.diagnostics.join("; ")}`); };

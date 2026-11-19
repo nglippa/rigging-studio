@@ -1,4 +1,5 @@
 import { PNG } from "pngjs";
+import { scale2x, type RgbaImage } from "../../rigging/rendering/rotsprite";
 import { partTypeToBoneId, partTypeToSlotId, type PartType } from "../../character-generation/segmentation/partTaxonomy";
 import { validateSegmentationResponse } from "../../character-generation/segmentation/segmentationValidator";
 import type { CharacterSegmentationRequest } from "../../character-generation/segmentation/segmentationProvider";
@@ -249,15 +250,23 @@ export class ComfyCharacterPipelineService {
       const header = Buffer.from(source.bytes.subarray(0, 24));
       if (header.length === 24 && (header.readUInt32BE(16) !== request.width || header.readUInt32BE(20) !== request.height)) throw new Error(`Source image is ${header.readUInt32BE(16)}×${header.readUInt32BE(20)} but the request declares ${request.width}×${request.height}`);
     }
-    const sourceName = await this.production.provider.uploadImage?.(`rigging-${safeId(request.generationId ?? "points")}-point-source.${source.mimeType === "image/png" ? "png" : "jpg"}`, source.bytes, source.mimeType);
+    // SAM resizes every image to 1024 px, which turns a small pixel sprite into blur, and plain nearest-neighbour enlarging
+    // turns it into flat squares that SAM segments one at a time. A small PNG is enlarged with Scale2× (EPX), doubling
+    // until it is at least 512 px, so edges become shapes; the mask is brought back down by majority vote per source
+    // pixel (body-segmentation skill ch02; animation-coding / human-motion-rigging ch09 for EPX). Measured on the 48 px
+    // warrior: a click on the sword gave 7 px with nearest-neighbour ×21 and the whole 64 px blade with EPX ×16.
+    let scale = 1; while (source.mimeType === "image/png" && Math.max(request.width, request.height) * scale < 512) scale *= 2;
+    const bytes = scale > 1 ? upscalePngEpx(source.bytes, scale) : source.bytes;
+    const sourceName = await this.production.provider.uploadImage?.(`rigging-${safeId(request.generationId ?? "points")}-point-source.${source.mimeType === "image/png" ? "png" : "jpg"}`, bytes, source.mimeType);
     if (!sourceName) throw new Error("ComfyUI image upload is unavailable");
+    const scaled = (points: typeof positive) => points.map((point) => ({ x: Math.round(point.x * scale + (scale - 1) / 2), y: Math.round(point.y * scale + (scale - 1) / 2) }));
     const outputs = await this.execute("POINT_SEGMENTATION", {
       sourceImage: sourceName, sam2Model: modelSetting("COMFYUI_SAM2_POINT_MODEL") ?? DEFAULT_SAM2_POINT_MODEL,
-      positivePoints: JSON.stringify(positive),
+      positivePoints: JSON.stringify(scaled(positive)),
       // The node crashes on "[]", so the manifest leaves this input out of the graph when there are no negative points.
-      ...(negative.length ? { negativePoints: JSON.stringify(negative) } : {}),
+      ...(negative.length ? { negativePoints: JSON.stringify(scaled(negative)) } : {}),
     });
-    const mask = combineMaskOutputs(outputs, request.width, request.height);
+    const mask = downscaleMaskMajority(combineMaskOutputs(outputs, request.width * scale, request.height * scale), scale);
     return { width: mask.width, height: mask.height, alpha: Array.from(mask.alpha, (value) => value >= 128 ? 255 : 0), runtimeMs: Date.now() - started };
   }
 
@@ -276,10 +285,22 @@ export class ComfyCharacterPipelineService {
     return latest;
   }
 
-  private async execute(capability: ImageProductionCapability, values: Readonly<Record<string, ImageProductionJson>>): Promise<readonly ImageProviderOutput[]> {
+  private async execute(capability: ImageProductionCapability, values: Readonly<Record<string, ImageProductionJson>>, retried = false): Promise<readonly ImageProviderOutput[]> {
     let providerStatus = await this.production.provider.status();
     if (!providerStatus.reachable) providerStatus = (await this.wakeEngine()) ?? providerStatus;
     if (!providerStatus.reachable) throw new Error(`ComfyUI is offline at ${providerStatus.url}: ${providerStatus.message}`);
+    try { return await this.run(capability, values); }
+    catch (error: unknown) {
+      // An engine that is still starting (or dropping back to sleep) can answer the status check and then refuse the next
+      // request ("fetch failed"). Wake it and try once more, rather than failing a click the user just made.
+      const network = error instanceof TypeError && /fetch failed/i.test(error.message);
+      if (!network || retried || !(this.wake.wakeUrl ?? process.env.COMFYUI_WAKE_URL)) throw error;
+      await this.wakeEngine();
+      return this.execute(capability, values, true);
+    }
+  }
+
+  private async run(capability: ImageProductionCapability, values: Readonly<Record<string, ImageProductionJson>>): Promise<readonly ImageProviderOutput[]> {
     const workflow = await this.production.registry.require(capability);
     const dependencies = await this.production.provider.inspectDependencies(workflow);
     if (!dependencies.available) throw new Error(formatDependencyFailure(dependencies));
@@ -347,6 +368,26 @@ async function readSourceImage(source: string): Promise<{ readonly bytes: Uint8A
   const mimeType = response.headers.get("content-type")?.split(";")[0];
   if (mimeType !== "image/png" && mimeType !== "image/jpeg") throw new Error("Managed character source must be PNG or JPEG");
   return { bytes: new Uint8Array(await response.arrayBuffer()), mimeType };
+}
+
+/** A PNG enlarged by a power of two with Scale2× (EPX) passes, which keeps pixel-art edges as shapes. */
+export function upscalePngEpx(bytes: Uint8Array, scale: number): Uint8Array {
+  const source = PNG.sync.read(Buffer.from(bytes));
+  let image: RgbaImage = { width: source.width, height: source.height, data: new Uint8ClampedArray(source.data) };
+  for (let factor = 1; factor < scale; factor *= 2) image = scale2x(image);
+  const output = new PNG({ width: image.width, height: image.height }); output.data = Buffer.from(image.data);
+  return PNG.sync.write(output);
+}
+
+/** A mask made on an enlarged image, brought back to source size: a source pixel is in when at least half its block is. */
+export function downscaleMaskMajority(mask: FullMask, scale: number): FullMask {
+  if (scale <= 1) return mask;
+  const width = Math.floor(mask.width / scale); const height = Math.floor(mask.height / scale); const alpha = new Uint8Array(width * height);
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+    let on = 0; for (let dy = 0; dy < scale; dy += 1) for (let dx = 0; dx < scale; dx += 1) if (mask.alpha[(y * scale + dy) * mask.width + x * scale + dx] >= 128) on += 1;
+    alpha[y * width + x] = on * 2 >= scale * scale ? 255 : 0;
+  }
+  return { width, height, alpha };
 }
 
 function combineMaskOutputs(outputs: readonly ImageProviderOutput[], width: number, height: number): FullMask {

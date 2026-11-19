@@ -197,6 +197,23 @@ describe("rig-aware standard motions", () => {
     }
   });
 
+  it("raises a chibi's arms out to the side even when the upper arm is a short, nearly level stub", () => {
+    // Shoulder to elbow runs sideways (one side tilted up a little, as cut on a 48 px sprite); the forearm hangs down.
+    const source = rig("front");
+    const chibi: RigDefinition = { ...source, bones: source.bones.map((bone) => {
+      const sign = bone.id.startsWith("left") ? -1 : 1;
+      if (bone.id.endsWith("-lower-arm")) return { ...bone, x: 9 * sign, y: sign < 0 ? -1 : 0 };
+      if (bone.id.endsWith("-hand")) return { ...bone, x: 2 * sign, y: 20 };
+      return bone;
+    }) };
+    const clip = clipFor(chibi, "raise_arms"); const centre = joints(chibi, null, 0).torso.x;
+    for (const fraction of [.2, .3, .5, .7]) {
+      const pose = joints(chibi, clip, clip.duration * fraction);
+      expect(pose["left-hand"].x, `left at ${fraction}`).toBeLessThan(centre);
+      expect(pose["right-hand"].x, `right at ${fraction}`).toBeGreaterThan(centre);
+    }
+  });
+
   it("attacks strike forward, hurt recoils backward and death falls onto the back", () => {
     for (const [facing, sign] of [["right", 1], ["left", -1]] as const) {
       const source = rig(facing); const rest = joints(source, null, 0);
@@ -209,6 +226,65 @@ describe("rig-aware standard motions", () => {
       expect((fallen.head.x - fallen.pelvis.x) * sign).toBeLessThan(-20);
       expect(Math.abs(fallen.head.y - fallen.pelvis.y)).toBeLessThan(12);
       expect(fallen.pelvis.y).toBeGreaterThan(rest.pelvis.y + 20);
+    }
+  });
+
+  it("a strike is fastest at contact and carries on past it, instead of stopping at the hit", () => {
+    // Penner: a blow travelling into its target is eased in (top speed at contact), then eased out into the follow-through.
+    for (const facing of ["right", "front"] as const) {
+      const source = rig(facing); const attack = clipFor(source, "melee_attack");
+      const arm = attack.tracks.find((track) => track.boneId === "right-upper-arm" && track.property === "rotation")!;
+      const value = (fraction: number) => evaluateAnimationAtTime(attack, createRestPose(source), attack.duration * fraction).bones["right-upper-arm"].rotation;
+      const speed = (fraction: number) => Math.abs(value(fraction + .01) - value(fraction - .01));
+      const contact = .44 + .05; // the upper arm's contact, after its delay
+      const fastest = Math.max(...Array.from({ length: 40 }, (_unused, index) => speed(.3 + index * .007)));
+      expect(arm).toBeDefined();
+      expect(speed(contact), facing).toBeGreaterThan(fastest * .5);
+      // Follow-through: the swing keeps going the same way after contact.
+      expect(Math.sign(value(contact + .05) - value(contact)), facing).toBe(Math.sign(value(contact) - value(.3 + .05)));
+    }
+  });
+
+  it("strikes with the sword arm, not the shield arm, and never with a lone shield", () => {
+    const holding = (source: RigDefinition, items: readonly { readonly hand: "left" | "right"; readonly width: number; readonly height: number }[]): RigDefinition => ({
+      ...source,
+      // Every bone has its own body art, as a cut character does, plus the held items.
+      slots: [...source.bones.map((bone, index) => ({ id: `${bone.id}-slot`, boneId: bone.id, attachmentId: `${bone.id}-art`, zIndex: index, visible: true, blendMode: "normal" as const, tint: 0xffffff, pivotX: 0, pivotY: 0 })),
+        ...items.map((item, index) => ({ id: `${item.hand}-item-slot`, boneId: `${item.hand}-hand`, attachmentId: `${item.hand}-item`, zIndex: 50 + index, visible: true, blendMode: "normal" as const, tint: 0xffffff, pivotX: 0, pivotY: 0 }))],
+      attachments: [...source.bones.map((bone) => ({ id: `${bone.id}-art`, imagePath: `parts/${bone.id}.png`, width: 20, height: 24, offsetX: 0, offsetY: 0, rotation: 0, scaleX: 1, scaleY: 1, category: "body", tags: [] })),
+        ...items.map((item) => ({ id: `${item.hand}-item`, imagePath: `parts/${item.hand}-item.png`, width: item.width, height: item.height, offsetX: 0, offsetY: 0, rotation: 0, scaleX: 1, scaleY: 1, category: "equipment", tags: [] }))],
+    });
+    const swing = (source: RigDefinition, side: "left" | "right") => {
+      const track = clipFor(source, "melee_attack").tracks.find((candidate) => candidate.boneId === `${side}-upper-arm` && candidate.property === "rotation");
+      return track ? Math.max(...track.keyframes.map((key) => Math.abs(key.value))) : 0;
+    };
+    for (const facing of ["right", "front"] as const) {
+      // Sword (long and thin) in the left hand, shield (round) in the right.
+      const armed = holding(rig(facing), [{ hand: "left", width: 120, height: 18 }, { hand: "right", width: 60, height: 64 }]);
+      expect(swing(armed, "left"), facing).toBeGreaterThan(swing(armed, "right") * 2);
+      // Only a shield, in the right hand: strike with the free left hand.
+      const shielded = holding(rig(facing), [{ hand: "right", width: 60, height: 64 }]);
+      expect(swing(shielded, "left"), facing).toBeGreaterThan(swing(shielded, "right") * 2);
+    }
+  });
+
+  it("a side-view character with a blade chops overhead: hand high and behind in the wind-up, in front and low after the hit", () => {
+    const armed = (source: RigDefinition): RigDefinition => ({
+      ...source,
+      slots: [...source.bones.map((bone, index) => ({ id: `${bone.id}-slot`, boneId: bone.id, attachmentId: `${bone.id}-art`, zIndex: index, visible: true, blendMode: "normal" as const, tint: 0xffffff, pivotX: 0, pivotY: 0 })),
+        { id: "sword-slot", boneId: "right-hand", attachmentId: "sword", zIndex: 60, visible: true, blendMode: "normal" as const, tint: 0xffffff, pivotX: 0, pivotY: 0 }],
+      attachments: [...source.bones.map((bone) => ({ id: `${bone.id}-art`, imagePath: `parts/${bone.id}.png`, width: 20, height: 24, offsetX: 0, offsetY: 0, rotation: 0, scaleX: 1, scaleY: 1, category: "body", tags: [] })),
+        { id: "sword", imagePath: "parts/sword.png", width: 110, height: 16, offsetX: 0, offsetY: 0, rotation: 0, scaleX: 1, scaleY: 1, category: "equipment", tags: [] }],
+    });
+    for (const [facing, sign] of [["right", 1], ["left", -1]] as const) {
+      const source = armed(rig(facing)); const attack = clipFor(source, "melee_attack");
+      const at = (fraction: number) => joints(source, attack, attack.duration * fraction);
+      const windUp = at(.36); const after = at(.55);
+      // Wind-up: the blade is cocked up and behind, the hand well above the shoulder and behind it.
+      expect(windUp["right-upper-arm"].y - windUp["right-hand"].y, facing).toBeGreaterThan(15);
+      expect((windUp["right-hand"].x - windUp["right-upper-arm"].x) * sign, facing).toBeLessThan(0);
+      expect((after["right-hand"].x - after["right-upper-arm"].x) * sign, facing).toBeGreaterThan(10);
+      expect(after["right-hand"].y, facing).toBeGreaterThan(after["right-upper-arm"].y);
     }
   });
 
