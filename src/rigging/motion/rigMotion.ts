@@ -350,7 +350,11 @@ function gait(rig: RigDefinition, anatomy: RigAnatomy, kind: "walk" | "run", dur
     // what the eye sees is each segment getting shorter by the cosine of its angle, which lifts the foot straight up.
     // On a short-legged sprite (chibi or pixel art) that shortening is a fraction of a pixel, so every step is lifted at
     // least a small share of the character's height, keeping the same timing.
-    const minimumLift = anatomy.height * (run ? .09 : .075);
+    const minimumLift = anatomy.height * (run ? .11 : .1);
+    // The pixel composer can only squash a part by a quarter, and a squashed boot reads as squash, not a step. Beyond that
+    // the lifted foot is raised by sliding the lower leg up over the thigh, as a pixel artist draws a front-view step: the
+    // knee comes toward the viewer and the boot overlaps it.
+    const SHORTEST = .82;
     for (const leg of anatomy.legs) {
       const thighLength = len(leg.upperDir); const shinLength = leg.lower ? len(leg.lowerDir) : 0; const total = Math.max(1, thighLength + shinLength);
       const naturalThigh = (index: number): number => cosDeg(cycle(table.hip, legPhase(leg, index)));
@@ -361,8 +365,18 @@ function gait(rig: RigDefinition, anatomy: RigAnatomy, kind: "walk" | "run", dur
         const lift = naturalLift(index); const wanted = Math.min(total * .6, Math.max(lift, minimumLift * lift / peak));
         return Math.max(.4, (total - wanted) / Math.max(1e-6, total - lift));
       };
-      const thigh = (index: number): number => naturalThigh(index) * boost(index);
-      const shin = (index: number): number => naturalShin(index) * boost(index);
+      const thigh = (index: number): number => Math.max(SHORTEST, naturalThigh(index) * boost(index));
+      const shin = (index: number): number => Math.max(SHORTEST, naturalShin(index) * boost(index));
+      // The lift the squash could not give: the wanted lift less what the shortened segments give.
+      const wantedLift = (index: number): number => total - (thighLength * naturalThigh(index) + shinLength * naturalShin(index)) * boost(index);
+      const slide = (index: number): number => Math.max(0, wantedLift(index) - (thighLength * (1 - thigh(index)) + shinLength * (1 - shin(index))));
+      // Slid along the thigh: the child's rest offset scaled back toward the thigh's origin (the thigh's own scale applies on top).
+      const slid = leg.lower ?? leg.end;
+      if (slid && thighLength > 0) {
+        const fraction = (index: number): number => Math.min(.6, slide(index) / Math.max(1e-6, thighLength * thigh(index)));
+        clip.add(slid, "x", (index) => -slid.x * fraction(index));
+        clip.add(slid, "y", (index) => -slid.y * fraction(index));
+      }
       clip.add(leg.upper, leg.upperAxis, (index) => leg.upper[leg.upperAxis] * (thigh(index) - 1));
       if (leg.lower) clip.add(leg.lower, leg.lowerAxis, (index) => leg.lower![leg.lowerAxis] * (shin(index) / thigh(index) - 1));
       // The foot keeps its own size: undo the shortening it inherits.

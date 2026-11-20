@@ -270,6 +270,12 @@ footer { max-width: 1280px; margin: 0 auto; padding: 24px 30px 34px; display: fl
 .export-clips label { display: flex; gap: 8px; align-items: center; font-size: 13px; } .export-clips small { margin-left: auto; opacity: .6; }
 .export-progress { margin-top: 14px; display: grid; gap: 8px; } .export-progress progress { width: 100%; }
 .export-preview { max-width: 100%; max-height: 260px; image-rendering: pixelated; background: repeating-conic-gradient(#2a2a30 0 25%, #34343a 0 50%) 0 0 / 16px 16px; border-radius: 4px; }
+.export-player { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: end; }
+.export-player canvas { width: auto; height: 180px; image-rendering: pixelated; background: repeating-conic-gradient(#2a2a30 0 25%, #34343a 0 50%) 0 0 / 16px 16px; border-radius: 4px; }
+.export-player-clips { display: flex; flex-wrap: wrap; gap: 4px; align-self: start; }
+.export-player-clips button { font-size: 12px; padding: 4px 10px; border-radius: 4px; border: 1px solid rgba(255,255,255,.14); background: transparent; color: inherit; cursor: pointer; }
+.export-player-clips button[aria-selected="true"] { border-color: rgba(120,200,255,.7); background: rgba(120,200,255,.1); }
+.export-preview { max-height: 120px; }
 .export-downloads { display: flex; gap: 16px; } .export-error { color: #ff8a8a; }
 .export-for-game .studio-dialog-body label { margin-top: 0; color: inherit; font-size: 12px; }
 .export-for-game input[type="radio"], .export-for-game input[type="checkbox"] { width: auto; min-height: 0; margin: 2px 0 0; }

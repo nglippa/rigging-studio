@@ -16,6 +16,48 @@ type BakeJob = {
   readonly result?: { readonly sheet: string; readonly json: string; readonly drawings: number; readonly polished: number; readonly keptFromRig: number };
 };
 
+type SheetFrame = { readonly x: number; readonly y: number; readonly w: number; readonly h: number; readonly durationMs: number };
+type SheetJson = { readonly cell: { readonly width: number; readonly height: number }; readonly clips: readonly { readonly id: string; readonly name?: string; readonly loop?: boolean; readonly frames: readonly SheetFrame[] }[] };
+
+/**
+ * The baked sheet played back at its own timing, one clip at a time, so the motion can be judged before downloading (a
+ * still sheet shows the drawings but not the holds and smears that make it read as drawn).
+ */
+function SheetPlayer({ sheetUrl, jsonUrl }: { readonly sheetUrl: string; readonly jsonUrl: string }) {
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const [sheet, setSheet] = useState<{ readonly json: SheetJson; readonly image: HTMLImageElement } | null>(null);
+  const [clipIndex, setClipIndex] = useState(0);
+  useEffect(() => {
+    let live = true; const image = new Image();
+    void fetch(jsonUrl, { cache: "no-store" }).then((response) => response.json() as Promise<SheetJson>).then((json) => { image.onload = () => { if (live) setSheet({ json, image }); }; image.src = sheetUrl; }).catch(() => undefined);
+    return () => { live = false; };
+  }, [sheetUrl, jsonUrl]);
+  useEffect(() => {
+    const clip = sheet?.json.clips[clipIndex]; const target = canvas.current; if (!sheet || !clip || !target) return;
+    const width = Math.max(...clip.frames.map((frame) => frame.w)); const height = Math.max(...clip.frames.map((frame) => frame.h));
+    target.width = width; target.height = height; const context = target.getContext("2d"); if (!context) return;
+    context.imageSmoothingEnabled = false;
+    let index = 0; let timer = 0;
+    const draw = () => {
+      const frame = clip.frames[index]; context.clearRect(0, 0, width, height);
+      // Frames are trimmed to a shared area, so each is drawn bottom-centred as it sits on the ground.
+      context.drawImage(sheet.image, frame.x, frame.y, frame.w, frame.h, Math.round((width - frame.w) / 2), height - frame.h, frame.w, frame.h);
+      const last = index === clip.frames.length - 1;
+      // A one-shot (attack, hurt, death) rests on its last drawing for a moment before playing again.
+      timer = window.setTimeout(() => { index = (index + 1) % clip.frames.length; draw(); }, frame.durationMs + (last && clip.loop === false ? 600 : 0));
+    };
+    draw();
+    return () => window.clearTimeout(timer);
+  }, [sheet, clipIndex]);
+  if (!sheet) return null;
+  return <div className="export-player">
+    <canvas ref={canvas} aria-label="Animation preview" />
+    {sheet.json.clips.length > 1 && <div className="export-player-clips" role="tablist" aria-label="Preview animation">
+      {sheet.json.clips.map((clip, index) => <button key={clip.id} type="button" role="tab" aria-selected={index === clipIndex} onClick={() => setClipIndex(index)}>{clip.name ?? clip.id}</button>)}
+    </div>}
+  </div>;
+}
+
 const drawingCount = (clip: AnimationDefinition) => clip.drawings?.length ?? Math.max(1, Math.round(clip.duration * 12));
 
 function download(name: string, text: string): void {
@@ -30,7 +72,7 @@ function download(name: string, text: string): void {
  * as hand-drawn pixel animation (slower; the rig's drawing is kept wherever a redraw strays).
  */
 export function ExportForGame({ open, rig, animations, onClose }: { readonly open: boolean; readonly rig: RigDefinition | null; readonly animations: readonly AnimationDefinition[]; readonly onClose: () => void }) {
-  const [path, setPath] = useState<Path>("polish");
+  const [path, setPath] = useState<Path>("redraw");
   const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set());
   const [job, setJob] = useState<BakeJob | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -88,6 +130,7 @@ export function ExportForGame({ open, rig, animations, onClose }: { readonly ope
         {job && <div className="export-progress" role="status">
           {job.status === "completed" && job.result
             ? <><p>Done: {job.result.drawings} drawings{path === "polish" || path === "redraw" ? `, ${job.result.polished} redrawn${job.result.keptFromRig ? `, ${job.result.keptFromRig} kept from the rig where the redraw strayed` : ""}` : ""}.</p>
+              <SheetPlayer sheetUrl={`${BRIDGE_URL}${job.result.sheet}`} jsonUrl={`${BRIDGE_URL}${job.result.json}`} />
               <img className="export-preview" src={`${BRIDGE_URL}${job.result.sheet}`} alt="Baked sprite sheet" />
               <p className="export-downloads"><a href={`${BRIDGE_URL}${job.result.sheet}`} download>Download sheet (PNG)</a><a href={`${BRIDGE_URL}${job.result.json}`} download>Download frames (JSON)</a></p></>
             : <><progress max={Math.max(1, job.progress.total)} value={job.progress.done} /><p>{job.waiting ? `Waiting for the Mac Studio: ${job.waiting}` : `${job.progress.done} of ${job.progress.total} drawings${job.progress.clip ? ` · ${job.progress.clip}` : ""}`}</p></>}
