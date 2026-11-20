@@ -131,3 +131,31 @@ describe("gap filling for moving parts", () => {
     expect(alone.every((candidate) => candidate.capPixels === 0)).toBe(true);
   });
 });
+
+describe("gap filling under a staff held across a robe", () => {
+  // A mage: a robe (the torso, legs folded into it) with a staff lying diagonally across it from the hem to past the
+  // shoulder. Cutting gave the staff's pixels to the staff, so the robe has a slash where it lay; raising the staff in
+  // an attack must not open that slash.
+  const onStaff = (x: number, y: number): boolean => Math.abs((x - 14) - (36 - y) * .6) < 2.2 && y >= 2 && y < 38;
+  const inRobe = (x: number, y: number): boolean => x >= 10 && x < 30 && y >= 8 && y < 36;
+  const parts = [
+    part("robe", "torso", 10, 8, 20, 28, onStaff),
+    part("staff", "mainHandEquipment", 12, 2, 26, 36, (x, y) => !onStaff(x, y)),
+  ];
+  const image = source((x, y) => inRobe(x, y) || onStaff(x, y));
+  const filled = fillPartArt(image, parts);
+
+  it("paints the robe under every pixel of the staff that lies inside the robe", () => {
+    const robe = filled.find((candidate) => candidate.partId === "robe")!;
+    const drawn = (x: number, y: number): boolean => {
+      const lx = x - robe.bounds.x; const ly = y - robe.bounds.y;
+      return lx >= 0 && ly >= 0 && lx < robe.image.width && ly < robe.image.height && robe.image.data[(ly * robe.image.width + lx) * 4 + 3] > 0;
+    };
+    let under = 0;
+    for (let y = 8; y < 36; y += 1) for (let x = 11; x < 29; x += 1) if (onStaff(x, y)) { under += 1; expect(drawn(x, y), `robe missing at ${x},${y}`).toBe(true); }
+    expect(under).toBeGreaterThan(40);
+    // Not past the robe: the staff's ends beyond it are not painted as robe.
+    expect(drawn(36, 3)).toBe(false);
+  });
+});
+
