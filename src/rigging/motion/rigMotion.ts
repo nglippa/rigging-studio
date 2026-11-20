@@ -350,7 +350,7 @@ function gait(rig: RigDefinition, anatomy: RigAnatomy, kind: "walk" | "run", dur
     // what the eye sees is each segment getting shorter by the cosine of its angle, which lifts the foot straight up.
     // On a short-legged sprite (chibi or pixel art) that shortening is a fraction of a pixel, so every step is lifted at
     // least a small share of the character's height, keeping the same timing.
-    const minimumLift = anatomy.height * (run ? .075 : .05);
+    const minimumLift = anatomy.height * (run ? .09 : .075);
     for (const leg of anatomy.legs) {
       const thighLength = len(leg.upperDir); const shinLength = leg.lower ? len(leg.lowerDir) : 0; const total = Math.max(1, thighLength + shinLength);
       const naturalThigh = (index: number): number => cosDeg(cycle(table.hip, legPhase(leg, index)));
@@ -369,7 +369,7 @@ function gait(rig: RigDefinition, anatomy: RigAnatomy, kind: "walk" | "run", dur
       if (leg.end) clip.add(leg.end, leg.lowerAxis, (index) => leg.end![leg.lowerAxis] * (1 / (leg.lower ? shin(index) : thigh(index)) - 1));
     }
     for (const arm of anatomy.arms) {
-      const restraint = arm.carriesEquipment ? .4 : 1;
+      const restraint = arm.carriesEquipment ? .65 : 1;
       const upper = (index: number): number => cosDeg(shoulderAt(armPhase(arm, index)) * restraint * ARM_SWING(run));
       const fore = (index: number): number => cosDeg((shoulderAt(armPhase(arm, index)) + elbowDelta(arm, armPhase(arm, index) - ELBOW_DRAG)) * restraint * ARM_SWING(run));
       clip.add(arm.upper, arm.upperAxis, (index) => arm.upper[arm.upperAxis] * (upper(index) - 1));
@@ -383,7 +383,7 @@ function gait(rig: RigDefinition, anatomy: RigAnatomy, kind: "walk" | "run", dur
       const weight = (index: number): number => Math.cos(TAU * (phases[index] - stanceMid));
       // Measured pelvic obliquity: positive while the first leg carries the weight.
       const roll = (index: number): number => cycle(table.pelvisObliquity, phases[index]) * second.outward;
-      clip.add(anatomy.pelvis, "x", (index) => anatomy.height * (run ? .012 : .02) * weight(index) * first.outward);
+      clip.add(anatomy.pelvis, "x", (index) => anatomy.height * (run ? .016 : .028) * weight(index) * first.outward);
       clip.add(anatomy.pelvis, "rotation", roll);
       // Legs stay upright and the chest stays level over the tilting hips.
       for (const leg of anatomy.legs) clip.add(leg.upper, "rotation", (index) => -roll(index));
@@ -410,10 +410,12 @@ function idle(anatomy: RigAnatomy, duration: number): AnimationTrack[] {
   const breath = [0, 1, 0];
   // Big enough to read at sprite size: the chest rises two to three art pixels and the arms swing one rotation step (5°),
   // as a hand-drawn idle does in a few strong drawings; smaller motion would only nudge single pixels.
-  clip.add(anatomy.torso, "y", (index) => -anatomy.height * .012 * breath[index]);
-  clip.add(anatomy.torso, "rotation", (index) => 1.5 * breath[index]);
+  // A blind judge read a 2-pixel breath as near-copies of one drawing, so the breath is about twice that: the chest rises
+  // four to five art pixels, leans, and the arms open a rotation step or more.
+  clip.add(anatomy.torso, "y", (index) => -anatomy.height * .022 * breath[index]);
+  clip.add(anatomy.torso, "rotation", (index) => 2.5 * breath[index]);
   clip.add(anatomy.head, "rotation", (index) => -1.2 * breath[index]);
-  for (const arm of anatomy.arms) clip.add(arm.upper, "rotation", (index) => (arm.carriesEquipment ? 3 : 5) * breath[index] * outwardSign(arm));
+  for (const arm of anatomy.arms) clip.add(arm.upper, "rotation", (index) => (arm.carriesEquipment ? 5 : 8) * breath[index] * outwardSign(arm));
   return clip.tracks();
 }
 
@@ -686,6 +688,21 @@ export function artlessLimbBones(rig: RigDefinition): ReadonlySet<string> {
  * run 6 at 12.5, an attack 8 drawings with 160-240 ms holds on the wind-up and follow-through and three 40 ms frames
  * through the strike). The extremes of each clip's keys fall on drawings, so they are held rather than passed through.
  */
+/**
+ * Drawing times snapped to a 20 ms grid, so every hold is a whole number of frames (60, 120, 160 ms) as an artist sets
+ * it, not an arbitrary 108 or 156 ms from a fraction of the clip; a blind judge read the computed holds as software.
+ * Every standard clip length is a multiple of 20 ms. Two drawings never land on the same frame.
+ */
+export const DRAWING_GRID = .02;
+export function onDrawingGrid(fractions: readonly number[], duration: number): number[] {
+  const frames = Math.round(duration / DRAWING_GRID); const out: number[] = [];
+  for (const fraction of fractions) {
+    let frame = Math.round(fraction * duration / DRAWING_GRID);
+    if (out.length && frame <= Math.round(out[out.length - 1] / DRAWING_GRID)) frame = Math.round(out[out.length - 1] / DRAWING_GRID) + 1;
+    if (frame < frames) out.push(Math.round(frame * DRAWING_GRID * 1000) / 1000);
+  }
+  return out;
+}
 const even = (count: number) => Array.from({ length: count }, (_, index) => index / count);
 export const DRAWING_CHARTS: Readonly<Record<MotionId, readonly number[]>> = {
   // Uneven on purpose: the breath in and out are held, and no half of a cycle repeats the other's spacing exactly (a
@@ -701,7 +718,7 @@ export const DRAWING_CHARTS: Readonly<Record<MotionId, readonly number[]>> = {
   // The snap is one quick drawing, the recoil extreme is held, then a slower, unevenly spaced recovery.
   hurt: [0, .06, .12, .34, .46, .58, .8],
   // A stagger held at the tipping point, a fast fall in short drawings, the impact, a small settle, then lying still.
-  death: [0, .06, .15, .25, .5, .65, .7, .76, .84, .92],   // the fall itself in two drawings, then impact and settle
+  death: [0, .06, .15, .25, .5, .65, .71, .76, .84, .92],   // the fall itself in two drawings, then impact and settle
 };
 
 /**
@@ -754,10 +771,10 @@ export function buildMotionClip(rig: RigDefinition, id: MotionId, anatomy: RigAn
             : death(anatomy, anatomy.root ? computeWorldTransforms(rig, createRestPose(rig))[anatomy.root.id].y : anatomy.groundY, spec.duration);
   const artless = artlessLimbBones(rig);
   const shown = tracks.filter((track) => !artless.has(track.boneId));
-  const drawings = DRAWING_CHARTS[spec.id].map((fraction) => Math.round(fraction * spec.duration * 1000) / 1000);
+  const drawings = onDrawingGrid(DRAWING_CHARTS[spec.id], spec.duration);
   if (!shown.length) return null;
   // The strike drawings of an attack carry a smear of the weapon's swing, as hand-drawn attacks do (three quick drawings).
-  const smears = id === "melee_attack" ? [.44, .49].map((fraction) => Math.round(fraction * spec.duration * 1000) / 1000) : undefined;
+  const smears = id === "melee_attack" ? onDrawingGrid([.44, .49], spec.duration) : undefined;
   const built: AnimationDefinition = { schemaVersion: ANIMATION_SCHEMA_VERSION, id: spec.id, name: spec.name, duration: spec.duration, loop: spec.loop, tracks: shown, drawings, ...(smears ? { smears } : {}) };
   // Pixel art squashes and stretches like drawn animation, and keeps the face upright and unsquashed (only a fall turns
   // it): a rotated or squashed face is a redrawn face, and RotSprite cannot redraw.
