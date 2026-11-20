@@ -260,8 +260,11 @@ footer { max-width: 1280px; margin: 0 auto; padding: 24px 30px 34px; display: fl
 }
 
 /* Export for a game (ExportForGame): three paths, the clips, progress and the baked sheet. */
-.studio-dialog.export-for-game { width: min(640px, calc(100vw - 32px)); }
-.export-for-game fieldset { border: 0; margin: 12px 0 0; padding: 0; display: grid; gap: 6px; }
+.studio-dialog.export-for-game { width: min(640px, calc(100vw - 32px)); max-height: calc(100dvh - 36px); display: flex; flex-direction: column; }
+/* Header and footer stay put; a finished bake's preview scrolls inside the body instead of pushing Close off screen. */
+.export-for-game > header, .export-for-game > footer { flex: none; }
+.export-for-game > .studio-dialog-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.studio-dialog.export-for-game fieldset { border: 0; margin: 12px 0 0; padding: 0; display: grid; gap: 6px; }
 .export-for-game legend { font-size: 12px; opacity: .7; margin-bottom: 4px; }
 .export-paths label { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; padding: 10px 12px; border: 1px solid rgba(255,255,255,.12); border-radius: 6px; cursor: pointer; }
 .export-paths label:has(input:checked) { border-color: rgba(120,200,255,.7); background: rgba(120,200,255,.06); }

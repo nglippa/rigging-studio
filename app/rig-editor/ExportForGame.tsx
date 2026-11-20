@@ -78,6 +78,10 @@ export function ExportForGame({ open, rig, animations, onClose }: { readonly ope
   const [error, setError] = useState<string | null>(null);
   const polling = useRef(0);
   useEffect(() => () => window.clearTimeout(polling.current), []);
+  // A finished bake's preview lands below the choices; bring it into view rather than leave it under the fold.
+  const result = useRef<HTMLDivElement>(null);
+  const finished = job?.status === "completed";
+  useEffect(() => { if (finished) result.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [finished]);
   const selected = useMemo(() => animations.filter((clip) => chosen.size === 0 || chosen.has(clip.id)), [animations, chosen]);
   const drawings = selected.reduce((sum, clip) => sum + drawingCount(clip), 0);
   if (!open) return null;
@@ -130,7 +134,7 @@ export function ExportForGame({ open, rig, animations, onClose }: { readonly ope
           <legend>Animations</legend>
           {animations.map((clip) => <label key={clip.id}><input type="checkbox" checked={chosen.size === 0 || chosen.has(clip.id)} onChange={() => toggle(clip.id)} /><span>{clip.name}</span><small>{drawingCount(clip)} drawings</small></label>)}
         </fieldset>
-        {job && <div className="export-progress" role="status">
+        {job && <div className="export-progress" role="status" ref={result}>
           {job.status === "completed" && job.result
             ? <><p>Done: {job.result.drawings} drawings{path === "polish" || path === "redraw" ? `, ${job.result.polished} redrawn${job.result.keptFromRig ? `, ${job.result.keptFromRig} kept from the rig where the redraw strayed` : ""}` : ""}.</p>
               <SheetPlayer sheetUrl={`${BRIDGE_URL}${job.result.sheet}`} jsonUrl={`${BRIDGE_URL}${job.result.json}`} />
