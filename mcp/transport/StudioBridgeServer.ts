@@ -385,7 +385,7 @@ export class StudioBridgeServer {
     if (request.method === "POST" && request.url === "/bake/jobs") {
       try {
         const body = await this.readJsonBody(request, 64_000_000) as Record<string, unknown> | null;
-        if (!body || typeof body !== "object" || !body.rig || !Array.isArray(body.animations) || (body.mode !== "rig" && body.mode !== "polish")) throw new Error("A bake needs rig, animations and mode (rig or polish)");
+        if (!body || typeof body !== "object" || !body.rig || !Array.isArray(body.animations) || (body.mode !== "rig" && body.mode !== "polish" && body.mode !== "redraw")) throw new Error("A bake needs rig, animations and mode (rig, polish or redraw)");
         const job = this.bake.start({ rig: body.rig as import("../../src/rigging/schema/types").RigDefinition, animations: body.animations as import("../../src/rigging/schema/types").AnimationDefinition[], mode: body.mode, ...(typeof body.profileId === "string" ? { profileId: body.profileId } : {}), ...(typeof body.prompt === "string" ? { prompt: body.prompt } : {}) });
         response.writeHead(202, { "Content-Type": "application/json" }).end(JSON.stringify(job));
       } catch (error: unknown) { response.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error instanceof Error ? error.message : "Bake could not start" })); }

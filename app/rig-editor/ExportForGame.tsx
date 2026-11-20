@@ -6,8 +6,10 @@ import type { AnimationDefinition, RigDefinition } from "@/src/rigging/schema/ty
 const BRIDGE_URL = process.env.NEXT_PUBLIC_RIGGING_STUDIO_BRIDGE_URL ?? "http://127.0.0.1:47831";
 /** Studio time per polished drawing, measured on the Mac Studio (Klein 4B, 4 steps): about 13 s. */
 const SECONDS_PER_POLISHED_DRAWING = 13;
+/** Studio time per drawing redrawn in its pose (Klein 4B, 4 steps, pose LoRA, two references), measured on the Studio. */
+const SECONDS_PER_REDRAWN_DRAWING = 30;
 
-type Path = "live" | "rig" | "polish";
+type Path = "live" | "rig" | "polish" | "redraw";
 type BakeJob = {
   readonly jobId: string; readonly status: "queued" | "running" | "completed" | "failed"; readonly progress: { readonly done: number; readonly total: number; readonly clip: string | null };
   readonly waiting?: string; readonly error?: string;
@@ -65,6 +67,7 @@ export function ExportForGame({ open, rig, animations, onClose }: { readonly ope
   };
   const toggle = (id: string) => setChosen((current) => { const next = new Set(current.size ? current : animations.map((clip) => clip.id)); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const minutes = Math.max(1, Math.round(drawings * SECONDS_PER_POLISHED_DRAWING / 60));
+  const redrawMinutes = Math.max(1, Math.round(drawings * SECONDS_PER_REDRAWN_DRAWING / 60));
 
   return <div className="studio-dialog-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}>
     <section className="studio-dialog export-for-game" role="dialog" aria-modal="true" aria-labelledby="export-for-game-title">
@@ -73,7 +76,8 @@ export function ExportForGame({ open, rig, animations, onClose }: { readonly ope
         <h2 id="export-for-game-title">Export for a game</h2>
         <fieldset className="export-paths" disabled={busy}>
           <legend className="sr-only">How to export</legend>
-          <label><input type="radio" name="export-path" checked={path === "polish"} onChange={() => setPath("polish")} /><span><strong>Sprite sheet, hand-drawn polish</strong><small>Each drawing is redrawn on the Mac Studio so it reads as hand-drawn pixel animation. About {minutes} min for {drawings} drawings.</small></span></label>
+          <label><input type="radio" name="export-path" checked={path === "redraw"} onChange={() => setPath("redraw")} /><span><strong>Sprite sheet, redrawn in each pose</strong><small>The Mac Studio draws the character afresh in every pose from the rig's skeleton, as an artist redraws each frame. Slowest: about {redrawMinutes} min for {drawings} drawings.</small></span></label>
+          <label><input type="radio" name="export-path" checked={path === "polish"} onChange={() => setPath("polish")} /><span><strong>Sprite sheet, polished</strong><small>Each rig drawing is cleaned up on the Mac Studio: seams and broken lines redrawn, pose unchanged. About {minutes} min for {drawings} drawings.</small></span></label>
           <label><input type="radio" name="export-path" checked={path === "rig"} onChange={() => setPath("rig")} /><span><strong>Sprite sheet, as rigged</strong><small>The drawings exactly as the rig plays them. Instant.</small></span></label>
           <label><input type="radio" name="export-path" checked={path === "live"} onChange={() => setPath("live")} /><span><strong>Live rig</strong><small>Bones and parts, for an engine that plays skeletal animation. Keeps gear swappable; nothing is baked.</small></span></label>
         </fieldset>
@@ -83,7 +87,7 @@ export function ExportForGame({ open, rig, animations, onClose }: { readonly ope
         </fieldset>
         {job && <div className="export-progress" role="status">
           {job.status === "completed" && job.result
-            ? <><p>Done: {job.result.drawings} drawings{path === "polish" ? `, ${job.result.polished} redrawn${job.result.keptFromRig ? `, ${job.result.keptFromRig} kept from the rig where the redraw strayed` : ""}` : ""}.</p>
+            ? <><p>Done: {job.result.drawings} drawings{path === "polish" || path === "redraw" ? `, ${job.result.polished} redrawn${job.result.keptFromRig ? `, ${job.result.keptFromRig} kept from the rig where the redraw strayed` : ""}` : ""}.</p>
               <img className="export-preview" src={`${BRIDGE_URL}${job.result.sheet}`} alt="Baked sprite sheet" />
               <p className="export-downloads"><a href={`${BRIDGE_URL}${job.result.sheet}`} download>Download sheet (PNG)</a><a href={`${BRIDGE_URL}${job.result.json}`} download>Download frames (JSON)</a></p></>
             : <><progress max={Math.max(1, job.progress.total)} value={job.progress.done} /><p>{job.waiting ? `Waiting for the Mac Studio: ${job.waiting}` : `${job.progress.done} of ${job.progress.total} drawings${job.progress.clip ? ` · ${job.progress.clip}` : ""}`}</p></>}
