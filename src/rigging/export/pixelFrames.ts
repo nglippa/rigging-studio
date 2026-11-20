@@ -173,9 +173,18 @@ function between(from: RigPose, to: RigPose, t: number): RigPose {
  * filled with its lightest colour and drawn just under it, so the blow reads as one fast arc rather than a jump.
  */
 function drawSmear(rig: RigDefinition, from: RigPose, to: RigPose, slot: RigDefinition["slots"][number], attachment: RigDefinition["attachments"][number], source: RgbaImage, data: Uint8ClampedArray, area: FrameWindow, k: number, cache: Map<string, { image: RgbaImage; pivot: { x: number; y: number } }>): { readonly swept: Uint8Array; readonly colour: readonly number[] } {
-  // A light colour of the item itself, not its single brightest highlight (a crystal's glint would paint the smear white).
+  // A light colour of the part that draws the arc, the end away from the grip (a sword's blade, a staff's crystal), not
+  // the whole item: a staff's wood made a solid brown arc. Not its single brightest highlight either (a glint is white).
+  const gripX = slot.pivotX * source.width / Math.max(1, attachment.width); const gripY = slot.pivotY * source.height / Math.max(1, attachment.height);
+  // The tip is the drawn point farthest from the grip; the arc is drawn by the third of the item nearest it (a staff runs
+  // both ways from the hand, so "far from the grip" alone would include its butt end).
+  let reach = 0; let tipX = gripX; let tipY = gripY;
+  for (let i = 0; i < source.data.length; i += 4) if (source.data[i + 3] >= 128) { const p = i / 4; const x = p % source.width; const y = Math.floor(p / source.width); const d = Math.hypot(x - gripX, y - gripY); if (d > reach) { reach = d; tipX = x; tipY = y; } }
   const shades: { readonly lum: number; readonly rgb: readonly number[] }[] = [];
-  for (let i = 0; i < source.data.length; i += 4) if (source.data[i + 3] >= 128) shades.push({ lum: source.data[i] * .299 + source.data[i + 1] * .587 + source.data[i + 2] * .114, rgb: [source.data[i], source.data[i + 1], source.data[i + 2]] });
+  for (let i = 0; i < source.data.length; i += 4) {
+    const p = i / 4; if (source.data[i + 3] < 128 || Math.hypot(p % source.width - tipX, Math.floor(p / source.width) - tipY) > reach * .34) continue;
+    shades.push({ lum: source.data[i] * .299 + source.data[i + 1] * .587 + source.data[i + 2] * .114, rgb: [source.data[i], source.data[i + 1], source.data[i + 2]] });
+  }
   shades.sort((a, b) => a.lum - b.lum);
   const lightest = shades.length ? shades[Math.floor(shades.length * .75)].rgb : [255, 255, 255];
   const swept = new Uint8Array(area.width * area.height);

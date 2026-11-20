@@ -35,6 +35,8 @@ export type BakeJob = {
 export const POLISH_PROFILE_ID = "klein2-4b-consistency";
 /** "redraw": the character drawn afresh in each pose from an OpenPose skeleton of the rig (Klein 4B base + RefControl pose LoRA). */
 export const REDRAW_PROFILE_ID = "klein2-4b-base-pose";
+/** The smallest figure height, in pixels, the model is given to draw at. */
+const MIN_MODEL_HEIGHT = 384;
 const REDRAW_PROMPT = "apply pose from image 1 with reference from image 2";
 const decode = (bytes: Buffer): RgbaImage => { const png = PNG.sync.read(bytes); return { width: png.width, height: png.height, data: new Uint8ClampedArray(png.data) }; };
 
@@ -126,13 +128,18 @@ export class BakeService {
         frames = await this.production.studio.run(`Polish ${clip.name}`, async () => {
           const out: RgbaImage[] = []; this.update(jobId, { waiting: undefined });
           for (const drawing of drawings) {
-            const input = polishInput(drawing, k);
+            // The model needs room to draw: a sprite drawn 1:1 is a few dozen pixels, where the skeleton's sticks are as wide
+            // as the arms and their colours were painted onto the character. Both images are enlarged by whole pixels to
+            // at least 384 tall (the result is sampled back to the art grid either way).
+            const fit = polishInput(drawing, k);
+            const up = Math.max(k, Math.ceil(MIN_MODEL_HEIGHT / fit.crop.height));
+            const input = up === k ? fit : polishInput(drawing, up);
             const name = await this.production.provider.uploadImage!(`rigging-polish-${jobId}-${clip.id}-${out.length}.png`, input.png, "image/png");
             // The result is only sampled down to the art grid, so the model needs a few pixels per art pixel, not the full
             // enlarged size: a redraw (28 steps, two references) is about 5 minutes at 2 megapixels and far less at 0.6.
-            const megapixels = redraw ? .6 : Math.min(2, Math.max(.25, Math.round((input.crop.width * k * input.crop.height * k) / 1048576 * 1000) / 1000));
+            const megapixels = redraw ? .6 : Math.min(2, Math.max(.25, Math.round((input.crop.width * up * input.crop.height * up) / 1048576 * 1000) / 1000));
             const values = redraw
-              ? { prompt: request.prompt ?? REDRAW_PROMPT, seed, megapixels, image2: name, image: await this.production.provider.uploadImage!(`rigging-redraw-${jobId}-${clip.id}-${out.length}-pose.png`, renderPoseSkeleton(poseJoints(rig, evaluateAnimationAtTime(clip, base, times[out.length])), input.crop.width * k, input.crop.height * k, { x: window.x + input.crop.x * k, y: window.y + input.crop.y * k }, 1), "image/png") }
+              ? { prompt: request.prompt ?? REDRAW_PROMPT, seed, megapixels, image2: name, image: await this.production.provider.uploadImage!(`rigging-redraw-${jobId}-${clip.id}-${out.length}-pose.png`, renderPoseSkeleton(poseJoints(rig, evaluateAnimationAtTime(clip, base, times[out.length])), input.crop.width * up, input.crop.height * up, { x: window.x + input.crop.x * k, y: window.y + input.crop.y * k }, up / k), "image/png") }
               : { prompt: request.prompt ?? POLISH_PROMPT, seed, image: name, megapixels };
             const graph = bindProfile(profile, values);
             if (redraw) fastRedraw(graph as unknown as Record<string, { class_type: string; inputs: Record<string, unknown> }>);

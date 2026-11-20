@@ -36,10 +36,21 @@ export function polishInput(native: RgbaImage, scale: number, margin = 6): { rea
 }
 
 /** The colours a character is drawn with (its rig's parts), at most `max`, most used first. */
-export function characterPalette(images: readonly RgbaImage[], max = 64): PolishPalette {
-  const counts = new Map<number, number>();
-  for (const image of images) for (let i = 0; i < image.data.length; i += 4) if (image.data[i + 3] >= 128) { const key = (image.data[i] << 16) | (image.data[i + 1] << 8) | image.data[i + 2]; counts.set(key, (counts.get(key) ?? 0) + 1); }
-  return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, max).map(([key]) => [key >> 16, (key >> 8) & 255, key & 255] as const);
+export function characterPalette(images: readonly RgbaImage[], max = 256): PolishPalette {
+  // Near-identical shades are grouped first (5 bits a channel) and each group stands for its most common member. True
+  // pixel art keeps its exact colours; an anti-aliased sprite has hundreds of shades, and counted one by one, a small
+  // area such as the skin had no shade common enough to make the palette, so faces snapped to the nearest gold.
+  const groups = new Map<number, { count: number; members: Map<number, number> }>();
+  for (const image of images) for (let i = 0; i < image.data.length; i += 4) {
+    if (image.data[i + 3] < 128) continue;
+    const exact = (image.data[i] << 16) | (image.data[i + 1] << 8) | image.data[i + 2];
+    const key = ((image.data[i] >> 3) << 10) | ((image.data[i + 1] >> 3) << 5) | (image.data[i + 2] >> 3);
+    const group = groups.get(key) ?? { count: 0, members: new Map<number, number>() }; group.count += 1; group.members.set(exact, (group.members.get(exact) ?? 0) + 1); groups.set(key, group);
+  }
+  return [...groups.values()].sort((a, b) => b.count - a.count).slice(0, max).map((group) => {
+    const exact = [...group.members.entries()].sort((a, b) => b[1] - a[1])[0][0];
+    return [exact >> 16, (exact >> 8) & 255, exact & 255] as const;
+  });
 }
 
 const nearest = (palette: PolishPalette, r: number, g: number, b: number): readonly [number, number, number] => {
