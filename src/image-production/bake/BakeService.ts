@@ -38,6 +38,10 @@ export const REDRAW_PROFILE_ID = "klein2-4b-base-pose";
 /** The smallest figure height, in pixels, the model is given to draw at. */
 const MIN_MODEL_HEIGHT = 384;
 const REDRAW_PROMPT = "apply pose from image 1 with reference from image 2";
+/** With the anchor: the LoRA's own instruction first, then keep the anchor's look. */
+/** How much of its silhouette a drawing must share with the anchor's to be drawn with it. */
+const ANCHOR_OVERLAP = .85;
+const ANCHORED_REDRAW_PROMPT = `${REDRAW_PROMPT}, keeping the exact colours, shading and details of image 3`;
 const decode = (bytes: Buffer): RgbaImage => { const png = PNG.sync.read(bytes); return { width: png.width, height: png.height, data: new Uint8ClampedArray(png.data) }; };
 
 /** The smear pixels of a drawing (in `smeared` but not in the clean `plain`) laid over its polished version. */
@@ -61,6 +65,26 @@ function fastRedraw(graph: Record<string, { class_type: string; inputs: Record<s
     if (node.class_type === "Flux2Scheduler") node.inputs.steps = 4;
     if (node.class_type === "CFGGuider") node.inputs.cfg = 1;
   }
+}
+
+/**
+ * A third reference for the pose redraw: one drawing the bake already redrew (its anchor), so every later drawing keeps
+ * the same shading and details. Each drawing was redrawn on its own and still parts (a buckle, a shield's shading, a hem)
+ * drifted from drawing to drawing, which a blind judge read as regeneration. One anchor for the whole bake, not the
+ * previous drawing: a chain would let small changes compound. Wired like images 1 and 2 (scaled, encoded, attached to
+ * both the positive and the negative conditioning).
+ */
+function addAnchorReference(graph: Record<string, { class_type: string; inputs: Record<string, unknown> }>, anchorImage: string): void {
+  const guider = Object.values(graph).find((node) => node.class_type === "CFGGuider");
+  const scale = Object.values(graph).find((node) => node.class_type === "ImageScaleToTotalPixels");
+  const vae = Object.values(graph).find((node) => node.class_type === "VAELoader") ? Object.entries(graph).find(([, node]) => node.class_type === "VAELoader")![0] : null;
+  if (!guider || !scale || !vae) return;
+  graph.anchor_load = { class_type: "LoadImage", inputs: { image: anchorImage } };
+  graph.anchor_scale = { class_type: "ImageScaleToTotalPixels", inputs: { ...scale.inputs, image: ["anchor_load", 0] } };
+  graph.anchor_encode = { class_type: "VAEEncode", inputs: { pixels: ["anchor_scale", 0], vae: [vae, 0] } };
+  graph.anchor_positive = { class_type: "ReferenceLatent", inputs: { conditioning: guider.inputs.positive, latent: ["anchor_encode", 0] } };
+  graph.anchor_negative = { class_type: "ReferenceLatent", inputs: { conditioning: guider.inputs.negative, latent: ["anchor_encode", 0] } };
+  guider.inputs.positive = ["anchor_positive", 0]; guider.inputs.negative = ["anchor_negative", 0];
 }
 
 /** When each clip is drawn: its drawing chart, or 12 drawings a second for a clip without one (one made by hand). */
@@ -112,6 +136,16 @@ export class BakeService {
       referenceName = await this.production.studio.run("Upload the reference", () => this.production.provider.uploadImage!(`rigging-redraw-${jobId}-reference.png`, polishInput(restDrawing, k).png, "image/png"));
     }
     const seed = request.seed ?? 20261119;
+    // The bake's anchor drawing (uploaded once, from its first accepted redraw), shown to every later redraw.
+    let anchor: string | null = null; let anchorDrawing: RgbaImage | null = null;
+    // Only a pose close to the anchor's is drawn with it: far from it (an attack's strike), the model copied the anchor's
+    // own sword in beside the new one. Close = the rig's drawings share most of their silhouette.
+    const nearAnchor = (drawing: RgbaImage): boolean => {
+      if (!anchorDrawing || anchorDrawing.width !== drawing.width || anchorDrawing.height !== drawing.height) return false;
+      let both = 0; let either = 0;
+      for (let i = 3; i < drawing.data.length; i += 4) { const a = anchorDrawing.data[i] >= 128; const b = drawing.data[i] >= 128; if (a && b) both += 1; if (a || b) either += 1; }
+      return either > 0 && both / either >= ANCHOR_OVERLAP;
+    };
     const rows: { readonly clip: AnimationDefinition; readonly frames: RgbaImage[]; readonly durations: number[] }[] = [];
     let done = 0; let polished = 0; let kept = 0;
     this.update(jobId, { status: "running" });
@@ -138,11 +172,14 @@ export class BakeService {
             // The result is only sampled down to the art grid, so the model needs a few pixels per art pixel, not the full
             // enlarged size: a redraw (28 steps, two references) is about 5 minutes at 2 megapixels and far less at 0.6.
             const megapixels = redraw ? .6 : Math.min(2, Math.max(.25, Math.round((input.crop.width * up * input.crop.height * up) / 1048576 * 1000) / 1000));
+            // A smear drawing is never anchored either: the anchor has no smear, and the model then left it out.
+            const useAnchor = redraw && anchor !== null && !smearOrigin(clip, base, times[out.length]) && nearAnchor(drawing);
             const values = redraw
-              ? { prompt: request.prompt ?? REDRAW_PROMPT, seed, megapixels, image2: name, image: await this.production.provider.uploadImage!(`rigging-redraw-${jobId}-${clip.id}-${out.length}-pose.png`, renderPoseSkeleton(poseJoints(rig, evaluateAnimationAtTime(clip, base, times[out.length])), input.crop.width * up, input.crop.height * up, { x: window.x + input.crop.x * k, y: window.y + input.crop.y * k }, up / k), "image/png") }
+              ? { prompt: request.prompt ?? (useAnchor ? ANCHORED_REDRAW_PROMPT : REDRAW_PROMPT), seed, megapixels, image2: name, image: await this.production.provider.uploadImage!(`rigging-redraw-${jobId}-${clip.id}-${out.length}-pose.png`, renderPoseSkeleton(poseJoints(rig, evaluateAnimationAtTime(clip, base, times[out.length])), input.crop.width * up, input.crop.height * up, { x: window.x + input.crop.x * k, y: window.y + input.crop.y * k }, up / k), "image/png") }
               : { prompt: request.prompt ?? POLISH_PROMPT, seed, image: name, megapixels };
             const graph = bindProfile(profile, values);
             if (redraw) fastRedraw(graph as unknown as Record<string, { class_type: string; inputs: Record<string, unknown> }>);
+            if (redraw && anchor && useAnchor) addAnchorReference(graph as unknown as Record<string, { class_type: string; inputs: Record<string, unknown> }>, anchor);
             const submitted = await this.production.provider.submit(graph);
             const result = await this.production.provider.waitForCompletion(submitted.promptId, profile.output.node);
             const output = result.outputs[0];
@@ -151,6 +188,8 @@ export class BakeService {
             // A redraw is a new drawing of the pose, so it may differ more from the rig's drawing than a polish.
             const outcome = output ? snapPolished(output.bytes, input.crop, drawing, palette, redraw ? .6 : .8) : { image: drawing, accepted: false };
             if (outcome.accepted) polished += 1; else kept += 1;
+            if (redraw && !anchor && outcome.accepted && output) anchorDrawing = drawing;
+            if (redraw && !anchor && outcome.accepted && output) anchor = await this.production.provider.uploadImage!(`rigging-redraw-${jobId}-anchor.png`, output.bytes, "image/png");
             // A redraw draws its own smear from the posed reference; laying the rig's on top doubled it into pale blobs.
             out.push(redraw && outcome.accepted ? outcome.image : withSmear(outcome.image, smeared[out.length], drawing)); done += 1;
             this.update(jobId, { progress: { done, total: this.get(jobId).progress.total, clip: clip.name }, kept });
