@@ -96,10 +96,136 @@ async function checkUnavailableStepRedirects(page: Page): Promise<void> {
   assert.match(instruction ?? "", /Build the rig first|Cut the parts first/, `instruction reads "${instruction}"`);
 }
 
+/** What a click can observably change. Equal before and after means the control did nothing. */
+async function fingerprint(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const shell = document.querySelector(".step-shell"); if (!shell) return location.href;
+    const states = [...document.querySelectorAll("[aria-pressed],[aria-expanded],[aria-selected],[aria-checked],[aria-current],details,dialog,[role=dialog]")]
+      .map((element) => `${element.getAttribute("aria-pressed")}${element.getAttribute("aria-expanded")}${element.getAttribute("aria-selected")}${element.getAttribute("aria-checked")}${element.getAttribute("aria-current")}${(element as HTMLDetailsElement).open ?? ""}`).join("");
+    const values = [...document.querySelectorAll("input,select,textarea")].map((element) => { const input = element as HTMLInputElement; return `${input.value}:${input.checked}`; }).join("|");
+    // Not focus or hover: a click focuses even a dead button, and hover restyles it.
+    const text = shell.textContent ?? "";
+    let hash = 0; for (let i = 0; i < text.length; i += 1) hash = (hash * 31 + text.charCodeAt(i)) | 0;
+    const selected = [...shell.querySelectorAll(".is-active,.active,.is-selected,[data-selected=true],.is-current")].length;
+    return [location.href, document.querySelectorAll("*").length, states, values, hash, selected].join("§");
+  });
+}
+
+/** Actions that throw work away; a mode switch called "remove" (the lasso's add/remove) is not one. */
+const DESTRUCTIVE = /archive|start over|remove part|delete|rebuild|discard|repaint/i;
+
+/**
+ * Clicks every visible, enabled control in the step and fails on any that changes nothing (a dead button), on console
+ * errors, on destructive controls that act without asking, and on disabled controls that do not say why.
+ */
+async function checkEveryControl(page: Page, href: string, label: string): Promise<string[]> {
+  const problems: string[] = [];
+  const consoleErrors: string[] = [];
+  page.on("console", (message) => { if (message.type() === "error" && !/WebSocket|ERR_CONNECTION_REFUSED|Failed to load resource/.test(message.text())) consoleErrors.push(message.text()); });
+  page.on("pageerror", (error) => consoleErrors.push(error.message));
+  let sideEffects = 0;
+  page.on("request", (request) => { if (!/\.(png|js|css|woff2?)(\?|$)|_next|@vite|hmr/.test(request.url())) sideEffects += 1; });
+  page.on("filechooser", () => { sideEffects += 1; });
+  page.on("download", () => { sideEffects += 1; });
+  let nativeConfirms = 0;
+  page.on("dialog", (dialog) => { sideEffects += 1; nativeConfirms += 1; void dialog.dismiss(); });
+  const open = async () => { await page.goto(`${APP_URL}${href}`, { waitUntil: "domcontentloaded" }); await page.locator(".step-shell").first().waitFor({ timeout: 40000 }); await page.waitForTimeout(1500); };
+  await open();
+  const controls = await page.evaluate(() => [...document.querySelectorAll(".step-shell :is(button, a[href], [role=tab], select, input[type=checkbox], input[type=radio], summary)")].map((element, index) => {
+    const r = element.getBoundingClientRect(); const style = getComputedStyle(element);
+    const visible = r.width > 0 && r.height > 0 && style.visibility !== "hidden" && style.display !== "none" && !element.closest("details:not([open])")?.matches(":not(summary)") || element.tagName === "SUMMARY";
+    const text = (element.getAttribute("aria-label") || (element.tagName === "INPUT" ? element.closest("label")?.textContent : "") || element.textContent || element.getAttribute("title") || element.tagName).trim().replace(/\s+/g, " ").slice(0, 50);
+    const disabled = (element as HTMLButtonElement).disabled || element.getAttribute("aria-disabled") === "true";
+    const reason = element.getAttribute("title") || element.getAttribute("aria-description") || "";
+    // Already on: the selected tool, tab, toggle or radio. Choosing it again is rightly a no-op.
+    const alreadyOn = element.getAttribute("aria-pressed") === "true" || element.getAttribute("aria-selected") === "true" || element.matches(".active, .is-active") || ((element as HTMLInputElement).type === "radio" && (element as HTMLInputElement).checked);
+    return { index, text, visible: visible && r.width > 0, disabled, reason, alreadyOn };
+  }));
+  for (const control of controls.filter((item) => item.visible && item.disabled)) if (!control.reason) problems.push(`${label} / "${control.text}": disabled without a reason`);
+  const seen = new Set<string>();
+  for (const control of controls.filter((item) => item.visible && !item.disabled && !item.alreadyOn)) {
+    if (seen.has(control.text) || /^(Rig Studio home|RS)$/.test(control.text)) continue; seen.add(control.text);
+    if (`${page.url()}`.indexOf(href) < 0) await open();
+    // Found by its text at click time: positions shift as the page changes between clicks.
+    const found = await page.evaluate((wanted) => {
+      document.querySelectorAll("[data-audit-target]").forEach((element) => element.removeAttribute("data-audit-target"));
+      const match = [...document.querySelectorAll(".step-shell :is(button, a[href], [role=tab], select, input[type=checkbox], input[type=radio], summary)")].find((element) => {
+        const text = (element.getAttribute("aria-label") || (element.tagName === "INPUT" ? element.closest("label")?.textContent : "") || element.textContent || element.getAttribute("title") || element.tagName).trim().replace(/\s+/g, " ").slice(0, 50);
+        const r = element.getBoundingClientRect();
+        return text === wanted && r.width > 0 && r.height > 0 && !(element as HTMLButtonElement).disabled;
+      });
+      match?.setAttribute("data-audit-target", "1"); return Boolean(match);
+    }, control.text);
+    if (!found) continue;
+    const target = page.locator("[data-audit-target]").first();
+    // A view reset only shows on the canvas, and only if the view was moved first: zoom, then compare stage pixels.
+    const canvasOnly = /^Fit/.test(control.text);
+    if (canvasOnly) { const stage = page.locator(".step-stage").first(); const box = await stage.boundingBox(); if (box) { await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.wheel(0, -600); await page.waitForTimeout(300); } }
+    const stagePixels = async () => (await page.locator(".step-stage").first().screenshot({ type: "jpeg", quality: 40 }).catch(() => Buffer.alloc(0))).toString("base64");
+    const pixelsBefore = canvasOnly ? await stagePixels() : "";
+    // A resize handle works by dragging, from a fresh layout (an earlier click may have collapsed its panel).
+    if (/^Resize/.test(control.text)) {
+      // Panel collapse is remembered in the workspace preferences, so start from the default layout.
+      await page.evaluate(() => { try { window.localStorage.removeItem("rigging-studio-workspace-v1"); } catch { /* none */ } });
+      await open();
+      await page.evaluate((wanted) => { const match = [...document.querySelectorAll(`[aria-label="${wanted}"]`)][0]; document.querySelectorAll("[data-audit-target]").forEach((element) => element.removeAttribute("data-audit-target")); match?.setAttribute("data-audit-target", "1"); }, control.text);
+      const handle = await page.locator("[data-audit-target]").first().boundingBox();
+      const box = handle ? { ...handle, y: handle.y + Math.min(200, handle.height / 2) - handle.height / 2 } : null;
+      const sizeOf = () => page.evaluate(() => [...document.querySelectorAll(".step-shell *")].slice(0, 3000).map((element) => { const r = element.getBoundingClientRect(); return `${Math.round(r.width)}x${Math.round(r.height)}`; }).join(","));
+      const sizeBefore = await sizeOf();
+      if (box) { await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.down(); await page.mouse.move(box.x + box.width / 2 + 30, box.y + box.height / 2 - 40, { steps: 6 }); await page.mouse.up(); await page.waitForTimeout(300); }
+      if (await sizeOf() === sizeBefore) problems.push(`${label} / "${control.text}": dragging it resized nothing`);
+      continue;
+    }
+    const before = await fingerprint(page); const effectsBefore = sideEffects; const confirmsBefore = nativeConfirms; const errorsBefore = consoleErrors.length;
+    try {
+      const tag = await target.evaluate((element) => element.tagName);
+      if (tag === "SELECT") { const options = await target.locator("option").allTextContents(); if (options.length > 1) await target.selectOption({ index: 1 }); }
+      else await target.click({ timeout: 3000 });
+    } catch { continue; }
+    await page.waitForTimeout(450);
+    if (DESTRUCTIVE.test(control.text)) {
+      const asked = await page.evaluate(() => [...document.querySelectorAll("[role=dialog], [role=alertdialog], dialog[open], .studio-dialog")].some((element) => { const r = element.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(element).visibility !== "hidden"; }));
+      // Only a confirmation counts as asking; a request or a navigation means it acted straight away.
+      if (!asked && nativeConfirms === confirmsBefore) problems.push(`${label} / "${control.text}": destructive action without a confirmation`);
+      const cancel = page.getByRole("button", { name: /^(cancel|keep|no)/i }).first(); if (await cancel.isVisible().catch(() => false)) await cancel.click().catch(() => undefined);
+    } else {
+      const after = await fingerprint(page);
+      const pixelsChanged = canvasOnly && await stagePixels() !== pixelsBefore;
+      if (after === before && sideEffects === effectsBefore && !pixelsChanged) problems.push(`${label} / "${control.text}": nothing happened`);
+    }
+    if (consoleErrors.length > errorsBefore) problems.push(`${label} / "${control.text}": console error: ${consoleErrors.slice(errorsBefore).join(" ; ").slice(0, 160)}`);
+    await page.keyboard.press("Escape").catch(() => undefined);
+    if (new URL(page.url()).pathname + new URL(page.url()).search !== href) await open();
+  }
+  return problems;
+}
+
+/** Layout at a viewport: no sideways scroll and the main button visible without scrolling. */
+async function layoutProblems(page: Page, href: string, label: string): Promise<string[]> {
+  await page.goto(`${APP_URL}${href}`, { waitUntil: "domcontentloaded" }); await page.locator(".step-shell").first().waitFor({ timeout: 40000 }); await page.waitForTimeout(1500);
+  const box = await page.evaluate(() => { const p = document.querySelector(".step-primary")!.getBoundingClientRect(); return { scrollWidth: document.documentElement.scrollWidth, width: innerWidth, height: innerHeight, top: p.top, bottom: p.bottom }; });
+  const out: string[] = [];
+  if (box.scrollWidth > box.width) out.push(`${label}: sideways scroll (${box.scrollWidth} > ${box.width})`);
+  if (box.bottom > box.height || box.top < 0) out.push(`${label}: main button off screen`);
+  return out;
+}
+
+async function checkEveryControlOnEveryStep(page: Page): Promise<void> {
+  const problems: string[] = [];
+  for (const step of STEPS) problems.push(...await checkEveryControl(page, step.href, step.label));
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    for (const step of STEPS) problems.push(...await layoutProblems(page, step.href, `${step.label} at ${viewport.width}×${viewport.height}`));
+  }
+  assert.deepEqual(problems, [], `\n  ${problems.join("\n  ")}`);
+}
+
 const checks: readonly (readonly [string, (page: Page) => Promise<void>, string?])[] = [
   ["Create stays on Create with a rigged project open", checkCreateStaysOnCreate],
   ["Every step renders in the shared frame", checkShellOnEveryStep],
   ["A step that is not open yet redirects with its reason", checkUnavailableStepRedirects, UNRIGGED.id],
+  ["Every control on every step does something", checkEveryControlOnEveryStep],
 ];
 
 await installFixtures();

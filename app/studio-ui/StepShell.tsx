@@ -59,8 +59,8 @@ export function StepNav({ step, state }: { readonly step: StepId; readonly state
       const current = item.id === step; const lock = open[item.id];
       const done = index < currentIndex && lock.available;
       return <button key={item.id} type="button" className={current ? "is-current" : done ? "is-done" : ""}
-        aria-current={current ? "step" : undefined} disabled={!lock.available && !current}
-        title={lock.available || current ? undefined : lock.reason} aria-description={lock.available || current ? undefined : lock.reason}
+        aria-current={current ? "step" : undefined} disabled={current || !lock.available}
+        title={current ? "You are on this step" : lock.available ? undefined : lock.reason} aria-description={current ? "You are on this step" : lock.available ? undefined : lock.reason}
         onClick={() => { if (!current) window.location.assign(item.href); }}>
         <b aria-hidden="true">{done ? "✓" : index + 1}</b>{item.label}
       </button>;

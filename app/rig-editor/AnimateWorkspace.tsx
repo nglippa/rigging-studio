@@ -274,6 +274,9 @@ export function AnimateWorkspace({ projectId, rig, activeSkinId, showGrid, showB
   const moveSelected = (delta: number): void => updateActive("Move keyframes", (current) => {
     const result = moveKeyframes(current, selectedKeys, delta, durationPolicy, snap ? 1 / fps : undefined); setSelectedKeys([...result.selections]); return result.animation;
   });
+  // Stepping buttons are disabled where they would do nothing (the playhead is already at that end).
+  const atStart = time <= 1e-6;
+  const atEnd = time >= (animation.loop ? Math.max(0, animation.duration - 1 / fps) : animation.duration) - 1e-6;
   const previousNext = (direction: "previous" | "next"): void => { const adjacent = adjacentKeyTimes(animation, timeRef.current); setCurrentTime(adjacent[direction] ?? (direction === "previous" ? 0 : animation.duration)); };
   const copy = useCallback((): void => { clipboardRef.current = copyKeyframes(animation, selectedKeys); onMessage(`Copied ${clipboardRef.current.keyframes.length} keyframe(s)`); }, [animation, onMessage, selectedKeys]);
   const paste = useCallback((): void => {
@@ -381,11 +384,11 @@ export function AnimateWorkspace({ projectId, rig, activeSkinId, showGrid, showB
     <div className="animation-toolbar"><div className="animation-command-row">
         <button type="button" className={`compact-track-toggle ${compactClipsOpen ? "is-active" : ""}`} data-ux-role="navigation" aria-expanded={compactClipsOpen} aria-controls="animate-clip-browser" onClick={() => setCompactClipsOpen((value) => !value)}>Clips</button>
         <div className="transport" role="group" aria-label="Playback">
-          <button type="button" className="transport-icon" onClick={() => { pause(); setCurrentTime(0); }} title="First frame  (Home)" aria-label="First frame">⏮</button>
-          <button type="button" className="transport-icon" onClick={() => { pause(); previousNext("previous"); }} title="Previous keyframe" aria-label="Previous keyframe">◂◆</button>
+          <button type="button" className="transport-icon" onClick={() => { pause(); setCurrentTime(0); }} disabled={atStart} title={atStart ? "Already at the first frame" : "First frame  (Home)"} aria-label="First frame">⏮</button>
+          <button type="button" className="transport-icon" onClick={() => { pause(); previousNext("previous"); }} disabled={atStart} title={atStart ? "Already at the first frame" : "Previous keyframe"} aria-label="Previous keyframe">◂◆</button>
           <button type="button" className="play-action" data-ux-role="tool" onClick={playing ? pause : play} title={`${playing ? "Pause" : "Play"}  (Space)`} aria-label={playing ? "Pause" : "Play"}>{playing ? "Ⅱ Pause" : "▶ Play"}</button>
-          <button type="button" className="transport-icon" onClick={() => { pause(); previousNext("next"); }} title="Next keyframe" aria-label="Next keyframe">◆▸</button>
-          <button type="button" className="transport-icon" onClick={() => { pause(); setCurrentTime(animation.loop ? Math.max(0, animation.duration - 1 / fps) : animation.duration); }} title="Last frame" aria-label="Last frame">⏭</button>
+          <button type="button" className="transport-icon" onClick={() => { pause(); previousNext("next"); }} disabled={atEnd} title={atEnd ? "Already at the last frame" : "Next keyframe"} aria-label="Next keyframe">◆▸</button>
+          <button type="button" className="transport-icon" onClick={() => { pause(); setCurrentTime(animation.loop ? Math.max(0, animation.duration - 1 / fps) : animation.duration); }} disabled={atEnd} title={atEnd ? "Already at the last frame" : "Last frame"} aria-label="Last frame">⏭</button>
           <button type="button" className={`transport-icon transport-loop ${animation.loop ? "is-active" : ""}`} aria-pressed={animation.loop} onClick={() => updateActive("Toggle loop", (current) => ({ ...current, loop: !current.loop }))} title={animation.loop ? "Looping. Click to play once" : "Plays once. Click to loop"} aria-label="Loop">⟳</button>
         </div>
         <div className="transport-readout" title="Current time"><output ref={timeOutputRef} className="transport-time">{time.toFixed(2)} s</output><small>frame {frame} · {animation.duration.toFixed(2)} s long</small></div>
