@@ -91,7 +91,9 @@ export function ProjectStorageMenu(props: ProjectMenuProps) {
     saveTimer.current = window.setTimeout(() => void performSave(request, true), 900);
   }), [active, performSave, service]);
 
-  const installLoaded = useCallback((transaction: ProjectSwitchTransaction, snapshot: Parameters<typeof service.installDurableSnapshot>[0]): boolean => {
+  // `navigate`: go to the step the project belongs on. Only for the user's own Open; reopening the remembered project on
+  // page load stays on the page that was asked for (it used to bounce Create to Animate for any rigged project).
+  const installLoaded = useCallback((transaction: ProjectSwitchTransaction, snapshot: Parameters<typeof service.installDurableSnapshot>[0], navigate = true): boolean => {
     let committed = false;
     suppressAutosave.current = true; try { committed = service.commitDurableProjectOpen(transaction, snapshot); } finally { suppressAutosave.current = false; }
     if (!committed) return false;
@@ -99,16 +101,16 @@ export function ProjectStorageMenu(props: ProjectMenuProps) {
     const destination = mode === "animate" ? "/?mode=animate" : mode === "setup" ? "/?mode=setup"
       : snapshot.project?.stage === "describe" || snapshot.project?.stage === "generate" ? "/create-character" : "/part-cutter";
     window.dispatchEvent(new CustomEvent("rig-studio:durable-project-opened", { detail: { mode, projectId: transaction.targetProjectId, projectSessionToken: transaction.projectSessionToken } }));
-    if (`${window.location.pathname}${window.location.search}` !== destination) router.push(destination);
+    if (navigate && `${window.location.pathname}${window.location.search}` !== destination) router.push(destination);
     return true;
   }, [router, service]);
 
-  const performOpen = useCallback(async (project: LocalProjectSummary): Promise<void> => {
+  const performOpen = useCallback(async (project: LocalProjectSummary, options: { readonly navigate?: boolean } = {}): Promise<void> => {
     const transaction = service.beginDurableProjectOpen(project.projectId, project.relativePath, project.stage);
     try {
       setSaveState("opening"); setMessage(`Opening · ${project.relativePath}`);
       const loaded = await client.load(project.projectId); setSaveState("validating");
-      if (!installLoaded(transaction, loaded.snapshot)) return;
+      if (!installLoaded(transaction, loaded.snapshot, options.navigate ?? true)) return;
       window.localStorage.setItem(ACTIVE_DISK_PROJECT_KEY, project.projectId); activeRef.current = loaded.summary; setActive(loaded.summary); setSaveState("saved"); setMessage(`Opened · ${project.relativePath}`);
     } catch (error: unknown) { service.abortDurableProjectOpen(transaction); setSaveState(activeRef.current ? "failed" : "cache-only"); setMessage(error instanceof Error ? error.message : "Project could not be opened"); }
   }, [client, installLoaded, service]);
@@ -118,7 +120,7 @@ export function ProjectStorageMenu(props: ProjectMenuProps) {
     const target = persistedProjectId ? projects.find((project) => project.projectId === persistedProjectId) : null;
     if (!target) return;
     startupOpenAttempted.current = true;
-    const timer = window.setTimeout(() => void performOpen(target), 0);
+    const timer = window.setTimeout(() => void performOpen(target, { navigate: false }), 0);
     return () => window.clearTimeout(timer);
   }, [active, performOpen, projects, status?.available]);
   const openProject = async (project: LocalProjectSummary): Promise<void> => {

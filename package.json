@@ -26,7 +26,8 @@
     "setup:pose": "sh scripts/fetch-pose-model.sh",
     "studio:up": "zsh scripts/studio-up.sh",
     "studio:down": "zsh scripts/studio-down.sh",
-    "comfy:forward": "node scripts/comfy-forward.mjs"
+    "comfy:forward": "node scripts/comfy-forward.mjs",
+    "test:ui-audit": "tsx scripts/ui-audit.mts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
