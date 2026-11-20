@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { ProjectStorageMenu } from "./ProjectStorageMenu";
 import { STEPS, stepAvailability, type StepId, type StepState } from "./steps";
+import { useDismissibleMenus } from "./useDismissibleMenus";
 
 export type StepPrimary = {
   readonly label: string;
@@ -19,6 +20,8 @@ export type StepShellProps = {
   readonly state: StepState;
   readonly projectName: string;
   readonly saved: "saved" | "unsaved" | "not-saved";
+  /** When given, the project name can be clicked and renamed in place. */
+  readonly onRename?: (name: string) => void;
   readonly onUndo?: () => void;
   readonly onRedo?: () => void;
   readonly canUndo?: boolean;
@@ -36,6 +39,16 @@ export type StepShellProps = {
 };
 
 const SAVED_LABEL = { saved: "Saved", unsaved: "Unsaved changes", "not-saved": "Not saved yet" } as const;
+
+function ProjectName({ name, onRename }: { readonly name: string; readonly onRename?: (name: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  if (!onRename) return <strong>{name}</strong>;
+  if (!editing) return <button type="button" className="step-project-name" title="Rename" onClick={() => setEditing(true)}><strong>{name}</strong></button>;
+  const commit = (value: string) => { setEditing(false); if (value.trim() && value.trim() !== name) onRename(value.trim()); };
+  return <input className="step-project-input" aria-label="Project name" defaultValue={name} autoFocus
+    onBlur={(event) => commit(event.currentTarget.value)}
+    onKeyDown={(event) => { if (event.key === "Enter") commit(event.currentTarget.value); if (event.key === "Escape") setEditing(false); }} />;
+}
 
 /** The five steps, each a button: done, current or ahead; a locked step is disabled and says why. */
 export function StepNav({ step, state }: { readonly step: StepId; readonly state: StepState }) {
@@ -60,12 +73,14 @@ export function StepNav({ step, state }: { readonly step: StepId; readonly state
  * the project and the step bar, the stage with a narrow panel, and the action bar with the step's main button centred.
  */
 export function StepShell(props: StepShellProps) {
+  // Menus and popovers anywhere in the step (the project menu, View and Snap) close on click-away and Escape.
+  useDismissibleMenus();
   const { step, state, primary, expanded } = props;
   const label = STEPS.find((item) => item.id === step)?.label ?? "";
   return <div className={`step-shell${expanded ? " is-expanded" : ""}`} data-step={step}>
     <header className="step-top">
       <Link href="/create-character" className="step-mark" aria-label="Rig Studio home">RS</Link>
-      <div className="step-project"><strong>{props.projectName}</strong><small>{SAVED_LABEL[props.saved]}{expanded ? ` · ${label}, expanded` : ""}</small></div>
+      <div className="step-project"><ProjectName name={props.projectName} onRename={props.onRename} /><small>{SAVED_LABEL[props.saved]}{expanded ? ` · ${label}, expanded` : ""}</small></div>
       <StepNav step={step} state={state} />
       <div className="step-tools">
         {props.onUndo && <button type="button" onClick={props.onUndo} disabled={!props.canUndo} title={props.canUndo ? "Undo" : "Nothing to undo"} aria-description={props.canUndo ? undefined : "Nothing to undo"}>↶ Undo</button>}

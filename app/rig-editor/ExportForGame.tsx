@@ -71,7 +71,7 @@ function download(name: string, text: string): void {
  * or a sprite sheet of the drawings: as the rig draws them (instant), or each drawing redrawn on the Mac Studio so it reads
  * as hand-drawn pixel animation (slower; the rig's drawing is kept wherever a redraw strays).
  */
-export function ExportForGame({ open, rig, animations, onClose }: { readonly open: boolean; readonly rig: RigDefinition | null; readonly animations: readonly AnimationDefinition[]; readonly onClose: () => void }) {
+export function ExportForGame({ open, inline = false, rig, animations, onClose }: { readonly open: boolean; readonly inline?: boolean; readonly rig: RigDefinition | null; readonly animations: readonly AnimationDefinition[]; readonly onClose: () => void }) {
   const [path, setPath] = useState<Path>("redraw");
   const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set());
   const [job, setJob] = useState<BakeJob | null>(null);
@@ -121,9 +121,7 @@ export function ExportForGame({ open, rig, animations, onClose }: { readonly ope
   const smallSprite = artHeight < 80;
   const redrawMinutes = Math.max(1, Math.round(drawings * SECONDS_PER_REDRAWN_DRAWING / 60));
 
-  return <div className="studio-dialog-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}>
-    <section className="studio-dialog export-for-game" role="dialog" aria-modal="true" aria-labelledby="export-for-game-title">
-      <header><span>Export</span><button type="button" aria-label="Close" onClick={onClose}>×</button></header>
+  const body = <>
       <div className="studio-dialog-body">
         <h2 id="export-for-game-title">Export for a game</h2>
         <fieldset className="export-paths" disabled={busy}>
@@ -147,7 +145,14 @@ export function ExportForGame({ open, rig, animations, onClose }: { readonly ope
         </div>}
         {error && <p className="export-error" role="alert">{error}</p>}
       </div>
-      <footer><button type="button" onClick={onClose} disabled={busy}>Close</button><button type="button" className="primary" disabled={busy || !selected.length} onClick={() => void start()}>{path === "live" ? "Download rig" : busy ? "Baking…" : "Bake sprite sheet"}</button></footer>
+      <footer>{!inline && <button type="button" onClick={onClose} disabled={busy}>Close</button>}<button type="button" className="primary" disabled={busy || !selected.length} onClick={() => void start()}>{path === "live" ? "Download rig" : busy ? "Baking…" : "Bake sprite sheet"}</button></footer>
+  </>;
+  // Inline: the Export step's stage (no backdrop, no Close); otherwise the dialog it used to be.
+  if (inline) return <section className="export-for-game is-inline" aria-labelledby="export-for-game-title">{body}</section>;
+  return <div className="studio-dialog-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}>
+    <section className="studio-dialog export-for-game" role="dialog" aria-modal="true" aria-labelledby="export-for-game-title">
+      <header><span>Export</span><button type="button" aria-label="Close" onClick={onClose}>×</button></header>
+      {body}
     </section>
   </div>;
 }

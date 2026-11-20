@@ -260,6 +260,11 @@ footer { max-width: 1280px; margin: 0 auto; padding: 24px 30px 34px; display: fl
 }
 
 /* Export for a game (ExportForGame): three paths, the clips, progress and the baked sheet. */
+/* Inline on the Export step's stage. */
+.export-for-game.is-inline { width: min(640px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow-y: auto; display: flex; flex-direction: column; border: 1px solid var(--ws-line, #283341); border-radius: 10px; background: var(--ws-panel, #11161e); color: var(--ws-text, #e9eef6); }
+.export-for-game.is-inline > footer { max-width: none; margin: 0; display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--ws-line-soft, #1d2733); font: 600 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: inherit; }
+.export-for-game.is-inline > footer button { padding: 8px 16px; border-radius: 8px; border: 1px solid var(--ws-line, #283341); background: transparent; color: inherit; }
+.export-for-game.is-inline > footer button.primary { background: var(--ws-signal, #68e1ef); color: #04161a; border-color: transparent; }
 .studio-dialog.export-for-game { width: min(640px, calc(100vw - 32px)); max-height: calc(100dvh - 36px); display: flex; flex-direction: column; }
 /* Header and footer stay put; a finished bake's preview scrolls inside the body instead of pushing Close off screen. */
 .export-for-game > header, .export-for-game > footer { flex: none; }

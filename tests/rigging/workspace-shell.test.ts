@@ -10,16 +10,15 @@ describe("stage-driven workspace shell", () => {
     expect(source("../../app/rig-editor/AnimateWorkspace.tsx")).toContain("Disk animations restored");
   });
 
-  it("keeps Parts, Rig, Test, and Animate as the single global progress path with real stage states", () => {
-    const nav = source("../../app/studio-ui/StudioModeNav.tsx");
-    const rail = source("../../app/studio-ui/TopCommandRail.tsx");
-    for (const stage of ['mode: "prepare", label: "Parts"', 'mode: "setup", label: "Rig"', 'mode: "test", label: "Test"', 'mode: "animate", label: "Animate"']) expect(nav).toContain(stage);
-    expect(nav).toContain("is-complete");
-    expect(nav).toContain("needs-attention");
-    expect(source("../../app/rig-editor/RigEditor.tsx")).toContain("stageStatuses");
-    expect(rail).toContain("studio-command-rail");
-    expect(rail).toContain("connection-cluster");
-    expect(rail).toContain("Search commands (⌘K)");
+  it("puts every page in one frame whose step bar is the single progress path", () => {
+    const shell = source("../../app/studio-ui/StepShell.tsx");
+    expect(shell).toContain("STEPS.map");
+    expect(shell).toContain('aria-current={current ? "step" : undefined}');
+    for (const page of ["../../app/create-character/CreateCharacterWorkspace.tsx", "../../app/part-cutter/PartCutterWorkspace.tsx", "../../app/rig-editor/RigEditor.tsx"]) {
+      expect(source(page)).toContain("<StepShell");
+      expect(source(page)).not.toContain("TopCommandRail");
+      expect(source(page)).not.toContain("StudioModeNav");
+    }
   });
 
   it("shows the real skeleton and its parts, with the raw document behind Advanced structure", () => {
@@ -49,7 +48,8 @@ describe("stage-driven workspace shell", () => {
     expect(rigEditor).toContain("StudioUtilityDrawer");
     expect(animate).toContain("DopeSheet");
     expect(animate).toContain("rigging-studio-timeline-height");
-    expect(prepare).toContain("prepare-action-rail");
+    expect(prepare).toContain("<StepShell");
+    expect(prepare).not.toContain("prepare-action-rail");
     expect(prepare).not.toContain('className="prepare-stage-progress"');
     expect(prepare).not.toContain('className="part-cutter-status"');
   });
@@ -82,14 +82,6 @@ describe("stage-driven workspace shell", () => {
     expect(css).toContain("minmax(320px,1fr) 20px");
     expect(css).toContain(".editor-right-panel.is-context-idle");
     expect(css).toContain("inset 1px 0 rgba(84,232,255,.55)");
-  });
-
-  it("consolidates connection details into one systems cluster", () => {
-    const rail = source("../../app/studio-ui/TopCommandRail.tsx");
-    expect(rail).toContain('className="connection-cluster"');
-    expect(rail).toContain("Systems");
-    expect(rail).toContain("systems-popover");
-    expect(rail).toContain("Open diagnostics");
   });
 
   it("replaces the Setup stepper with rig review and gives Test its own strip, each with one next action", () => {
@@ -175,7 +167,7 @@ describe("stage-driven workspace shell", () => {
 
   it("dismisses transient menus on click-away, replacement, and Escape", () => {
     const behavior = source("../../app/studio-ui/useDismissibleMenus.ts");
-    const rail = source("../../app/studio-ui/TopCommandRail.tsx");
+    const shell = source("../../app/studio-ui/StepShell.tsx");
     const canvas = source("../../app/rig-editor/CanvasControls.tsx");
     const animate = source("../../app/rig-editor/AnimateWorkspace.tsx");
     expect(behavior).toContain('document.addEventListener("pointerdown"');
@@ -184,8 +176,8 @@ describe("stage-driven workspace shell", () => {
     expect(behavior).toContain('event.key !== "Escape"');
     expect(behavior).toContain("!menu.contains(target)");
     expect(behavior).toContain("other !== menu");
-    // The rail's status chip and the project menu (opened from the character's name) both close on click-away.
-    expect(rail.match(/data-dismissible-menu/g)).toHaveLength(1);
+    // Every step's frame installs the behaviour, and the project menu closes on click-away.
+    expect(shell).toContain("useDismissibleMenus();");
     expect(source("../../app/studio-ui/ProjectStorageMenu.tsx").match(/data-dismissible-menu/g)).toHaveLength(1);
     expect(canvas.match(/data-dismissible-menu/g)).toHaveLength(2);
     expect(animate.match(/data-dismissible-menu/g)).toHaveLength(3);
