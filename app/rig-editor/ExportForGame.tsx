@@ -116,6 +116,9 @@ export function ExportForGame({ open, rig, animations, onClose }: { readonly ope
   };
   const toggle = (id: string) => setChosen((current) => { const next = new Set(current.size ? current : animations.map((clip) => clip.id)); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const minutes = Math.max(1, Math.round(drawings * SECONDS_PER_POLISHED_DRAWING / 60));
+  // The redraw has little to work with at a few dozen art pixels tall: it holds the pose but keeps less detail than the rig.
+  const artHeight = rig ? rig.canvas.height / Math.max(1, Number(rig.metadata?.pixelScale ?? 1)) : Infinity;
+  const smallSprite = artHeight < 80;
   const redrawMinutes = Math.max(1, Math.round(drawings * SECONDS_PER_REDRAWN_DRAWING / 60));
 
   return <div className="studio-dialog-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}>
@@ -125,7 +128,7 @@ export function ExportForGame({ open, rig, animations, onClose }: { readonly ope
         <h2 id="export-for-game-title">Export for a game</h2>
         <fieldset className="export-paths" disabled={busy}>
           <legend className="sr-only">How to export</legend>
-          <label><input type="radio" name="export-path" checked={path === "redraw"} onChange={() => setPath("redraw")} /><span><strong>Sprite sheet, redrawn in each pose</strong><small>The Mac Studio draws the character afresh in every pose from the rig's skeleton, as an artist redraws each frame. Slowest: about {redrawMinutes} min for {drawings} drawings.</small></span></label>
+          <label><input type="radio" name="export-path" checked={path === "redraw"} onChange={() => setPath("redraw")} /><span><strong>Sprite sheet, redrawn in each pose</strong><small>The Mac Studio draws the character afresh in every pose from the rig's skeleton, as an artist redraws each frame. Slowest: about {redrawMinutes} min for {drawings} drawings.{smallSprite ? " At this sprite's size it keeps less detail than the rig; compare the previews." : ""}</small></span></label>
           <label><input type="radio" name="export-path" checked={path === "polish"} onChange={() => setPath("polish")} /><span><strong>Sprite sheet, polished</strong><small>Each rig drawing is cleaned up on the Mac Studio: seams and broken lines redrawn, pose unchanged. About {minutes} min for {drawings} drawings.</small></span></label>
           <label><input type="radio" name="export-path" checked={path === "rig"} onChange={() => setPath("rig")} /><span><strong>Sprite sheet, as rigged</strong><small>The drawings exactly as the rig plays them. Instant.</small></span></label>
           <label><input type="radio" name="export-path" checked={path === "live"} onChange={() => setPath("live")} /><span><strong>Live rig</strong><small>Bones and parts, for an engine that plays skeletal animation. Keeps gear swappable; nothing is baked.</small></span></label>
