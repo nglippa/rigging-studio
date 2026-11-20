@@ -11,6 +11,7 @@ import type { GeneratedCharacterProject } from "../src/character-generation/proj
 import type { LocalProjectSnapshot } from "../src/project-storage/types";
 import type { RigDefinition } from "../src/rigging/schema/types";
 import type { AnimationLibrary } from "../src/tools/rig-editor/animation/types";
+import { STEPS } from "../app/studio-ui/steps";
 
 const APP_URL = process.env.RIG_STUDIO_APP_URL ?? "http://localhost:5177";
 const ACTIVE_DISK_PROJECT_KEY = "rig-studio:active-disk-project:v1";
@@ -44,8 +45,39 @@ async function checkCreateStaysOnCreate(page: Page): Promise<void> {
   assert.equal(new URL(page.url()).pathname, "/create-character", `Create bounced to ${page.url()}`);
 }
 
+/** Every step renders in one frame: one step bar with the five steps, one centred main button, nothing over the stage. */
+async function checkShellOnEveryStep(page: Page): Promise<void> {
+  for (const step of STEPS) {
+    await page.goto(`${APP_URL}${step.href}`, { waitUntil: "domcontentloaded" });
+    await page.locator(".step-shell").first().waitFor({ timeout: 15000 });
+    await page.waitForTimeout(800);
+    const shape = await page.evaluate(() => {
+      const nav = document.querySelectorAll(".step-nav");
+      const labels = [...document.querySelectorAll(".step-nav button")].map((button) => button.textContent?.replace(/^[\d✓]\s*/, "").trim());
+      const primary = document.querySelectorAll(".step-primary");
+      const box = primary[0]?.getBoundingClientRect();
+      const stage = document.querySelector(".step-stage")?.getBoundingClientRect();
+      // Anything positioned over the stage that is not inside it (an overlay notice, a floating toolbar).
+      const over = stage ? [...document.querySelectorAll("body *")].filter((element) => {
+        if (element.closest(".step-stage") || element.contains(document.querySelector(".step-stage"))) return false;
+        const style = getComputedStyle(element); if (style.position !== "fixed" && style.position !== "absolute") return false;
+        const r = element.getBoundingClientRect(); if (!r.width || !r.height || style.visibility === "hidden" || style.display === "none") return false;
+        return r.left < stage.right && r.right > stage.left && r.top < stage.bottom && r.bottom > stage.top;
+      }).map((element) => `${element.tagName.toLowerCase()}.${String(element.className).split(" ")[0]}`) : ["no .step-stage"];
+      return { shells: document.querySelectorAll(".step-shell").length, navs: nav.length, labels, primaries: primary.length, centre: box ? box.left + box.width / 2 : -1, width: innerWidth, over };
+    });
+    assert.equal(shape.shells, 1, `${step.label}: ${shape.shells} .step-shell`);
+    assert.equal(shape.navs, 1, `${step.label}: ${shape.navs} step bars`);
+    assert.deepEqual(shape.labels, STEPS.map((item) => item.label), `${step.label}: step bar reads ${shape.labels.join(", ")}`);
+    assert.equal(shape.primaries, 1, `${step.label}: ${shape.primaries} main buttons`);
+    assert.ok(Math.abs(shape.centre - shape.width / 2) <= 40, `${step.label}: main button centred at ${Math.round(shape.centre)} of ${shape.width}`);
+    assert.deepEqual(shape.over, [], `${step.label}: over the stage: ${shape.over.join(", ")}`);
+  }
+}
+
 const checks: readonly (readonly [string, (page: Page) => Promise<void>])[] = [
   ["Create stays on Create with a rigged project open", checkCreateStaysOnCreate],
+  ["Every step renders in the shared frame", checkShellOnEveryStep],
 ];
 
 await installFixtures();
