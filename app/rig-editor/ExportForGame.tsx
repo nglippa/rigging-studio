@@ -86,7 +86,10 @@ export function ExportForGame({ open, rig, animations, onClose }: { readonly ope
   const poll = (jobId: string) => {
     polling.current = window.setTimeout(async () => {
       try {
-        const next = await (await fetch(`${BRIDGE_URL}/bake/jobs/${encodeURIComponent(jobId)}`, { cache: "no-store" })).json() as BakeJob;
+        const response = await fetch(`${BRIDGE_URL}/bake/jobs/${encodeURIComponent(jobId)}`, { cache: "no-store" });
+        // Jobs live in the bridge's memory: after a restart the job is gone, and its error body is not a job.
+        if (response.status === 404) { setJob(null); setError("The bake was lost when Rigging Studio's bridge restarted. Start it again."); return; }
+        const next = await response.json() as BakeJob;
         setJob(next); if (next.status === "queued" || next.status === "running") poll(jobId); else if (next.error) setError(next.error);
       } catch { poll(jobId); }
     }, 1500);

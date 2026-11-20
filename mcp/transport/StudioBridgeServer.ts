@@ -392,7 +392,9 @@ export class StudioBridgeServer {
       return;
     }
     if (request.method === "GET" && request.url?.startsWith("/bake/jobs/")) {
-      try { response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(this.bake.get(decodeURIComponent(request.url.slice("/bake/jobs/".length).split("?")[0])))); }
+      // The job is looked up before any header is written: an unknown id throws, and writing the 404 after a 200 had
+      // started crashed the whole bridge (ERR_HTTP_HEADERS_SENT).
+      try { const job = this.bake.get(decodeURIComponent(request.url.slice("/bake/jobs/".length).split("?")[0])); response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(job)); }
       catch (error: unknown) { response.writeHead(404, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error instanceof Error ? error.message : "Bake not found" })); }
       return;
     }
