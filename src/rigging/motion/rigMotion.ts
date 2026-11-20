@@ -405,6 +405,13 @@ function gait(rig: RigDefinition, anatomy: RigAnatomy, kind: "walk" | "run", dur
     }
   }
 
+  // Secondary motion: the head follows the body's bob a step late (half of it), so it drags behind each rise and fall
+  // instead of riding it as one block. The gait's steps loop, so the step before the first is the last.
+  const headDrag = (bodyY: (index: number) => number): void => {
+    if (forward) return; // In profile the head already counters the chest a beat late (HEAD_LAG).
+    const before = (index: number): number => (index === 0 ? steps - 1 : index - 1);
+    clip.add(anatomy.head, "y", (index) => .5 * (bodyY(before(index)) - bodyY(index)));
+  };
   // Put the body where the legs can reach the ground: whichever foot hangs lowest stays at its rest height.
   if (anatomy.bodyBone && anatomy.bodyCarriesLegs) {
     const rest = computeWorldTransforms(rig, createRestPose(rig));
@@ -412,16 +419,29 @@ function gait(rig: RigDefinition, anatomy: RigAnatomy, kind: "walk" | "run", dur
     const settle = phases.map((_phase, index) => { const world = clip.worldAt(rig, index); return feet.length ? Math.min(...feet.map((id) => rest[id].y - world[id].y)) : 0; });
     // A run leaves the ground twice per cycle, between one foot's push-off and the other's landing.
     const float = (index: number): number => run ? legLength * .05 * Math.max(0, Math.cos(TAU * 2 * (phases[index] - .45))) : 0;
-    clip.add(anatomy.bodyBone, "y", (index) => settle[index] - float(index));
+    const bodyY = (index: number): number => settle[index] - float(index);
+    clip.add(anatomy.bodyBone, "y", bodyY);
+    headDrag(bodyY);
   } else {
-    clip.add(anatomy.bodyBone, "y", (index) => anatomy.height * (run ? .02 : .012) * Math.cos(TAU * 2 * phases[index]) * .5);
+    const bodyY = (index: number): number => anatomy.height * (run ? .02 : .012) * Math.cos(TAU * 2 * phases[index]) * .5;
+    clip.add(anatomy.bodyBone, "y", bodyY);
+    headDrag(bodyY);
   }
   return clip.tracks();
 }
 
+/**
+ * Secondary motion (animation-coding skill ch02/ch04: overlap and drag): a part carried by another arrives a beat after
+ * it, so the body does not move as one block. A blind judge read the redrawn idle and walk as rigid because the head,
+ * helmet and held items moved exactly with the chest. This share of a cycle is how late they arrive.
+ */
+const DRAG = .09;
+
 function idle(anatomy: RigAnatomy, duration: number): AnimationTrack[] {
-  const clip = new ClipBuilder([0, duration / 2, duration], "easeInOut");
-  const breath = [0, 1, 0];
+  const { fractions, clip } = sampled(duration);
+  // One breath a loop, slow in and out at both ends (a cosine), sampled densely so a part can lag it smoothly.
+  const wave = (u: number): number => (1 - Math.cos(TAU * (((u % 1) + 1) % 1))) / 2;
+  const breath = fractions.map((fraction) => wave(fraction));
   // Big enough to read at sprite size: the chest rises two to three art pixels and the arms swing one rotation step (5°),
   // as a hand-drawn idle does in a few strong drawings; smaller motion would only nudge single pixels.
   // A blind judge read a 2-pixel breath as near-copies of one drawing, so the breath is about twice that: the chest rises
@@ -429,7 +449,21 @@ function idle(anatomy: RigAnatomy, duration: number): AnimationTrack[] {
   clip.add(anatomy.torso, "y", (index) => -anatomy.height * .022 * breath[index]);
   clip.add(anatomy.torso, "rotation", (index) => 2.5 * breath[index]);
   clip.add(anatomy.head, "rotation", (index) => -1.2 * breath[index]);
-  for (const arm of anatomy.arms) clip.add(arm.upper, "rotation", (index) => (arm.carriesEquipment ? 5 : 8) * breath[index] * outwardSign(arm));
+  // The head rides the chest a beat late: it lags as the chest rises and settles after it, so the two separate by an art
+  // pixel or so at the turns (half the chest's travel, offset by the drag).
+  // Measured from the loop's start, so the clip still begins exactly at the rest pose (a lagged curve is still catching up
+  // there; the difference is a constant of a quarter art pixel or so).
+  const lagged = (index: number): number => wave(fractions[index] - DRAG);
+  const drag = (index: number): number => (breath[index] - lagged(index)) - (breath[0] - lagged(0));
+  // Sized to clear the pixel grid: smaller, the separation rounded away to nothing on a sprite.
+  clip.add(anatomy.head, "y", (index) => anatomy.height * .025 * drag(index));
+  for (const arm of anatomy.arms) {
+    const swing = (arm.carriesEquipment ? 5 : 8) * outwardSign(arm);
+    clip.add(arm.upper, "rotation", (index) => swing * breath[index]);
+    // The hand, and whatever it holds, trails the arm and catches up: a shield or blade tilts back as the arm opens.
+    // Large enough to cross a rotation step (held items turn in 5° steps): about 5-8° at the turns.
+    clip.add(arm.end, "rotation", (index) => -4 * swing * drag(index));
+  }
   return clip.tracks();
 }
 
