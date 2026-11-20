@@ -115,3 +115,22 @@
 .character-status { overflow: hidden; }
 .character-status span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .character-topbar nav button { white-space: nowrap; }
+
+/* Guided Create (StepShell stage and panel). */
+.step-shell .create-describe { width: min(620px, calc(100% - 48px)) !important; height: auto !important; align-self: center !important; justify-self: center !important; display: grid; gap: 12px; }
+.step-shell .create-describe-box textarea { width: 100%; min-height: 150px; padding: 14px 16px; border: 1px solid var(--sh-line); border-radius: 10px; background: var(--sh-panel); color: var(--sh-text); font: 400 15px/1.55 var(--sh-font); resize: vertical; }
+.step-shell .create-describe-box textarea:focus { outline: none; border-color: var(--sh-accent); box-shadow: 0 0 0 3px rgba(104, 225, 239, .12); }
+.step-shell .create-describe-or { margin: 0; text-align: center; color: var(--sh-muted); }
+.step-shell .create-link { padding: 0; border: 0; background: transparent; color: var(--sh-accent); text-decoration: underline; cursor: pointer; }
+.step-shell .create-candidates { width: auto !important; height: auto !important; align-self: center !important; justify-self: center !important; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 210px)); gap: 14px; max-width: calc(100% - 48px); justify-content: center; }
+.step-shell .create-candidate { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--sh-line); border-radius: 10px; background: var(--sh-panel); color: var(--sh-secondary); cursor: pointer; }
+.step-shell .create-candidate img { width: 100%; aspect-ratio: 2 / 3; object-fit: contain; image-rendering: pixelated; background: repeating-conic-gradient(#1a2029 0 25%, #202734 0 50%) 0 0 / 16px 16px; border-radius: 6px; }
+.step-shell .create-candidate[aria-checked="true"] { border-color: var(--sh-accent); box-shadow: 0 0 0 2px var(--sh-accent); color: var(--sh-text); }
+.step-shell .create-candidate:disabled { opacity: .4; cursor: not-allowed; }
+.step-shell .create-chosen { width: auto !important; height: 100% !important; margin: 0; padding: 24px; display: grid; grid-template-rows: minmax(0, 1fr) auto; justify-items: center; gap: 8px; }
+.step-shell .create-chosen img { height: 100%; max-width: 100%; object-fit: contain; image-rendering: pixelated; background: repeating-conic-gradient(#1a2029 0 25%, #202734 0 50%) 0 0 / 16px 16px; border-radius: 8px; }
+.step-shell .create-chosen figcaption { color: var(--sh-muted); font-size: 11px; }
+.step-shell .model-cards { display: grid; gap: 6px; }
+.step-shell .choice-badge.is-warn { color: var(--sh-warn); }
+.step-shell .create-controls label { display: grid; gap: 4px; color: var(--sh-muted); font-size: 11px; }
+.step-shell .create-controls input { padding: 6px 8px; border: 1px solid var(--sh-line); border-radius: 6px; background: var(--sh-bg); color: var(--sh-text); font-size: 13px; }

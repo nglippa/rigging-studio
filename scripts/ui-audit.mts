@@ -221,10 +221,38 @@ async function checkEveryControlOnEveryStep(page: Page): Promise<void> {
   assert.deepEqual(problems, [], `\n  ${problems.join("\n  ")}`);
 }
 
+/** A new character on Create: model cards ranked by the benchmark, a description, and Generate as the main button. */
+async function checkCreateGuided(page: Page): Promise<void> {
+  await page.addInitScript(() => { try { window.localStorage.removeItem("rig-studio:active-disk-project:v1"); } catch { /* none */ } });
+  await page.goto(`${APP_URL}/create-character`, { waitUntil: "domcontentloaded" });
+  await page.locator(".step-shell").first().waitFor({ timeout: 20000 });
+  // Start a blank character so Create shows its first view.
+  await page.evaluate(() => { const start = [...document.querySelectorAll("button")].find((button) => /^new character$/i.test(button.textContent?.trim() ?? "")); start?.click(); });
+  await page.locator(".model-cards .choice").first().waitFor({ timeout: 20000 });
+  const first = page.locator(".model-cards .choice").first();
+  assert.match(await first.textContent() ?? "", /Best match/, "the first model card is not the benchmark's best match");
+  const second = page.locator(".model-cards .choice:not([disabled])").nth(1);
+  if (await second.count()) { await second.click(); assert.equal(await second.getAttribute("aria-pressed"), "true", "clicking a model card does not select it"); }
+  assert.equal((await page.locator(".step-primary").textContent())?.trim(), "Generate");
+  assert.ok(await page.locator(".step-stage textarea").count(), "no description box on the stage");
+}
+
+/** With the bridge unreachable, Create says so in the model list, and the step bar still works. */
+async function checkCreateOffline(page: Page): Promise<void> {
+  await page.route("http://127.0.0.1:47831/**", (route) => route.abort());
+  await page.goto(`${APP_URL}/create-character`, { waitUntil: "domcontentloaded" });
+  await page.locator(".step-shell").first().waitFor({ timeout: 20000 });
+  await page.locator(".model-cards").getByText("The Mac Studio isn't reachable").waitFor({ timeout: 20000 });
+  assert.ok(await page.locator(".model-cards").getByRole("button", { name: "Retry" }).isVisible(), "no Retry when the Studio is unreachable");
+  assert.equal(await page.locator(".step-nav button").count(), 5);
+}
+
 const checks: readonly (readonly [string, (page: Page) => Promise<void>, string?])[] = [
   ["Create stays on Create with a rigged project open", checkCreateStaysOnCreate],
   ["Every step renders in the shared frame", checkShellOnEveryStep],
   ["A step that is not open yet redirects with its reason", checkUnavailableStepRedirects, UNRIGGED.id],
+  ["Create: model cards, description, Generate", checkCreateGuided],
+  ["Create: says when the Mac Studio is unreachable", checkCreateOffline],
   ["Every control on every step does something", checkEveryControlOnEveryStep],
 ];
 
@@ -233,7 +261,8 @@ const systemChrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chro
 const browser = await chromium.launch({ headless: true, executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ?? (existsSync(systemChrome) ? systemChrome : undefined) });
 let failed = 0;
 try {
-  for (const [name, check, projectId] of checks) {
+  // ONLY=<text> runs just the checks whose name contains it.
+  for (const [name, check, projectId] of checks.filter(([name]) => !process.env.ONLY || name.includes(process.env.ONLY))) {
     const context = await contextWithActiveProject(browser, projectId ?? RIGGED.id);
     const page = await context.newPage();
     try { await check(page); console.log(`PASS  ${name}`); }
@@ -241,5 +270,6 @@ try {
     finally { await context.close(); }
   }
 } finally { await browser.close(); }
-console.log(`${checks.length - failed} / ${checks.length} checks pass`);
+const ran = checks.filter(([name]) => !process.env.ONLY || name.includes(process.env.ONLY)).length;
+console.log(`${ran - failed} / ${ran} checks pass`);
 if (failed) process.exit(1);
