@@ -45,7 +45,8 @@ import { createAnimationLibrary } from "@/src/tools/rig-editor/animation/library
 import { SAMPLE_ANIMATION_PATHS } from "@/src/tools/rig-editor/animation/samplePaths";
 import { useRouter } from "next/navigation";
 import { FacingQuestion, RebuildNotice, RepaintNotice, writeRebuildRequest } from "./RigNotices";
-import type { RigFacing } from "@/src/rigging/motion/rigMotion";
+import { buildStandardClips, type RigFacing } from "@/src/rigging/motion/rigMotion";
+import { ExportForGame } from "./ExportForGame";
 import { ImageProductionStatus } from "./ImageProductionStatus";
 import { PART_CUTTER_IMPORT_KEY, type PartCutterImportPayload } from "@/src/part-cutter/importBridge";
 import { StudioCommandPalette, type StudioCommand } from "@/app/studio-ui/StudioCommandPalette";
@@ -99,6 +100,7 @@ export function RigEditor() {
   const characterStorage = useMemo(() => getGeneratedCharacterStorage(), []);
   const agentSession = useAgentBridge(commandService);
   const [rig, setRig] = useState<RigDefinition | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
   const [defaultRig, setDefaultRig] = useState<RigDefinition | null>(null);
   const [animation, setAnimation] = useState<AnimationDefinition | null>(null);
   const [selections, setSelections] = useState<EditorSelection[]>([]);
@@ -470,6 +472,11 @@ export function RigEditor() {
     setMessage(`Redid ${label ?? "change"}`);
   }, [commandService, previewMode]);
 
+  /** The clips to export: the saved library (with the user's edits), or the standard set built for this rig. */
+  const exportAnimations = (): readonly AnimationDefinition[] => {
+    try { const animations = commandService.getDurableSnapshot().animations?.animations; if (animations?.length) return animations; } catch { /* nothing saved yet */ }
+    return rig ? buildStandardClips(rig) : [];
+  };
   const downloadJson = useCallback((): void => {
     if (!rig) return;
     const blob = new Blob([`${JSON.stringify(rig, null, 2)}\n`], { type: "application/json" });
@@ -818,7 +825,8 @@ export function RigEditor() {
     <input ref={loadInputRef} hidden type="file" accept="application/json,.json" onChange={(event) => void loadJson(event)} />
     <input ref={uploadInputRef} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void uploadAttachment(event)} />
     <input ref={prepareInputRef} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void importSpriteForCutting(event)} />
-    <TopCommandRail active={editorMode} stageStatuses={stageStatuses} projectName={rigName(rig)} dirty={dirty} editingName={renamingRig} onEditingName={setRenamingRig} onCommitName={commitRigName} onSelect={modeSelect} onCommand={() => setCommandPaletteOpen(true)} onUndo={() => inAnimate ? animationCommand("undo") : undo()} onRedo={() => inAnimate ? animationCommand("redo") : redo()} canUndo={!testing && !previewMode && railUndo.canUndo} canRedo={!testing && !previewMode && railUndo.canRedo} undoTitle={testing ? "Posing in Test is not recorded. Use Reset pose" : `${railUndo.undoLabel ?? "Nothing to undo"}  (⌘Z)`} redoTitle={`${railUndo.redoLabel ?? "Nothing to redo"}  (⇧⌘Z)`} onExport={() => inAnimate ? animationCommand("save") : downloadJson()} validity={{ count: validationIssues.length, onOpen: showProblems }} connections={connections} onConnections={() => { setUtilityTab("activity"); setUtilityOpen(true); }} focus={{ active: focusMode, onToggle: toggleFocusMode }} projectActions={<><button type="button" onClick={() => prepareInputRef.current?.click()} disabled={previewMode || inAnimate}>New from image…</button><Link href="/create-character">Generate with AI…</Link><button type="button" onClick={() => loadInputRef.current?.click()} disabled={previewMode || inAnimate}>Load rig file…</button></>} workspaceActions={<><button type="button" onClick={discardDraft} disabled={previewMode || inAnimate}>Discard local draft</button><button type="button" onClick={resetWorkspace}>Reset workspace</button></>}><ImageProductionStatus projectId={agentSession.activeProjectId?.startsWith("character-") ? agentSession.activeProjectId : null} /></TopCommandRail>
+    <TopCommandRail active={editorMode} stageStatuses={stageStatuses} projectName={rigName(rig)} dirty={dirty} editingName={renamingRig} onEditingName={setRenamingRig} onCommitName={commitRigName} onSelect={modeSelect} onCommand={() => setCommandPaletteOpen(true)} onUndo={() => inAnimate ? animationCommand("undo") : undo()} onRedo={() => inAnimate ? animationCommand("redo") : redo()} canUndo={!testing && !previewMode && railUndo.canUndo} canRedo={!testing && !previewMode && railUndo.canRedo} undoTitle={testing ? "Posing in Test is not recorded. Use Reset pose" : `${railUndo.undoLabel ?? "Nothing to undo"}  (⌘Z)`} redoTitle={`${railUndo.redoLabel ?? "Nothing to redo"}  (⇧⌘Z)`} onExport={() => setExportOpen(true)} validity={{ count: validationIssues.length, onOpen: showProblems }} connections={connections} onConnections={() => { setUtilityTab("activity"); setUtilityOpen(true); }} focus={{ active: focusMode, onToggle: toggleFocusMode }} projectActions={<><button type="button" onClick={() => prepareInputRef.current?.click()} disabled={previewMode || inAnimate}>New from image…</button><Link href="/create-character">Generate with AI…</Link><button type="button" onClick={() => loadInputRef.current?.click()} disabled={previewMode || inAnimate}>Load rig file…</button></>} workspaceActions={<><button type="button" onClick={discardDraft} disabled={previewMode || inAnimate}>Discard local draft</button><button type="button" onClick={resetWorkspace}>Reset workspace</button></>}><ImageProductionStatus projectId={agentSession.activeProjectId?.startsWith("character-") ? agentSession.activeProjectId : null} /></TopCommandRail>
+    <ExportForGame open={exportOpen} rig={rig} animations={exportOpen ? exportAnimations() : []} onClose={() => setExportOpen(false)} />
 
       {inAnimate ? <AnimateWorkspace key={hydrationIdentity.projectSessionToken} projectId={hydrationIdentity.activeProjectId} rig={rig} activeSkinId={effectiveSkinId} showGrid={showGrid} showBones={showBones} showBounds={showBounds} viewportRef={viewportRef} initialBoneId={selectedBoneId} onSelectedBone={(boneId) => setSelections((current) => current.length === 1 && current[0].type === "bone" && current[0].id === boneId ? current : [{ type: "bone", id: boneId }])} onHistory={setAnimationHistory} onMotion={(edited) => { if (edited && !hasMotion) { setHasMotion(true); writeStageMark(ANIMATED_KEY, projectKey); } }} onFacing={setFacing} onRebuild={rebuildFromParts} onCursor={setCursor} onZoom={setZoom} onMessage={setMessage} onError={setError} /> : <div key={hydrationIdentity.projectSessionToken} className={`editor-body ${leftCollapsed ? "left-collapsed" : ""} ${rightCollapsed ? "right-collapsed" : ""} ${!primarySelection ? "context-idle" : ""}`} data-canvas-project-id={hydrationIdentity.activeProjectId ?? "browser-draft"} data-inspector-project-id={hydrationIdentity.activeProjectId ?? "browser-draft"}>
       <aside className="editor-left-panel" aria-label="Structure">

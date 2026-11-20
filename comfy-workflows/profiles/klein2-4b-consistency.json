@@ -1,0 +1,287 @@
+{
+ "schema": "cc-media-profile/1",
+ "kind": "image",
+ "exclusive": false,
+ "requires": [
+  {
+   "folder": "diffusion_models",
+   "file": "flux-2-klein-4b.safetensors"
+  },
+  {
+   "folder": "text_encoders",
+   "file": "qwen_3_4b.safetensors"
+  },
+  {
+   "folder": "vae",
+   "file": "flux2-vae.safetensors"
+  },
+  {
+   "folder": "loras",
+   "file": "flux2-klein-4b__consistence-edit-FLUX.2-klein-4B-lora.safetensors"
+  }
+ ],
+ "params": {
+  "prompt": {
+   "type": "text",
+   "max_len": 4000,
+   "required": true,
+   "targets": [
+    [
+     "4",
+     "text"
+    ]
+   ]
+  },
+  "seed": {
+   "type": "int",
+   "min": 0,
+   "max": 9007199254740991,
+   "default": 0,
+   "targets": [
+    [
+     "10",
+     "noise_seed"
+    ]
+   ]
+  },
+  "image": {
+   "type": "image",
+   "required": true,
+   "label": "Input image",
+   "targets": [
+    [
+     "20",
+     "image"
+    ]
+   ]
+  },
+  "megapixels": {
+   "type": "float",
+   "min": 0.25,
+   "max": 2.0,
+   "default": 1.0,
+   "label": "Edited image size (megapixels)",
+   "targets": [
+    [
+     "40",
+     "megapixels"
+    ]
+   ]
+  }
+ },
+ "postprocess": [
+  "none"
+ ],
+ "limits": {
+  "timeout_s": 900
+ },
+ "output": {
+  "node": "13",
+  "field": "filename_prefix"
+ },
+ "graph": {
+  "1": {
+   "class_type": "UNETLoader",
+   "inputs": {
+    "unet_name": "flux-2-klein-4b.safetensors",
+    "weight_dtype": "default"
+   }
+  },
+  "2": {
+   "class_type": "CLIPLoader",
+   "inputs": {
+    "clip_name": "qwen_3_4b.safetensors",
+    "type": "flux2",
+    "device": "default"
+   }
+  },
+  "3": {
+   "class_type": "VAELoader",
+   "inputs": {
+    "vae_name": "flux2-vae.safetensors"
+   }
+  },
+  "4": {
+   "class_type": "CLIPTextEncode",
+   "inputs": {
+    "text": "",
+    "clip": [
+     "2",
+     0
+    ]
+   }
+  },
+  "9": {
+   "class_type": "KSamplerSelect",
+   "inputs": {
+    "sampler_name": "euler"
+   }
+  },
+  "10": {
+   "class_type": "RandomNoise",
+   "inputs": {
+    "noise_seed": 0
+   }
+  },
+  "12": {
+   "class_type": "VAEDecode",
+   "inputs": {
+    "samples": [
+     "11",
+     0
+    ],
+    "vae": [
+     "3",
+     0
+    ]
+   }
+  },
+  "13": {
+   "class_type": "SaveImage",
+   "inputs": {
+    "filename_prefix": "cc/klein2-4b-consistency",
+    "images": [
+     "12",
+     0
+    ]
+   }
+  },
+  "30": {
+   "class_type": "LoraLoaderModelOnly",
+   "inputs": {
+    "model": [
+     "1",
+     0
+    ],
+    "lora_name": "flux2-klein-4b__consistence-edit-FLUX.2-klein-4B-lora.safetensors",
+    "strength_model": 0.6
+   }
+  },
+  "20": {
+   "class_type": "LoadImage",
+   "inputs": {
+    "image": "placeholder.png"
+   }
+  },
+  "40": {
+   "class_type": "ImageScaleToTotalPixels",
+   "inputs": {
+    "image": [
+     "20",
+     0
+    ],
+    "upscale_method": "lanczos",
+    "megapixels": 1.0,
+    "resolution_steps": 16
+   }
+  },
+  "41": {
+   "class_type": "VAEEncode",
+   "inputs": {
+    "pixels": [
+     "40",
+     0
+    ],
+    "vae": [
+     "3",
+     0
+    ]
+   }
+  },
+  "42": {
+   "class_type": "ReferenceLatent",
+   "inputs": {
+    "conditioning": [
+     "4",
+     0
+    ],
+    "latent": [
+     "41",
+     0
+    ]
+   }
+  },
+  "24": {
+   "class_type": "GetImageSize",
+   "inputs": {
+    "image": [
+     "40",
+     0
+    ]
+   }
+  },
+  "7": {
+   "class_type": "EmptyFlux2LatentImage",
+   "inputs": {
+    "width": [
+     "24",
+     0
+    ],
+    "height": [
+     "24",
+     1
+    ],
+    "batch_size": 1
+   }
+  },
+  "8": {
+   "class_type": "Flux2Scheduler",
+   "inputs": {
+    "steps": 4,
+    "width": [
+     "24",
+     0
+    ],
+    "height": [
+     "24",
+     1
+    ]
+   }
+  },
+  "6": {
+   "class_type": "BasicGuider",
+   "inputs": {
+    "model": [
+     "30",
+     0
+    ],
+    "conditioning": [
+     "42",
+     0
+    ]
+   }
+  },
+  "11": {
+   "class_type": "SamplerCustomAdvanced",
+   "inputs": {
+    "noise": [
+     "10",
+     0
+    ],
+    "guider": [
+     "6",
+     0
+    ],
+    "sampler": [
+     "9",
+     0
+    ],
+    "sigmas": [
+     "8",
+     0
+    ],
+    "latent_image": [
+     "7",
+     0
+    ]
+   }
+  }
+ },
+ "id": "klein2-4b-consistency",
+ "label": "Klein 4B: consistent detail restore",
+ "hints": {
+  "best_for": "Keep a character or page consistent while restoring detail (strength 0.6)",
+  "speed": "4 steps",
+  "status": "New 2026-11-11; needs the image-input media service; settings from the LoRA card; not yet test-rendered"
+ }
+}

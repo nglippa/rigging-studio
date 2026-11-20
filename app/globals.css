@@ -258,3 +258,19 @@ footer { max-width: 1280px; margin: 0 auto; padding: 24px 30px 34px; display: fl
   :is(.rig-editor-shell,.part-cutter-shell,.character-workspace) button:hover:not(:disabled),
   :is(.rig-editor-shell,.part-cutter-shell,.character-workspace) button:active:not(:disabled) { transform:none; }
 }
+
+/* Export for a game (ExportForGame): three paths, the clips, progress and the baked sheet. */
+.studio-dialog.export-for-game { width: min(640px, calc(100vw - 32px)); }
+.export-for-game fieldset { border: 0; margin: 12px 0 0; padding: 0; display: grid; gap: 6px; }
+.export-for-game legend { font-size: 12px; opacity: .7; margin-bottom: 4px; }
+.export-paths label { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; padding: 10px 12px; border: 1px solid rgba(255,255,255,.12); border-radius: 6px; cursor: pointer; }
+.export-paths label:has(input:checked) { border-color: rgba(120,200,255,.7); background: rgba(120,200,255,.06); }
+.export-paths span { display: grid; gap: 2px; } .export-paths small { opacity: .75; line-height: 1.4; }
+.export-clips { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+.export-clips label { display: flex; gap: 8px; align-items: center; font-size: 13px; } .export-clips small { margin-left: auto; opacity: .6; }
+.export-progress { margin-top: 14px; display: grid; gap: 8px; } .export-progress progress { width: 100%; }
+.export-preview { max-width: 100%; max-height: 260px; image-rendering: pixelated; background: repeating-conic-gradient(#2a2a30 0 25%, #34343a 0 50%) 0 0 / 16px 16px; border-radius: 4px; }
+.export-downloads { display: flex; gap: 16px; } .export-error { color: #ff8a8a; }
+.export-for-game .studio-dialog-body label { margin-top: 0; color: inherit; font-size: 12px; }
+.export-for-game input[type="radio"], .export-for-game input[type="checkbox"] { width: auto; min-height: 0; margin: 2px 0 0; }
+.export-for-game .studio-dialog-body p { font-size: 12px; }

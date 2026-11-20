@@ -12,6 +12,7 @@ import { DiagnosticReportExporter, type DiagnosticReportRequest } from "../stora
 import { ManagedGenerationStorage, type GenerationImportRequest } from "../storage/managedGenerationStorage";
 import { ImageProductionService, type GenerateImageCandidatesRequest } from "../../src/image-production/service/ImageProductionService";
 import { ImageGenerationJobService } from "../../src/image-production/service/ImageGenerationJobService";
+import { BakeService } from "../../src/image-production/bake/BakeService";
 import { ComfyCharacterPipelineService } from "../../src/image-production/service/ComfyCharacterPipelineService";
 import { suitabilityReviewSchema } from "../../src/character-generation/providers/characterPipelineProvider";
 import type { ImageApprovalPolicy, ImageProductionJson, ImageProposalReviewInput } from "../../src/image-production/proposals/imageProposal";
@@ -45,6 +46,7 @@ export class StudioBridgeServer {
   readonly imageProduction: ImageProductionService;
   readonly imageGenerationJobs: ImageGenerationJobService;
   readonly characterPipeline: ComfyCharacterPipelineService;
+  readonly bake: BakeService;
   readonly visionReview: VisionReviewService;
   private readonly animationDoctor: AstraAnimationDoctorProvider;
 
@@ -80,6 +82,7 @@ export class StudioBridgeServer {
       },
     });
     this.characterPipeline = new ComfyCharacterPipelineService(this.imageProduction);
+    this.bake = new BakeService(this.imageProduction, path.join(this.cwd, ".rigging-studio", "bakes"));
     this.visionReview = options.visionReviewService ?? new VisionReviewService({ queue: new VisionReviewQueue({ cwd: this.cwd }) });
     this.imageGenerationJobs = new ImageGenerationJobService(this.imageProduction);
     this.httpServer = createServer((request, response) => { void this.onHttpRequest(request, response); });
@@ -376,6 +379,29 @@ export class StudioBridgeServer {
         });
         response.writeHead(202, { "Content-Type": "application/json" }).end(JSON.stringify(job));
       } catch (error: unknown) { response.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error instanceof Error ? error.message : "Image generation job could not start" })); }
+      return;
+    }
+    // Sprite-sheet bakes: the rig's own drawings, or each drawing polished by the Studio's model (BakeService).
+    if (request.method === "POST" && request.url === "/bake/jobs") {
+      try {
+        const body = await this.readJsonBody(request, 64_000_000) as Record<string, unknown> | null;
+        if (!body || typeof body !== "object" || !body.rig || !Array.isArray(body.animations) || (body.mode !== "rig" && body.mode !== "polish")) throw new Error("A bake needs rig, animations and mode (rig or polish)");
+        const job = this.bake.start({ rig: body.rig as import("../../src/rigging/schema/types").RigDefinition, animations: body.animations as import("../../src/rigging/schema/types").AnimationDefinition[], mode: body.mode, ...(typeof body.profileId === "string" ? { profileId: body.profileId } : {}), ...(typeof body.prompt === "string" ? { prompt: body.prompt } : {}) });
+        response.writeHead(202, { "Content-Type": "application/json" }).end(JSON.stringify(job));
+      } catch (error: unknown) { response.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error instanceof Error ? error.message : "Bake could not start" })); }
+      return;
+    }
+    if (request.method === "GET" && request.url?.startsWith("/bake/jobs/")) {
+      try { response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(this.bake.get(decodeURIComponent(request.url.slice("/bake/jobs/".length).split("?")[0])))); }
+      catch (error: unknown) { response.writeHead(404, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error instanceof Error ? error.message : "Bake not found" })); }
+      return;
+    }
+    if (request.method === "GET" && request.url?.startsWith("/bake/assets/")) {
+      try {
+        const [jobId, file] = request.url.split("?")[0].slice("/bake/assets/".length).split("/").map(decodeURIComponent);
+        const bytes = await this.bake.asset(jobId, file);
+        response.writeHead(200, { "Content-Type": file.endsWith(".png") ? "image/png" : "application/json", "Content-Length": bytes.length, "Content-Disposition": `attachment; filename="${file}"` }).end(bytes);
+      } catch (error: unknown) { response.writeHead(404, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error instanceof Error ? error.message : "Bake asset not found" })); }
       return;
     }
     if (request.method === "GET" && request.url === "/studio/queue") {
