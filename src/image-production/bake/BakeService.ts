@@ -118,7 +118,8 @@ export class BakeService {
       const base = createRestPose(rig); const times = drawingTimes(clip);
       const smeared = times.map((time) => renderPixelFrame(rig, evaluateAnimationAtTime(clip, base, time), pixels as PartPixels, window, cache, smearOrigin(clip, base, time)));
       // The model would erase a smear as a mistake, so it redraws the figure without it and the smear is laid back on after.
-      const drawings = profile ? times.map((time, index) => smearOrigin(clip, base, time) ? renderPixelFrame(rig, evaluateAnimationAtTime(clip, base, time), pixels as PartPixels, window, cache) : smeared[index]) : smeared;
+      // A redraw instead sees the smear in its reference and draws it in the character's own style.
+      const drawings = profile && !redraw ? times.map((time, index) => smearOrigin(clip, base, time) ? renderPixelFrame(rig, evaluateAnimationAtTime(clip, base, time), pixels as PartPixels, window, cache) : smeared[index]) : smeared;
       const durations = times.map((time, index) => Math.round(((index + 1 < times.length ? times[index + 1] : clip.duration) - time) * 1000));
       let frames = drawings;
       if (profile) {
@@ -143,7 +144,8 @@ export class BakeService {
             // A redraw is a new drawing of the pose, so it may differ more from the rig's drawing than a polish.
             const outcome = output ? snapPolished(output.bytes, input.crop, drawing, palette, redraw ? .6 : .8) : { image: drawing, accepted: false };
             if (outcome.accepted) polished += 1; else kept += 1;
-            out.push(withSmear(outcome.image, smeared[out.length], drawing)); done += 1;
+            // A redraw draws its own smear from the posed reference; laying the rig's on top doubled it into pale blobs.
+            out.push(redraw && outcome.accepted ? outcome.image : withSmear(outcome.image, smeared[out.length], drawing)); done += 1;
             this.update(jobId, { progress: { done, total: this.get(jobId).progress.total, clip: clip.name }, kept });
           }
           return out;
