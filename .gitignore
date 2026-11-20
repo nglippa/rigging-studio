@@ -53,3 +53,6 @@ next-env.d.ts
 /.studio/
 /.bench/
 /tests/fixtures/bench-rigs/last-report.json
+
+# Brainstorming mockups (superpowers visual companion)
+/.superpowers/
