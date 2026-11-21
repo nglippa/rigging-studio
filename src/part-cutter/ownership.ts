@@ -339,6 +339,61 @@ export function adoptStrayArtwork(state: PartCutterState, foreground: readonly n
 }
 
 /**
+ * Moves the boundaries between parts onto the lines drawn in the art. Cuts made from joints are straight lines and
+ * capsules, so they cross a sleeve or a cloak wherever the geometry says; the artist already drew where one part ends and
+ * the next begins, as an outline or a change of colour. Each part keeps its core (everything more than `reach` pixels from
+ * another part), and the band between cores goes to whichever part reaches it most cheaply, where stepping onto a dark
+ * outline or across a change of colour costs much more than stepping within one colour. A boundary therefore moves at most
+ * `reach` pixels, onto the nearest drawn line when there is one, and stays put where the art has none.
+ */
+export function snapBoundariesToOutlines(state: PartCutterState, colours: ArrayLike<number> | undefined, reach: number): { readonly state: PartCutterState; readonly moved: number } {
+  const canonical = ensureOwnershipPartition(state); const partition = canonical.ownership!; const { width, height } = partition;
+  if (!colours || colours.length !== width * height * 4 || reach < 1) return { state: canonical, moved: 0 };
+  const labels = decodeOwnership(partition); const size = width * height;
+  const neighbours = (index: number): number[] => { const x = index % width; return [x > 0 ? index - 1 : -1, x + 1 < width ? index + 1 : -1, index >= width ? index - width : -1, index + width < size ? index + width : -1]; };
+  // How far each owned pixel is from a pixel of another part (not from the background: edges against it are already right).
+  const distance = new Int32Array(size).fill(-1); let frontier: number[] = [];
+  for (let index = 0; index < size; index += 1) {
+    if (labels[index] <= 0) continue;
+    if (neighbours(index).some((next) => next >= 0 && labels[next] > 0 && labels[next] !== labels[index])) { distance[index] = 0; frontier.push(index); }
+  }
+  for (let step = 1; step <= reach && frontier.length; step += 1) {
+    const next: number[] = [];
+    for (const index of frontier) for (const neighbour of neighbours(index)) if (neighbour >= 0 && labels[neighbour] > 0 && distance[neighbour] < 0) { distance[neighbour] = step; next.push(neighbour); }
+    frontier = next;
+  }
+  const contested = (index: number): boolean => labels[index] > 0 && distance[index] >= 0 && distance[index] <= reach;
+  // Stepping cost: dark pixels are outlines, and a jump in colour is where one drawn area meets another.
+  const luminance = (index: number): number => (colours[index * 4] * .299 + colours[index * 4 + 1] * .587 + colours[index * 4 + 2] * .114) / 255;
+  const step = (from: number, to: number): number => {
+    const dark = Math.max(0, (.3 - luminance(to)) / .3);
+    const jump = Math.hypot(colours[from * 4] - colours[to * 4], colours[from * 4 + 1] - colours[to * 4 + 1], colours[from * 4 + 2] - colours[to * 4 + 2]) / 441;
+    return 1 + 12 * dark + 12 * jump;
+  };
+  // Dijkstra from every core pixel that touches the band at once; the first part to settle a band pixel takes it.
+  const cost = new Float64Array(size).fill(Number.POSITIVE_INFINITY); const owner = new Int16Array(size); const settled = new Uint8Array(size);
+  const heap: number[] = []; const heapCost: number[] = [];
+  const push = (index: number, value: number) => { heap.push(index); heapCost.push(value); let at = heap.length - 1; while (at > 0) { const parent = (at - 1) >> 1; if (heapCost[parent] <= heapCost[at]) break; [heap[parent], heap[at]] = [heap[at], heap[parent]]; [heapCost[parent], heapCost[at]] = [heapCost[at], heapCost[parent]]; at = parent; } };
+  const pop = (): number => { const top = heap[0]; const lastIndex = heap.pop()!; const lastCost = heapCost.pop()!; if (heap.length) { heap[0] = lastIndex; heapCost[0] = lastCost; let at = 0; for (;;) { const left = at * 2 + 1; const right = left + 1; let smallest = at; if (left < heap.length && heapCost[left] < heapCost[smallest]) smallest = left; if (right < heap.length && heapCost[right] < heapCost[smallest]) smallest = right; if (smallest === at) break; [heap[smallest], heap[at]] = [heap[at], heap[smallest]]; [heapCost[smallest], heapCost[at]] = [heapCost[at], heapCost[smallest]]; at = smallest; } } return top; };
+  for (let index = 0; index < size; index += 1) {
+    if (labels[index] <= 0 || contested(index)) continue;
+    if (neighbours(index).some((next) => next >= 0 && contested(next))) { cost[index] = 0; owner[index] = labels[index]; push(index, 0); }
+  }
+  while (heap.length) {
+    const index = pop(); if (settled[index]) continue; settled[index] = 1;
+    for (const neighbour of neighbours(index)) {
+      if (neighbour < 0 || settled[neighbour] || !contested(neighbour)) continue;
+      const value = cost[index] + step(index, neighbour);
+      if (value < cost[neighbour]) { cost[neighbour] = value; owner[neighbour] = owner[index]; push(neighbour, value); }
+    }
+  }
+  let moved = 0;
+  for (let index = 0; index < size; index += 1) if (contested(index) && owner[index] > 0 && owner[index] !== labels[index]) { labels[index] = owner[index]; moved += 1; }
+  if (!moved) return { state: canonical, moved: 0 };
+  return { state: commitOwnership(canonical, labels, "refine", partition.regionIds, moved, "ai", "Boundaries moved onto the drawn outlines"), moved };
+}
+
+/**
  * Detached fragments of a part (a few pixels of a staff's outline that fell to the head) go to the neighbouring part they
  * touch most: hidden at rest behind that neighbour, they would otherwise float beside the part as soon as it moves. A
  * fragment is a piece not connected to the part's main body and smaller than 2% of it.

@@ -121,6 +121,20 @@ export function CreateCharacterWorkspace() {
     }); }, 0);
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [characterStorage, commandService]);
+  // Generated options live on the bridge until one is chosen, so a reload (or coming back later) shows them again instead
+  // of the empty description.
+  useEffect(() => {
+    if (restoring) return;
+    let cancelled = false;
+    void (async () => {
+      const listed = await fetch(`${BRIDGE_URL}/image-production/proposals?projectId=${encodeURIComponent(project.id)}`, { cache: "no-store" }).then((response) => response.ok ? response.json() as Promise<{ readonly proposals?: readonly { readonly proposalId: string; readonly status: string; readonly operationType: string; readonly createdAt: string }[] }> : null).catch(() => null);
+      const latest = (listed?.proposals ?? []).filter((proposal) => proposal.status === "awaiting_review" && proposal.operationType === "CHARACTER_GENERATION").sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+      if (!latest || cancelled) return;
+      const payload = await fetch(`${BRIDGE_URL}/image-production/proposals/${encodeURIComponent(latest.proposalId)}/candidates`, { cache: "no-store" }).then((response) => response.ok ? response.json() as Promise<{ readonly proposal?: Omit<GenerationProposalReview, "candidates">; readonly candidates?: readonly GenerationCandidate[] }> : null).catch(() => null);
+      if (!cancelled && payload?.proposal) setGenerationReview((current) => current ?? { ...payload.proposal!, candidates: payload.candidates ?? [] });
+    })();
+    return () => { cancelled = true; };
+  }, [restoring, project.id]);
   useEffect(() => {
     projectRef.current = project;
     commandService.syncProjectFromUi(project, "startup");

@@ -329,6 +329,213 @@
           44
         ]
       }
+    },
+    "fox-rogue-side": {
+      "image": "tests/fixtures/rigging/fox-rogue-side.png",
+      "view": "three-quarter",
+      "pairedLimbs": true,
+      "proportions": "chibi",
+      "source": "FLUX.2 Klein 4B + Pixel Art, 2026-11-21; hooded cloak hides the neck",
+      "joints": {
+        "head": [
+          540,
+          320
+        ],
+        "neck": [
+          550,
+          475
+        ],
+        "pelvis": [
+          520,
+          750
+        ],
+        "leftShoulder": [
+          450,
+          540
+        ],
+        "leftElbow": [
+          428,
+          615
+        ],
+        "leftWrist": [
+          425,
+          680
+        ],
+        "rightShoulder": [
+          600,
+          540
+        ],
+        "rightElbow": [
+          615,
+          600
+        ],
+        "rightWrist": [
+          650,
+          650
+        ],
+        "leftHip": [
+          465,
+          760
+        ],
+        "leftKnee": [
+          460,
+          820
+        ],
+        "leftAnkle": [
+          460,
+          870
+        ],
+        "rightHip": [
+          575,
+          760
+        ],
+        "rightKnee": [
+          580,
+          815
+        ],
+        "rightAnkle": [
+          585,
+          865
+        ]
+      }
+    },
+    "fox-rogue-front": {
+      "image": "tests/fixtures/rigging/fox-rogue-front.png",
+      "view": "three-quarter",
+      "pairedLimbs": false,
+      "proportions": "chibi",
+      "source": "FLUX.2 Klein 4B + Pixel Art, 2026-11-21; generated with a margin around the figure",
+      "joints": {
+        "head": [
+          515,
+          330
+        ],
+        "neck": [
+          485,
+          500
+        ],
+        "pelvis": [
+          515,
+          740
+        ],
+        "leftShoulder": [
+          410,
+          530
+        ],
+        "leftElbow": [
+          385,
+          595
+        ],
+        "leftWrist": [
+          360,
+          630
+        ],
+        "rightShoulder": [
+          585,
+          540
+        ],
+        "rightElbow": [
+          625,
+          610
+        ],
+        "rightWrist": [
+          620,
+          665
+        ],
+        "leftHip": [
+          455,
+          745
+        ],
+        "leftKnee": [
+          450,
+          790
+        ],
+        "leftAnkle": [
+          440,
+          860
+        ],
+        "rightHip": [
+          575,
+          745
+        ],
+        "rightKnee": [
+          575,
+          790
+        ],
+        "rightAnkle": [
+          585,
+          860
+        ]
+      }
+    },
+    "hearthcap-tinker": {
+      "image": "tests/fixtures/rigging/hearthcap-tinker.png",
+      "view": "front",
+      "pairedLimbs": false,
+      "proportions": "chibi",
+      "source": "final-gate-06 (short/broad chibi, large hat)",
+      "joints": {
+        "head": [
+          600,
+          400
+        ],
+        "neck": [
+          580,
+          610
+        ],
+        "pelvis": [
+          580,
+          960
+        ],
+        "leftShoulder": [
+          380,
+          650
+        ],
+        "leftElbow": [
+          350,
+          720
+        ],
+        "leftWrist": [
+          330,
+          760
+        ],
+        "rightShoulder": [
+          800,
+          650
+        ],
+        "rightElbow": [
+          860,
+          740
+        ],
+        "rightWrist": [
+          900,
+          810
+        ],
+        "leftHip": [
+          480,
+          990
+        ],
+        "leftKnee": [
+          440,
+          1080
+        ],
+        "leftAnkle": [
+          400,
+          1160
+        ],
+        "rightHip": [
+          700,
+          990
+        ],
+        "rightKnee": [
+          740,
+          1070
+        ],
+        "rightAnkle": [
+          790,
+          1150
+        ]
+      }
     }
   },
   "proportionsOnly": {

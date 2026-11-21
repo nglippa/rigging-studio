@@ -48,5 +48,35 @@
       "mean": 0.0384,
       "worst": 0.0819
     }
+  },
+  "fox-rogue-side": {
+    "outline": {
+      "mean": 0.0475,
+      "worst": 0.1462
+    },
+    "full": {
+      "mean": 0.0377,
+      "worst": 0.0943
+    }
+  },
+  "fox-rogue-front": {
+    "outline": {
+      "mean": 0.0363,
+      "worst": 0.0784
+    },
+    "full": {
+      "mean": 0.0324,
+      "worst": 0.0544
+    }
+  },
+  "hearthcap-tinker": {
+    "outline": {
+      "mean": 0.0436,
+      "worst": 0.1089
+    },
+    "full": {
+      "mean": 0.0368,
+      "worst": 0.1019
+    }
   }
 }

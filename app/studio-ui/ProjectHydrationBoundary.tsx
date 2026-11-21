@@ -8,6 +8,8 @@ type Props = {
   readonly children: ReactNode;
 };
 
+const keyFor = (identity: ProjectHydrationSnapshot): string => `${identity.activeProjectId ?? "browser-draft"}:${identity.projectSessionToken}`;
+
 const ProjectHydrationContext = createContext<ProjectHydrationSnapshot | null>(null);
 
 export function useProjectHydrationIdentity(): ProjectHydrationSnapshot {
@@ -23,9 +25,22 @@ export function useProjectHydrationIdentity(): ProjectHydrationSnapshot {
  */
 export function ProjectHydrationBoundary({ children }: Props) {
   const service = useMemo(() => getRiggingCommandService(), []);
-  const [identity, setIdentity] = useState(() => service.getProjectLifecycleSnapshot());
+  const [view, setView] = useState(() => { const identity = service.getProjectLifecycleSnapshot(); return { identity, key: keyFor(identity) }; });
+  const { identity, key } = view;
 
-  useEffect(() => service.subscribeProjectLifecycle(() => setIdentity(service.getProjectLifecycleSnapshot())), [service]);
+  // The page below activates its startup project in its own effects, which run before this one subscribes, so read the
+  // snapshot again once subscribed. That first activation (no project yet, to the project the page already shows) keeps
+  // the subtree: remounting for it threw the page away mid-action (the first Generate lost its request and its error).
+  useEffect(() => {
+    const update = () => setView((previous) => {
+      const next = service.getProjectLifecycleSnapshot();
+      const keep = (previous.identity.activeProjectId === null && !next.switching) || keyFor(next) === keyFor(previous.identity);
+      return { identity: next, key: keep ? previous.key : keyFor(next) };
+    });
+    const unsubscribe = service.subscribeProjectLifecycle(update);
+    update();
+    return unsubscribe;
+  }, [service]);
 
   if (identity.switching) {
     return <main
@@ -42,7 +57,6 @@ export function ProjectHydrationBoundary({ children }: Props) {
     </main>;
   }
 
-  const key = `${identity.activeProjectId ?? "browser-draft"}:${identity.projectSessionToken}`;
   return <ProjectHydrationContext.Provider value={identity}><div
       key={key}
       className="project-hydration-root"

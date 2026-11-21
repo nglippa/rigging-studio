@@ -13,7 +13,9 @@ type BakeJob = { readonly jobId: string; readonly status: string; readonly error
 const fileName = (rig: RigDefinition): string => String(rig.metadata?.name ?? rig.id).replace(/[^\w-]+/g, "-");
 const saveText = (name: string, text: string): void => { const url = URL.createObjectURL(new Blob([text], { type: "application/json" })); const link = document.createElement("a"); link.href = url; link.download = name; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000); };
 /** The bridge sends bake files as attachments, so following the link saves them. */
-const saveFrom = (url: string): void => { const link = document.createElement("a"); link.href = url; link.rel = "noopener"; link.click(); };
+// The sheet is on the bridge (another origin), where a link's download name is ignored, so it is fetched and saved by name.
+const saveFrom = (url: string, name: string): void => { void fetch(url, { cache: "no-store" }).then((response) => response.blob()).then((blob) => { const objectUrl = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = objectUrl; link.download = name; link.click(); window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000); }); };
+const count = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`;
 const jobOf = (sheetUrl: string): string | null => /\/bake\/assets\/([^/]+)\/sheet\.png$/.exec(sheetUrl)?.[1] ?? null;
 
 async function waitForJob(jobId: string, live: () => boolean): Promise<BakeJob> {
@@ -72,7 +74,7 @@ export function useExportStep({ rig, clips, look, redraws, active }: { readonly 
     const source = rigRef.current; if (!source) return;
     if (format === "live") { saveText(`${fileName(source)}.rig.json`, JSON.stringify(source, null, 2)); saveText(`${fileName(source)}.animations.json`, JSON.stringify({ rigId: source.id, animations: clipsRef.current }, null, 2)); return; }
     if (!sheet) return;
-    saveFrom(`${BRIDGE_URL}${sheet.sheet}`); window.setTimeout(() => saveFrom(`${BRIDGE_URL}${sheet.json}`), 300);
+    saveFrom(`${BRIDGE_URL}${sheet.sheet}`, `${fileName(source)}.sheet.png`); saveFrom(`${BRIDGE_URL}${sheet.json}`, `${fileName(source)}.sheet.json`);
   }, [format, sheet]);
 
   const startPolish = useCallback(async (): Promise<void> => {
@@ -94,10 +96,10 @@ export function useExportStep({ rig, clips, look, redraws, active }: { readonly 
     : { label: "Download sprite sheet", onClick: save, busy: busy && !sheet,
       disabled: !clips.length || unreachable || missing.length > 0 || !sheet,
       disabledReason: !clips.length ? "Tick at least one animation in Animate" : unreachable ? "The Mac Studio bridge isn't reachable; the live rig still downloads" : missing.length ? `${missing.length} ${missing.length === 1 ? "animation isn't" : "animations aren't"} redrawn yet; finish them in Animate` : error ?? "Making the sheet…" };
-  const instruction = error ?? (format === "live" ? `The rig and ${clips.length} animations as JSON, for an engine that plays skeletal animation.`
+  const instruction = error ?? (format === "live" ? `The rig and ${count(clips.length, "animation")} as JSON, for an engine that plays skeletal animation.`
     : unreachable ? "The Mac Studio bridge isn't reachable, so no sprite sheet can be made. The live rig still downloads."
-    : missing.length ? `${missing.length} of ${clips.length} animations aren't redrawn yet. Finish them in Animate, or export the Rigged look.`
-    : sheet ? `${clips.length} animations, ${drawings} drawings, ${look === "redrawn" ? "redrawn" : "as rigged"}. Download when it looks right.` : "Making the sprite sheet…");
+    : missing.length ? `${missing.length} of ${count(clips.length, "animation")} ${missing.length === 1 ? "isn't" : "aren't"} redrawn yet. Finish them in Animate, or export the Rigged look.`
+    : sheet ? `${count(clips.length, "animation")}, ${count(drawings, "drawing")}, ${look === "redrawn" ? "redrawn" : "as rigged"}. Download when it looks right.` : "Making the sprite sheet…");
 
   const preview: ReactNode = format === "live"
     ? <p className="export-stage-note">The live rig has no sheet to preview: your engine plays the bones. Animate shows how it moves.</p>
@@ -111,8 +113,8 @@ export function useExportStep({ rig, clips, look, redraws, active }: { readonly 
       <button type="button" aria-pressed={format === "live"} onClick={() => setFormat("live")}>Live rig</button>
     </div>
     <p className="panel-note">{format === "sheet" ? `A PNG of every drawing and a JSON of timings, ${look === "redrawn" ? "in the redrawn look" : "as the rig draws them"} (the look is chosen in Animate).` : "The bones, parts and animations as JSON. Gear stays swappable; nothing is baked."}</p>
-    <p className="panel-label">Included<span className="panel-label-aside">{drawings} drawings</span></p>
-    {clips.map((clip) => { const status = look === "redrawn" && format === "sheet" ? redraws.status[clip.id] : undefined; return <div key={clip.id} className="panel-row"><span>{clip.name}</span><span className={status && status.state !== "ready" ? "is-warn" : "is-muted"}>{status ? (status.state === "ready" ? "redrawn" : "not redrawn") : `${drawingsIn(clip)} drawings`}</span></div>; })}
+    <p className="panel-label">Included<span className="panel-label-aside">{format === "sheet" ? count(drawings, "drawing") : count(clips.length, "animation")}</span></p>
+    {clips.map((clip) => { const status = look === "redrawn" && format === "sheet" ? redraws.status[clip.id] : undefined; return <div key={clip.id} className="panel-row"><span>{clip.name}</span><span className={status && status.state !== "ready" ? "is-warn" : "is-muted"}>{status ? (status.state === "ready" ? "redrawn" : "not redrawn") : format === "sheet" ? count(drawingsIn(clip), "drawing") : "keyframed"}</span></div>; })}
     {!clips.length && <p className="panel-note">Nothing is ticked in Animate.</p>}
     <button type="button" className="panel-link" onClick={onExpand}>Sheet layout · Polish-only option →</button>
   </>;
@@ -127,7 +129,7 @@ export function useExportStep({ rig, clips, look, redraws, active }: { readonly 
         <p className="panel-note">Keeps the rig&rsquo;s drawings and only cleans seams and broken lines on the Mac Studio. Lighter than a redraw; the pose never changes.</p>
         <button type="button" className="panel-button" disabled={unreachable || polish.state === "running" || !clips.length} title={unreachable ? "The Mac Studio isn't reachable" : undefined} onClick={() => void startPolish()}>{polish.state === "running" ? "Polishing…" : "Make a polished sheet"}</button>
         {polish.state === "failed" && <small className="panel-note is-warn">{polish.error}</small>}
-        {polish.state === "done" && polish.sheet && <><SheetPlayer sheetUrl={`${BRIDGE_URL}${polish.sheet.sheet}`} jsonUrl={`${BRIDGE_URL}${polish.sheet.json}`} /><div className="ex-buttons"><button type="button" className="panel-button" onClick={() => { saveFrom(`${BRIDGE_URL}${polish.sheet!.sheet}`); window.setTimeout(() => saveFrom(`${BRIDGE_URL}${polish.sheet!.json}`), 300); }}>Download polished sheet</button></div></>}
+        {polish.state === "done" && polish.sheet && <><SheetPlayer sheetUrl={`${BRIDGE_URL}${polish.sheet.sheet}`} jsonUrl={`${BRIDGE_URL}${polish.sheet.json}`} /><div className="ex-buttons"><button type="button" className="panel-button" onClick={() => { const name = rigRef.current ? fileName(rigRef.current) : "character"; saveFrom(`${BRIDGE_URL}${polish.sheet!.sheet}`, `${name}.polished.sheet.png`); saveFrom(`${BRIDGE_URL}${polish.sheet!.json}`, `${name}.polished.sheet.json`); }}>Download polished sheet</button></div></>}
       </section>
     </>}
   />;

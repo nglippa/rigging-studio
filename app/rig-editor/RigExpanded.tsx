@@ -121,10 +121,10 @@ export function RigExpanded(props: Props) {
       </section>
       <section className="ex-section"><h5>Bends between<span>{limits ? `${number(limits.min)}° and ${number(limits.max)}°` : "any angle"}</span></h5>
         {limits ? <>
-          <div className="ex-buttons">
+          <>
             <Nudge label="Min" value={limits.min} step={5} disabled={props.disabled} onCommit={(min) => props.onLimits({ min: Math.min(min, limits.max), max: limits.max })} />
             <Nudge label="Max" value={limits.max} step={5} disabled={props.disabled} onCommit={(max) => props.onLimits({ min: limits.min, max: Math.max(max, limits.min) })} />
-          </div>
+          </>
           <label className="panel-field"><span>Test</span><input type="range" aria-label="Test the bend" min={limits.min} max={limits.max} step={1} value={props.testAngle ?? 0} disabled={props.disabled && props.testAngle === null}
             onChange={(event) => props.onTestAngle(event.target.valueAsNumber)} /></label>
           <div className="ex-buttons">

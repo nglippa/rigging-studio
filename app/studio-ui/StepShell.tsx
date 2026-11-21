@@ -99,8 +99,11 @@ export function StepShell(props: StepShellProps) {
     </header>
     {expanded ?? <div className="step-body"><section className="step-stage" aria-label={`${label} stage`}>{props.stage}</section><aside className="step-panel" aria-label={`${label} options`}>{props.panel}</aside></div>}
     <footer className="step-bar">
-      <div className="step-secondary">{props.secondary}</div>
-      <p className={`step-instruction tone-${props.tone ?? "info"}`} role="status" aria-live="polite">{props.instruction}</p>
+      {/* Back on the left, then the instruction leading into the main button, which stays centred (frame option A). */}
+      <div className="step-lead">
+        <div className="step-secondary">{props.secondary}</div>
+        <p className={`step-instruction tone-${props.tone ?? "info"}`} role="status" aria-live="polite">{props.instruction}</p>
+      </div>
       <button type="button" className="step-primary" onClick={primary.onClick} disabled={primary.disabled || primary.busy}
         title={primary.disabled ? primary.disabledReason : undefined} aria-description={primary.disabled ? primary.disabledReason : undefined} aria-busy={primary.busy || undefined}>
         {primary.busy ? "Working…" : primary.label}

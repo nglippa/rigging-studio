@@ -74,6 +74,17 @@ export function detectProportions(alpha: readonly number[], width: number, heigh
   return median / widths.length < ADULT_MAX_MEDIAN_WIDTH ? "adult" : "chibi";
 }
 const ADULT_NECK = .22; const ADULT_PELVIS = .52;
+/**
+ * The picture around the figure, measured from the figure itself: its bounds plus a margin of 4% of its height, never
+ * more than the canvas. Proportions read against the canvas changed with however much empty space the image had: a
+ * generated character drawn at 80% of its canvas read as "compact" (neck pushed down to half its height) and its
+ * ankles were placed below its feet. The 48 px benchmark sprites fill their canvas this tightly already.
+ */
+const figureFrame = (profile: SilhouetteProfile): { readonly top: number; readonly height: number } => {
+  const bounds = profile.foregroundBounds; const margin = Math.max(2, Math.round(bounds.height * .04));
+  const top = Math.max(0, bounds.y - margin); const bottom = Math.min(profile.height, bounds.y + bounds.height + margin);
+  return { top, height: bottom - top };
+};
 const adultPelvisFactor = (ADULT_PELVIS - ADULT_NECK) / (1 - ADULT_NECK);
 
 /** Runs of foreground across a horizontal band, heaviest first. Thin runs (a blade, a strap) are left out. */
@@ -172,7 +183,7 @@ const traceWrist = (alpha: readonly number[], profile: SilhouetteProfile, side: 
 
 function descriptorFor(alpha: readonly number[], profile: SilhouetteProfile, requestedProfile: AnatomicalPartitionGuide["profile"], proportions: "chibi" | "adult" = "chibi"): { descriptor: ChibiProportionDescriptor; neckY: number; hiddenLegs: boolean; armorLikely: boolean } {
   const bounds = profile.foregroundBounds; const bottom = bounds.y + bounds.height - 1; const bboxCenter = bounds.x + bounds.width / 2; const bodyCenterX = clamp(bboxCenter + (profile.centerOfMass.x - bboxCenter) * .4, bounds.x, bounds.x + bounds.width - 1);
-  const compactSource = bounds.height < profile.height * .82; const tall = bounds.height / bounds.width > 1.42; const foregroundCenterYRatio = (profile.centerOfMass.y - bounds.y) / bounds.height;
+  const compactSource = bounds.height < figureFrame(profile).height * .82; const tall = bounds.height / bounds.width > 1.42; const foregroundCenterYRatio = (profile.centerOfMass.y - bounds.y) / bounds.height;
   const defaultRatio = compactSource ? .52 : tall ? .45 : .42; const searchTop = Math.round(bounds.y + bounds.height * .30); const searchBottom = Math.round(bounds.y + bounds.height * .60);
   let narrowY = Math.round(bounds.y + bounds.height * defaultRatio); let narrowScore = Number.POSITIVE_INFINITY;
   for (let y = searchTop; y <= searchBottom; y += 1) { const width = smoothRowWidth(profile, y); const above = smoothRowWidth(profile, Math.max(bounds.y, y - Math.round(bounds.height * .08))); const below = smoothRowWidth(profile, Math.min(bottom, y + Math.round(bounds.height * .08))); if (!width || !above || !below) continue; const score = width / Math.max(1, (above + below) / 2) + Math.abs(y - (bounds.y + bounds.height * defaultRatio)) / bounds.height * .45; if (score < narrowScore) { narrowScore = score; narrowY = y; } }
@@ -195,7 +206,7 @@ function descriptorFor(alpha: readonly number[], profile: SilhouetteProfile, req
 type LandmarkInput = { id: AnatomicalLandmarkId; point: Point; source: LandmarkEvidenceSource; visibility: LandmarkVisibilityState; confidence: number; method: string };
 function inferLandmarks(alpha: readonly number[], profile: SilhouetteProfile, descriptor: ChibiProportionDescriptor, neckYInput: number, requestedProfile: AnatomicalPartitionGuide["profile"], hiddenLegs: boolean, armorLikely: boolean, proportions: "chibi" | "adult" = "chibi"): AnatomicalLandmark[] {
   const bounds = descriptor.foregroundBounds; const bottom = bounds.y + bounds.height - 1; const bboxCenter = bounds.x + bounds.width / 2; const extreme = descriptor.archetype === "large_head_extreme"; const broad = descriptor.archetype === "broad_chibi"; const tall = descriptor.archetype === "tall_chibi"; const digitigrade = requestedProfile === "digitigrade"; const center = digitigrade ? bboxCenter + (profile.centerOfMass.x - bboxCenter) * .8 : extreme ? bboxCenter - bounds.width * .02 : bboxCenter; const pelvisFactor = proportions === "adult" ? adultPelvisFactor : extreme ? .66 : broad ? .61 : tall ? .54 : .57;
-  const neckY = armorLikely ? neckYInput - bounds.height * .07 : neckYInput; const pelvisY = neckY + (bottom - neckY) * pelvisFactor; const chestY = neckY + (pelvisY - neckY) * .34; const shoulderY = neckY + (pelvisY - neckY) * (proportions === "adult" ? .25 : armorLikely ? .06 : .12); const rootY = Math.min(profile.height * .96, bottom + bounds.height * .15); const ankleY = rootY - bounds.height * .055; const kneeY = pelvisY + (ankleY - pelvisY) * .55;
+  const neckY = armorLikely ? neckYInput - bounds.height * .07 : neckYInput; const pelvisY = neckY + (bottom - neckY) * pelvisFactor; const chestY = neckY + (pelvisY - neckY) * .34; const shoulderY = neckY + (pelvisY - neckY) * (proportions === "adult" ? .25 : armorLikely ? .06 : .12); const frame = figureFrame(profile); const rootY = Math.min(frame.top + frame.height * .96, bottom + bounds.height * .15); const ankleY = rootY - bounds.height * .055; const kneeY = pelvisY + (ankleY - pelvisY) * .55;
   const wideBroad = broad && bounds.width / bounds.height > 1.05; const shoulderHalf = broad && !armorLikely ? bounds.width * .20 : armorLikely ? bounds.width * .18 : Math.max(bounds.width * .16, bounds.height * .095); const hipHalf = Math.max(bounds.width * .055, bounds.height * .035);
   // The shoulders sit on the torso, so they are measured from the torso's own run of pixels, never from the bounding box,
   // which a held sword or shield widens (on the goblin, the box-based right shoulder landed on the shield's rim and the

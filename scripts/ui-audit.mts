@@ -44,6 +44,12 @@ async function installFixtures(): Promise<void> {
 async function contextWithActiveProject(browser: Awaited<ReturnType<typeof chromium.launch>>, projectId: string): Promise<BrowserContext> {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   await context.addInitScript(([key, id]) => { try { window.localStorage.setItem(key, id); } catch { /* storage blocked */ } }, [ACTIVE_DISK_PROJECT_KEY, projectId] as const);
+  // Pressing Generate (the every-control check does) must not start a real two-minute generation on the Mac Studio.
+  await context.route("http://127.0.0.1:47831/image-generation/jobs", (route) => route.request().method() === "POST"
+    ? route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Generation is not run by the UI audit" }) })
+    : route.fallback());
+  // Nor may options left over from an earlier generation (Create shows them again after a reload) change what a check sees.
+  await context.route(/^http:\/\/127\.0\.0\.1:47831\/image-production\/proposals\?/, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ proposals: [] }) }));
   return context;
 }
 
@@ -262,12 +268,14 @@ async function checkCreateOffline(page: Page): Promise<void> {
 }
 
 /** Opens a step's expanded view from the panel link whose text matches. */
-const expandWith = (link: RegExp) => async (page: Page) => { const target = page.locator(".step-panel .panel-link").filter({ hasText: link }).first(); await target.waitFor({ state: "visible", timeout: 30000 }); await target.click(); await page.locator(".step-shell.is-expanded").waitFor({ timeout: 10000 }); };
+const expandWith = (link: RegExp) => async (page: Page) => { const target = page.locator(".step-panel .panel-link").filter({ hasText: link }).first(); await target.waitFor({ state: "visible", timeout: 30000 }); await target.click(); try { await page.locator(".step-shell.is-expanded").waitFor({ timeout: 10000 }); } catch (error) { if (process.env.DEBUG) { await page.screenshot({ path: `${process.env.TMPDIR ?? "/tmp"}/ui-audit-expand-fail.png` }); console.log("EXPAND FAIL TEXT:", (await page.locator("body").innerText()).replace(/\n+/g, " | ").slice(0, 900)); } throw error; } };
 
 /** Create's expanded view: every control works, and Done returns to the guided view. */
 async function checkCreateExpanded(page: Page): Promise<void> {
   const problems = await checkEveryControl(page, "/create-character", "Create expanded", expandWith(/Tune this model/));
   await page.goto(`${APP_URL}/create-character`, { waitUntil: "domcontentloaded" }); await page.locator(".step-shell").first().waitFor({ timeout: 40000 });
+  // The remembered disk project reopens just after the frame appears and remounts the page; a click before that is lost.
+  await page.waitForTimeout(1500);
   await expandWith(/Tune this model/)(page);
   await page.locator(".step-primary").click();
   assert.equal(await page.locator(".step-shell.is-expanded").count(), 0, "Done, back to Create did not leave the expanded view");

@@ -84,9 +84,69 @@ function fillMissing(found: Partial<Record<PoseKeypointName, PoseKeypoint>>): Re
 /** Runs the model on prepared input; supplied by the browser or the benchmark. */
 export type DwposeRunner = (input: Float32Array) => Promise<{ readonly simccX: ArrayLike<number>; readonly simccY: ArrayLike<number> }>;
 
-/** Keypoints for the character in an RGBA image, or null when it is empty. */
+/** The limb joints and nose: what decides whether a pass found the body. */
+const BODY_JOINTS: readonly PoseKeypointName[] = ["nose", "leftShoulder", "rightShoulder", "leftElbow", "rightElbow", "leftWrist", "rightWrist", "leftHip", "rightHip", "leftKnee", "rightKnee", "leftAnkle", "rightAnkle"];
+const confidentJoints = (pose: DetectedPose): number => BODY_JOINTS.filter((name) => pose.keypoints[name].visibility >= DWPOSE_MIN_SCORE).length;
+/** Below this many confident joints, the squashed-head passes are tried too. */
+const ENOUGH_JOINTS = 8;
+/** Share of the figure's height the head is squashed into, and the shares of the top it is taken from. */
+const SQUASHED_HEAD = .18;
+const HEAD_SHARES = [.35, .45, .55] as const;
+/**
+ * What a squashed pass must clear, measured on the hand-marked sprites (tests/rigging/guide-accuracy.test.ts): its joints
+ * scored between .5 and .6 were usually wrong, and on 48 px sprites every one was (shoulders a fifth of the height off).
+ * Its eyes and ears are never used: they sit in the squashed band, where any error grows about two and a half times when
+ * mapped back (the fox's head landed 15% of its height off). The nose is kept; it only sets where the neck leans.
+ */
+const SQUASHED_MIN_SCORE = .6;
+const SQUASHED_MIN_FIGURE = 200;
+const SQUASHED_NEVER: readonly PoseKeypointName[] = ["leftEye", "rightEye", "leftEar", "rightEar"];
+
+/**
+ * The image with the top `share` of the figure squashed into SQUASHED_HEAD of its height and the rest stretched to fill
+ * it, plus the map from a warped row back to the source row. DWPose was trained on people with heads about a seventh of
+ * their height, and on chibi art (heads around half) it found nothing: on the generated fox rogues it was sure of no
+ * joint at all, while the same art with the head squashed gave it ten to twelve.
+ */
+function squashHead(image: RgbaImage, top: number, bottom: number, share: number): { readonly image: RgbaImage; readonly toSource: (y: number) => number } {
+  const { width, height, data } = image; const figure = bottom - top + 1;
+  const split = top + share * figure; const target = top + SQUASHED_HEAD * figure;
+  const toSource = (y: number) => y < top ? y : y < target ? top + (y - top) * (share / SQUASHED_HEAD) : split + (y - target) * ((1 - share) / (1 - SQUASHED_HEAD));
+  const warped = new Uint8ClampedArray(width * height * 4);
+  for (let y = 0; y < height; y += 1) {
+    const source = Math.min(height - 1, Math.max(0, Math.floor(toSource(y + .5))));
+    for (let index = 0; index < width * 4; index += 1) warped[y * width * 4 + index] = data[source * width * 4 + index];
+  }
+  return { image: { width, height, data: warped }, toSource };
+}
+
+const unwarp = (pose: DetectedPose, toSource: (y: number) => number): DetectedPose => ({
+  ...pose, keypoints: Object.fromEntries(Object.entries(pose.keypoints).map(([name, point]) => [name, {
+    ...point, y: toSource(point.y),
+    visibility: point.visibility < SQUASHED_MIN_SCORE || SQUASHED_NEVER.includes(name as PoseKeypointName) ? 0 : point.visibility,
+  }])) as DetectedPose["keypoints"],
+});
+
+/**
+ * Keypoints for the character in an RGBA image, or null when it is empty. When the plain pass finds too few joints (big
+ * heads), passes with the head squashed are tried as well, and the pass sure of the most joints is kept.
+ */
 export async function detectDwpose(image: RgbaImage, run: DwposeRunner): Promise<DetectedPose | null> {
-  const prepared = prepareDwposeInput(image); if (!prepared) return null;
-  const output = await run(prepared.input);
-  return decodeDwpose(output.simccX, output.simccY, prepared.crop, image);
+  const pass = async (input: RgbaImage): Promise<DetectedPose | null> => {
+    const prepared = prepareDwposeInput(input); if (!prepared) return null;
+    const output = await run(prepared.input);
+    return decodeDwpose(output.simccX, output.simccY, prepared.crop, image);
+  };
+  const plain = await pass(image); if (!plain || confidentJoints(plain) >= ENOUGH_JOINTS) return plain;
+  let top = image.height; let bottom = -1;
+  for (let y = 0; y < image.height; y += 1) for (let x = 0; x < image.width; x += 1) if (image.data[(y * image.width + x) * 4 + 3] > 16) { if (y < top) top = y; if (y > bottom) bottom = y; }
+  if (bottom - top + 1 < SQUASHED_MIN_FIGURE) return plain;
+  let best = plain; let bestCount = confidentJoints(plain);
+  for (const share of HEAD_SHARES) {
+    const squashed = squashHead(image, top, bottom, share);
+    const found = await pass(squashed.image); if (!found) continue;
+    const mapped = unwarp(found, squashed.toSource); const count = confidentJoints(mapped);
+    if (count > bestCount) { best = mapped; bestCount = count; }
+  }
+  return best;
 }

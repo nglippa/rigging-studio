@@ -1,6 +1,6 @@
 import type { Rect, SegmentationMask } from "../character-generation/segmentation/segmentationSchema";
 import { createManualRegionFromSelection, intersectSelectionWithForeground } from "./manualPartition";
-import { adoptStrayArtwork, assignOwnershipSelection, decodeOwnership, ensureOwnershipPartition, reassignDetachedFragments, removeOwnershipRegion } from "./ownership";
+import { adoptStrayArtwork, assignOwnershipSelection, decodeOwnership, ensureOwnershipPartition, reassignDetachedFragments, removeOwnershipRegion, snapBoundariesToOutlines } from "./ownership";
 import type { GuidedManualIntent, GuidedManualProgress, PartCutterState } from "./schema";
 import { SEMANTIC_TAXONOMY, type PartSemanticType } from "./semanticTaxonomy";
 
@@ -220,7 +220,7 @@ export type GuideAllResult = { readonly state: PartCutterState; readonly cut: re
  * pressed on each one. Parts already cut are left alone, so it is safe after some hand cutting. A part with no outline,
  * or whose outline is already taken by other parts, is reported as missed and left for the user.
  */
-export function guideAllBodyParts(state: PartCutterState, foreground: readonly number[], at?: string): GuideAllResult {
+export function guideAllBodyParts(state: PartCutterState, foreground: readonly number[], at?: string, colours?: ArrayLike<number>): GuideAllResult {
   let current = initializeGuidedManual(state, at);
   const cut: PartSemanticType[] = []; const missed: PartSemanticType[] = []; const hidden: PartSemanticType[] = [];
   for (const semantic of GUIDED_BODY_ORDER) {
@@ -243,6 +243,11 @@ export function guideAllBodyParts(state: PartCutterState, foreground: readonly n
   if (cut.length + hidden.length === GUIDED_BODY_ORDER.length) {
     const { width, height } = current.sourceCanvasSize;
     current = adoptStrayArtwork(current, foreground, Math.max(2, Math.round(Math.hypot(width, height) * .15))).state;
+    // Then each boundary moves onto the outline the artist drew next to it (see snapBoundariesToOutlines), up to 3% of
+    // the figure's height. Only here, where every part came from the outlines: hand-cut edges are left as drawn.
+    let top = height; let bottom = -1;
+    for (let index = 0; index < foreground.length; index += 1) if (foreground[index]) { const y = Math.floor(index / width); if (y < top) top = y; if (y > bottom) bottom = y; }
+    if (colours && bottom >= top) current = snapBoundariesToOutlines(current, colours, Math.max(2, Math.round((bottom - top + 1) * .03))).state;
   }
   if (cut.length + hidden.length === GUIDED_BODY_ORDER.length) current = reassignDetachedFragments(current).state;
   return { state: current, cut, missed, hidden };
