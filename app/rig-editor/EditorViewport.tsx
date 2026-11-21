@@ -188,7 +188,7 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
       const previous = times.filter((time) => time < currentTime - .0001).at(-1);
       const next = times.find((time) => time > currentTime + .0001);
       const drawGhost = (ghostTime: number, color: number): void => {
-        const pose = evaluateAnimationAtTime(currentProps.animation!, createRestPose(currentProps.rig), ghostTime);
+        const pose = evaluateAnimationAtTime(currentProps.animation!, createRestPose(currentProps.rig), ghostTime, currentProps.rig);
         const transforms = computeWorldTransforms(currentProps.rig, pose);
         const artless = artlessLimbBones(currentProps.rig);
         currentProps.rig.bones.forEach((bone) => {

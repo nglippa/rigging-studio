@@ -1,7 +1,8 @@
 import { updateBonePose } from "../runtime/pose";
 import { degreesToRadians } from "../math/rotation";
+import { clampToLimits } from "../runtime/limits";
 import type { RigPose } from "../runtime/types";
-import type { AnimationDefinition, AnimationTrack, Keyframe } from "../schema/types";
+import type { AnimationDefinition, AnimationTrack, Keyframe, RigDefinition } from "../schema/types";
 import { applyEasing } from "./easing";
 
 export const sampleTrack = (track: AnimationTrack, time: number): number => {
@@ -29,14 +30,16 @@ export function drawingTime(animation: AnimationDefinition, time: number): numbe
   return shown;
 }
 
-export function evaluateAnimation(animation: AnimationDefinition, basePose: RigPose, elapsed: number): RigPose {
-  return evaluateAnimationAtTime(animation, basePose, drawingTime(animation, animationTime(animation, elapsed)));
+export function evaluateAnimation(animation: AnimationDefinition, basePose: RigPose, elapsed: number, rig?: RigDefinition): RigPose {
+  return evaluateAnimationAtTime(animation, basePose, drawingTime(animation, animationTime(animation, elapsed)), rig);
 }
 
-export function evaluateAnimationAtTime(animation: AnimationDefinition, basePose: RigPose, time: number): RigPose {
-  return animation.tracks.reduce((pose, track) => updateBonePose(pose, track.boneId, {
+/** The pose at `time`. Given the rig, each joint's bend limits are applied last, so no clip can bend a joint past them. */
+export function evaluateAnimationAtTime(animation: AnimationDefinition, basePose: RigPose, time: number, rig?: RigDefinition): RigPose {
+  const pose = animation.tracks.reduce((current, track) => updateBonePose(current, track.boneId, {
     [track.property]: track.property === "rotation"
       ? degreesToRadians(sampleTrack(track, time))
       : sampleTrack(track, time),
   }), basePose);
+  return rig ? clampToLimits(rig, pose) : pose;
 }

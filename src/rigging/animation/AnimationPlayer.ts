@@ -98,7 +98,7 @@ export class AnimationPlayer {
     if (!this.animation) return;
     const setupPose: RigPose = this.runtime.getSetupPose();
     const shown = drawingTime(this.animation, this.time);
-    this.runtime.setPose(evaluateAnimationAtTime(this.animation, setupPose, shown));
+    this.runtime.setPose(evaluateAnimationAtTime(this.animation, setupPose, shown, this.runtime.definition));
     this.runtime.smearFrom = smearOrigin(this.animation, setupPose, shown) ?? null;
   }
 }

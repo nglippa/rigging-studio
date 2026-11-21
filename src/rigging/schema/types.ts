@@ -14,6 +14,8 @@ export type BoneDefinition = {
   readonly length: number;
   readonly inheritRotation: boolean;
   readonly inheritScale: boolean;
+  /** How far the joint may turn from its rest rotation, in degrees. Posed rotations are clamped into it; none means free. */
+  readonly rotationLimits?: { readonly min: number; readonly max: number };
 };
 
 export const SLOT_BLEND_MODES = ["normal", "add", "multiply", "screen"] as const;

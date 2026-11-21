@@ -26,6 +26,7 @@ export const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() => z.union([
 export const boneDefinitionSchema: z.ZodType<BoneDefinition> = z.object({
   id, parentId: id.nullable(), x: finite, y: finite, rotation: finite, scaleX: finite, scaleY: finite,
   length: finite.nonnegative("Bone length cannot be negative"), inheritRotation: z.boolean(), inheritScale: z.boolean(),
+  rotationLimits: z.object({ min: finite, max: finite }).strict().refine((limits) => limits.min <= limits.max, "Bend limit min must not exceed max").optional(),
 }).strict();
 
 export const slotDefinitionSchema: z.ZodType<SlotDefinition> = z.object({

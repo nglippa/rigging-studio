@@ -152,10 +152,10 @@ export class BakeService {
     for (const clip of request.animations) {
       this.update(jobId, { progress: { done, total: this.get(jobId).progress.total, clip: clip.name } });
       const base = createRestPose(rig); const times = drawingTimes(clip);
-      const smeared = times.map((time) => renderPixelFrame(rig, evaluateAnimationAtTime(clip, base, time), pixels as PartPixels, window, cache, smearOrigin(clip, base, time)));
+      const smeared = times.map((time) => renderPixelFrame(rig, evaluateAnimationAtTime(clip, base, time, rig), pixels as PartPixels, window, cache, smearOrigin(clip, base, time)));
       // The model would erase a smear as a mistake, so it redraws the figure without it and the smear is laid back on after.
       // A redraw instead sees the smear in its reference and draws it in the character's own style.
-      const drawings = profile && !redraw ? times.map((time, index) => smearOrigin(clip, base, time) ? renderPixelFrame(rig, evaluateAnimationAtTime(clip, base, time), pixels as PartPixels, window, cache) : smeared[index]) : smeared;
+      const drawings = profile && !redraw ? times.map((time, index) => smearOrigin(clip, base, time) ? renderPixelFrame(rig, evaluateAnimationAtTime(clip, base, time, rig), pixels as PartPixels, window, cache) : smeared[index]) : smeared;
       const durations = times.map((time, index) => Math.round(((index + 1 < times.length ? times[index + 1] : clip.duration) - time) * 1000));
       let frames = drawings;
       if (profile) {

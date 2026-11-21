@@ -286,7 +286,7 @@ export function renderClip(rig: RigDefinition, animation: AnimationDefinition, p
   const base = createRestPose(rig); const cache = new Map<string, { image: RgbaImage; pivot: { x: number; y: number } }>();
   const frames = Array.from({ length: count }, (_, index) => {
     const shown = drawingTime(animation, Math.min(animation.duration, index / fps));
-    return renderPixelFrame(rig, evaluateAnimationAtTime(animation, base, shown), pixels, options.window, cache, smearOrigin(animation, base, shown));
+    return renderPixelFrame(rig, evaluateAnimationAtTime(animation, base, shown, rig), pixels, options.window, cache, smearOrigin(animation, base, shown));
   });
   return { frames, fps };
 }
