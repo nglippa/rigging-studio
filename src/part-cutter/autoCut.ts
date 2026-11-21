@@ -110,20 +110,37 @@ export function settleArms(joints: Joints): Joints {
   return out;
 }
 
-/** A stroke along the middle of each bone (and past the wrist and ankle for the hand and foot), as a cut plan. */
+/**
+ * Strokes along the middle of each bone (and past the wrist and ankle for the hand and foot), as a cut plan. The head and the
+ * torso are wide, so a thin stroke down the middle leaves their sides to whichever limb or garment reaches them first: the
+ * head also gets a stroke across its width, and the torso strokes across the chest (about as wide as the shoulders, so clear
+ * of the arms) plus a solid block between the shoulders, from the upper chest to three quarters of the way to the pelvis
+ * (stopping above it, so where the hip seam falls is left to the drawing: reaching lower took leg armour beside a
+ * tabard into the torso). Measured on the cut bench: 86.2% -> 87.8% (92.2% -> 93.6% seam-tolerant).
+ */
 export function bonePlan(joints: Joints): CutPlan {
   const strokes: Record<string, PlanPoint[][]> = {};
   const lerp = (a: Point, b: Point, t: number): PlanPoint => [Math.round(a.x + (b.x - a.x) * t), Math.round(a.y + (b.y - a.y) * t)];
   const along = (part: string, a: Point | undefined, b: Point | undefined, from: number, to: number) => { if (a && b) (strokes[part] ??= []).push([lerp(a, b, from), lerp(a, b, to)]); };
-  along("head", joints.neck, joints.head, .45, 1.3);
-  along("torso", joints.neck, joints.pelvis, .2, .85);
+  const across = (part: string, a: Point, b: Point, t: number, half: number) => { const c = lerp(a, b, t); (strokes[part] ??= []).push([[Math.round(c[0] - half), c[1]], [Math.round(c[0] + half), c[1]]]); };
+  const { neck, head, pelvis, leftShoulder, rightShoulder } = joints;
+  along("head", neck, head, .45, 1.3);
+  if (neck && head) { const reach = Math.hypot(head.x - neck.x, head.y - neck.y) * .8; for (const t of [.7, 1.2]) across("head", neck, head, t, reach); }
+  along("torso", neck, pelvis, .2, .85);
+  let parts: Record<string, PlanPoint[][]> | undefined;
+  if (neck && pelvis && leftShoulder && rightShoulder) {
+    const half = Math.abs(rightShoulder.x - leftShoulder.x) / 2;
+    for (const t of [.35, .55]) across("torso", neck, pelvis, t, half * .7);
+    const top = lerp(neck, pelvis, .25); const bottom = lerp(neck, pelvis, .75); const side = half * .6;
+    parts = { torso: [[[top[0] - side, top[1]], [top[0] + side, top[1]], [bottom[0] + side, bottom[1]], [bottom[0] - side, bottom[1]]]] };
+  }
   for (const side of ["left", "right"]) {
     const j = (name: string) => joints[`${side}${name}`];
     // The arm seeds sit towards the elbow and the wrist's middle: the shoulder and wrist joints are the least certain.
     along(`${side}UpperArm`, j("Shoulder"), j("Elbow"), .6, .8); along(`${side}Forearm`, j("Elbow"), j("Wrist"), .4, .6); along(`${side}Hand`, j("Elbow"), j("Wrist"), 1.15, 1.35);
     along(`${side}Thigh`, j("Hip"), j("Knee"), .3, .7); along(`${side}LowerLeg`, j("Knee"), j("Ankle"), .3, .7); along(`${side}Foot`, j("Knee"), j("Ankle"), 1.15, 1.3);
   }
-  return { scribbles: strokes };
+  return { scribbles: strokes, ...(parts ? { parts } : {}) };
 }
 
 export type AutoCutResult = { readonly state: PartCutterState; readonly cut: readonly string[]; readonly hidden: readonly string[]; readonly joints: Joints };
