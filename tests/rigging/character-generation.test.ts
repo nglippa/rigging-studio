@@ -42,6 +42,8 @@ describe("prompt-to-rig character pipeline", () => {
     expect(request.negativePrompt).toContain("painted illustration");
     expect(request.generationPrompt).toContain("Body proportions: oversized head, compact torso, short separated limbs");
     expect(request.generationPrompt).toContain("Background: transparent");
+    expect(request.generationPrompt).toContain("mark every joint with a drawn line or a change of colour");
+    expect(request.negativePrompt).toContain("cape covering the arms");
     const overrideAttempt = buildCharacterGenerationPrompt({ description: prompt, controls: { style: "chibi-pixel-art", bodyProportions: "realistic adult proportions", background: "flat-contrast" } });
     expect(overrideAttempt.prompt).not.toContain("realistic adult proportions");
     expect(overrideAttempt.prompt).not.toContain("Background: flat-contrast");

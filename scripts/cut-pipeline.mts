@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import * as ort from "onnxruntime-web";
 import { detectDwpose } from "../src/character-generation/pose/dwpose";
 import { poseToLandmarks } from "../src/character-generation/pose/poseLandmarks";
-import { applyPoseLandmarks, autoCutBodyParts, buildAdaptiveAnatomicalPartitionGuide, createPartCutterState, decodeOwnership, ensureOwnershipPartition } from "../src/part-cutter";
+import { applyPoseLandmarks, autoCutBodyParts, type Joints, buildAdaptiveAnatomicalPartitionGuide, createPartCutterState, decodeOwnership, ensureOwnershipPartition } from "../src/part-cutter";
 export const BODY_PARTS = ["head", "torso", "leftUpperArm", "leftForearm", "leftHand", "rightUpperArm", "rightForearm", "rightHand", "leftThigh", "leftLowerLeg", "leftFoot", "rightThigh", "rightLowerLeg", "rightFoot"] as const;
 export type LoadedImage = { readonly width: number; readonly height: number; readonly data: Uint8Array; readonly foreground: number[] };
 
@@ -22,7 +22,7 @@ const run = async (input: Float32Array) => {
   return { simccX: output[model.outputNames[0]].data as Float32Array, simccY: output[model.outputNames[1]].data as Float32Array };
 };
 
-export async function cutAllParts(image: LoadedImage): Promise<{ readonly predicted: Uint8Array; readonly poseJoints: number }> {
+export async function cutAllParts(image: LoadedImage): Promise<{ readonly predicted: Uint8Array; readonly poseJoints: number; readonly joints: Joints }> {
   const { width, height, data, foreground } = image;
   const base = createPartCutterState("cut-bench", width, height, "manual", AT);
   let guide = buildAdaptiveAnatomicalPartitionGuide(base, foreground, "humanoid", AT);
@@ -42,5 +42,5 @@ export async function cutAllParts(image: LoadedImage): Promise<{ readonly predic
     const semantic = semanticByOwner[owner - 1]; const label = semantic ? BODY_PARTS.indexOf(semantic as never) + 1 : 0;
     predicted[index] = label > 0 ? label : 0;
   }
-  return { predicted, poseJoints };
+  return { predicted, poseJoints, joints: result.joints };
 }

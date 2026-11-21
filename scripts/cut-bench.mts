@@ -1,25 +1,31 @@
 /**
  * Cut accuracy bench: how much of each character Cut all parts assigns to the right part, against hand-labelled parts.
+ * How to add a sprite and the labelling conventions: docs/part-cutting.md.
  *
- *   npx tsx scripts/cut-bench.mts render <name>...   draws the hand labels over the art (to check them) into .bench/cut/
- *   npx tsx scripts/cut-bench.mts score [name...]    cuts each character exactly as the app does and scores it
+ *   npx tsx scripts/cut-bench.mts score [name...]                   cuts each character exactly as the app does and scores it
+ *   npx tsx scripts/cut-bench.mts new <image.png> <name> [view]     drafts labels for a new sprite into .bench/cut/ (view:
+ *                                                                   front, side or three-quarter; default front)
+ *   npx tsx scripts/cut-bench.mts render <name>...                  draws the hand labels over the art (to check them)
+ *   npx tsx scripts/cut-bench.mts plan <file.json> <out.png>        draws any label or plan file, e.g. a draft being edited
+ *   npx tsx scripts/cut-bench.mts grid <image.png> <out.png>        the numbered grid to read coordinates from
  *
- * Labels live in tests/fixtures/rigging/part-truth/<name>.json: { image, view, parts: { <semantic>: polygon | polygon[] },
- * equipment?: polygon[] }, polygons in source pixels, limbs named by SCREEN side like the cutter. A pixel of the character
- * takes the first part (in PRIORITY order) whose polygon holds it, so small parts are drawn first and the torso is the
- * catch-all; character pixels left outside every polygon go to the nearest labelled pixel, so polygons need not trace the
- * silhouette exactly, only the seams between parts. Equipment pixels (a held sword) are cut in a later step on the Mac
- * Studio and are left out of the body score.
+ * Labels live in tests/fixtures/rigging/part-truth/<name>.json and are a cut plan (src/part-cutter/cutPlan.ts): strokes
+ * inside each part, hard polygons where the art draws no seam, and equipment outlines, in source pixels, limbs named by
+ * SCREEN side like the cutter. applyCutPlan grows the strokes out to the drawn outlines exactly as the app would, so the
+ * labels only have to say which part is which; the seams come from the drawing. Equipment (a held sword) is cut in a later
+ * step and is left out of the body score. tests/rigging/cut-accuracy.test.ts scores every file in that folder.
  *
- * Score: the share of body pixels whose part is right (pixel accuracy), plus each part's IoU. When `pairedLimbs` is set
- * (side and three-quarter views, where which arm is "left" is a name, not a mistake), the arms and the legs may each be
- * swapped as a pair, and the better reading is kept.
+ * Score: the share of body pixels whose part is right (strict), the same counting pixels within 2% of the figure's height
+ * of a true seam as right for either neighbour (seam-tolerant), and each part's IoU. When `pairedLimbs` is set (side and
+ * three-quarter views, where which arm is "left" is a name, not a mistake), the arms and the legs may each be swapped as a
+ * pair, and the better reading is kept.
  */
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { PNG } from "pngjs";
 import { estimateForeground } from "../src/character-generation/segmentation/partImageProcessor";
+import { addMassStrokes, bonePlan } from "../src/part-cutter/autoCut";
 import { applyCutPlan, planGrid } from "../src/part-cutter/cutPlan";
 import { BODY_PARTS, cutAllParts, type LoadedImage } from "./cut-pipeline.mjs";
 
@@ -150,5 +156,22 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
     // Renders any plan or label file (same format) to a PNG, to check strokes: plan <file.json> <out.png>
     const [file, target] = names; const plan = JSON.parse(readFileSync(file, "utf8")) as PartTruth; const image = loadImage(plan.image);
     writeFileSync(target, PNG.sync.write(overlay(image, truthLabels(plan, image)))); console.log(target);
-  } else console.log("usage: cut-bench.mts render <name>... | score [name...] | plan <file.json> <out.png>");
+  } else if (mode === "new") {
+    // Drafts labels for a new sprite from the engine's own strokes: new <image.png> <name> [front|side|three-quarter].
+    // The draft scores 100% against itself, so it stays in .bench/cut until a person has corrected it (docs/part-cutting.md).
+    const [file, name, view = "front"] = names;
+    const problem = !file || !name ? "usage: new <image.png> <name> [front|side|three-quarter]" : !["front", "side", "three-quarter"].includes(view) ? `view must be front, side or three-quarter, not ${view}` : truthNames().includes(name) ? `${TRUTH_DIR}/${name}.json already exists` : null;
+    if (problem) { console.error(problem); process.exit(1); }
+    const image = loadImage(file); const { joints } = await cutAllParts(image);
+    const plan = addMassStrokes(bonePlan(joints), joints, image.width, image.height, image.foreground);
+    const round = (value: unknown): unknown => typeof value === "number" ? Math.round(value) : Array.isArray(value) ? value.map(round) : value && typeof value === "object" ? Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, round(inner)])) : value;
+    const draft = { image: file, view, pairedLimbs: view !== "front", note: "Say where this character's seams fall (chin, hip line, knees, ankles) and what is equipment.", scribbles: round(plan.scribbles ?? {}), parts: round(plan.parts ?? {}), equipment: [] };
+    const target = path.join(out, `${name}.draft.json`); // One stroke or polygon per line, so the draft is easy to edit by hand.
+    const text = JSON.stringify(draft, null, 1).replace(/\[\s*(-?\d+),\s*(-?\d+)\s*\]/g, "[$1, $2]").replace(/\[\s*((?:\[-?\d+, -?\d+\],?\s*)+)\]/g, (_, points: string) => `[${points.replace(/\s+/g, " ").trim()}]`);
+    writeFileSync(target, `${text}\n`);
+    writeFileSync(path.join(out, `${name}.draft.png`), PNG.sync.write(overlay(image, truthLabels(draft as PartTruth, image))));
+    const grid = planGrid(image); const gridPng = new PNG({ width: grid.width, height: grid.height }); gridPng.data.set(grid.data);
+    writeFileSync(path.join(out, `${name}.grid.png`), PNG.sync.write(gridPng));
+    console.log(`${target}\n${out}/${name}.draft.png  (the draft's parts)\n${out}/${name}.grid.png   (coordinates)\nCorrect the draft, check it with: plan ${target} ${out}/${name}.check.png\nthen move it to ${TRUTH_DIR}/${name}.json`);
+  } else console.log("usage: cut-bench.mts score [name...] | new <image.png> <name> [view] | render <name>... | plan <file.json> <out.png> | grid <image.png> <out.png>");
 }

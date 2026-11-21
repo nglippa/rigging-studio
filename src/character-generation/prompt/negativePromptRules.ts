@@ -4,6 +4,8 @@ export const NEGATIVE_PROMPT_RULES = [
   "missing hands or feet",
   "cropped body parts",
   "limbs hidden behind the torso",
+  "arms pressed against the body",
+  "cape covering the arms",
   "weapon crossing the body",
   "complex scenery",
   "text or logos",

@@ -56,3 +56,6 @@ next-env.d.ts
 
 # Brainstorming mockups (superpowers visual companion)
 /.superpowers/
+
+# scratch experiments
+/scripts/.tmp/
