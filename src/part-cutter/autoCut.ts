@@ -4,7 +4,7 @@
  *
  * Measured on the cut bench (scripts/cut-bench.mts, 11 hand-labelled characters): the previous cut (zones around the
  * joints, seams snapped to edges) got 77% of pixels right (84% counting pixels within 2% of a seam for either side); this
- * one 85% (91%). With joints placed exactly it reaches 91% (96%), about where two careful people agree, so what remains is
+ * one 85% (91%), and with the joint corrections of centreOnLegs and the ankle rule 89.7% (95.5%). With joints placed exactly it reaches 93% (97.5%), about where two careful people agree, so what remains is
  * joint accuracy. The leg joints come from the drawing itself (legJoints): on the bench, hips, knees and ankles within
  * about 2–3% of the figure's height, where the silhouette guide and the pose model were 4–6% off.
  */
@@ -20,7 +20,7 @@ export type Joints = Readonly<Record<string, Point>>;
  * Leg joints read from the silhouette. From the feet up, the two leg columns are followed until they merge, or until a
  * substantial piece hangs between them (a tabard, a loincloth): that row is the hip line, the hem of whatever hangs over
  * the legs. Trousers instead split at the crotch, so above a split no wider than the legs the hip is the first drawn line
- * across the body (the waistband). Ankles are each column's narrowest row above the foot; knees are halfway between, the
+ * across the body (the waistband). Ankles are each column's narrowest row above the foot (at least 4% of the figure's height up, so the narrowing sole of a big shoe is not taken for the ankle); knees are halfway between, the
  * rule for a leg with nothing marking the knee. Null when the figure has no two separate legs (a robe, a blob).
  */
 export function legJoints(width: number, height: number, foreground: ArrayLike<number>, colours?: ArrayLike<number>): Joints | null {
@@ -54,7 +54,7 @@ export function legJoints(width: number, height: number, foreground: ArrayLike<n
   const legLength = footY - hipY;
   const ankle = (side: "l" | "r"): Point => {
     let best: (typeof stretch)[number] | undefined;
-    for (const row of stretch) if (row.y > footY - legLength * .55 && row.y < footY - legLength * .08 && (!best || row[side].b - row[side].a < best[side].b - best[side].a)) best = row;
+    for (const row of stretch) if (row.y > footY - legLength * .55 && row.y < footY - Math.max(legLength * .08, h * .04) && (!best || row[side].b - row[side].a < best[side].b - best[side].a)) best = row;
     best ??= stretch[Math.floor(stretch.length * .2)];
     return { x: (best[side].a + best[side].b) / 2, y: best.y };
   };
@@ -143,6 +143,21 @@ export function bonePlan(joints: Joints): CutPlan {
   return { scribbles: strokes, ...(parts ? { parts } : {}) };
 }
 
+/**
+ * Upper-body joints the silhouette guide placed (not the pose model) sit on the middle of the figure's bounding box, which a
+ * held shield, a tail or a long staff drags to one side by up to 8% of the figure's height, while the legs sit under the
+ * body: those joints move sideways by the gap between the box's middle and the legs' pelvis. A gap under 2% of the height is
+ * ordinary lean and is left alone (a three-quarter view's chest really does sit off its legs). Joints the pose model placed
+ * are left as they are. Measured on the cut bench: 87.8% -> 89.4% (93.6% -> 95.3% seam-tolerant).
+ */
+export function centreOnLegs(joints: Joints, legs: Joints, sources: Readonly<Record<string, string | undefined>>, boxMiddle: number, figureHeight: number): Joints {
+  const dx = legs.pelvis.x - boxMiddle;
+  if (Math.abs(dx) <= figureHeight * .02) return joints;
+  const out: Record<string, Point> = { ...joints };
+  for (const name of ["neck", "head", "leftShoulder", "rightShoulder", "leftElbow", "rightElbow", "leftWrist", "rightWrist"]) if (out[name] && sources[name] !== "pose_model") out[name] = { x: out[name].x + dx, y: out[name].y };
+  return out;
+}
+
 export type AutoCutResult = { readonly state: PartCutterState; readonly cut: readonly string[]; readonly hidden: readonly string[]; readonly joints: Joints };
 
 /**
@@ -153,8 +168,11 @@ export type AutoCutResult = { readonly state: PartCutterState; readonly cut: rea
 export function autoCutBodyParts(state: PartCutterState, foreground: readonly number[], colours: ArrayLike<number>, at?: string): AutoCutResult {
   const { width, height } = state.sourceCanvasSize;
   const fromGuide = Object.fromEntries((state.anatomicalGuide?.landmarks ?? []).map((landmark) => [landmark.landmarkId, landmark.point])) as Record<string, Point>;
+  const sources = Object.fromEntries((state.anatomicalGuide?.landmarks ?? []).map((landmark) => [landmark.landmarkId, landmark.source])) as Record<string, string | undefined>;
   const legs = legJoints(width, height, foreground, colours);
-  const joints: Joints = settleArms(legs ? { ...fromGuide, ...legs } : fromGuide);
+  let top = height; let bottom = -1; let left = width; let right = -1;
+  for (let index = 0; index < width * height; index += 1) if (foreground[index]) { const x = index % width; const y = (index - x) / width; if (y < top) top = y; if (y > bottom) bottom = y; if (x < left) left = x; if (x > right) right = x; }
+  const joints: Joints = settleArms(legs ? { ...centreOnLegs(fromGuide, legs, sources, (left + right) / 2, bottom - top + 1), ...legs } : fromGuide);
   const labels = applyCutPlan(bonePlan(joints), { width, height, data: colours, foreground });
   let current = initializeGuidedManual(state, at); const cut: string[] = []; const hidden: string[] = [];
   for (const semantic of GUIDED_BODY_ORDER) {
