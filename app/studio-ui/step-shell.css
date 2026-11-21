@@ -56,3 +56,5 @@
 .step-shell .ex-section h5 .is-ok { color: var(--sh-ok); } .step-shell .ex-section h5 .is-warn { color: var(--sh-warn); }
 .step-shell .ex-section input[type="range"] { width: 100%; accent-color: var(--sh-accent); }
 .step-shell .ex-section .seg button { font-size: 12px; text-transform: none; letter-spacing: 0; }
+.step-shell .pose-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.step-shell .pose-grid > :last-child:nth-child(odd) { grid-column: 1 / -1; }

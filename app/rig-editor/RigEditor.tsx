@@ -44,7 +44,9 @@ import { loadAnimationDraft } from "@/src/tools/rig-editor/animation/draft";
 import { createAnimationLibrary } from "@/src/tools/rig-editor/animation/library";
 import { SAMPLE_ANIMATION_PATHS } from "@/src/tools/rig-editor/animation/samplePaths";
 import { useRouter } from "next/navigation";
-import { FacingQuestion, RebuildNotice, RepaintNotice, writeRebuildRequest } from "./RigNotices";
+import { needsArtRebuild, RepaintNotice, writeRebuildRequest } from "./RigNotices";
+import { RigGuidedPanel } from "./RigGuidedPanel";
+import { rememberedDiskProjectId } from "@/app/studio-ui/ProjectStorageMenu";
 import { buildStandardClips, type RigFacing } from "@/src/rigging/motion/rigMotion";
 import { ExportForGame } from "./ExportForGame";
 import { ImageProductionStatus } from "./ImageProductionStatus";
@@ -141,6 +143,8 @@ export function RigEditor() {
   const [error, setError] = useState<string | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [confirmRebuild, setConfirmRebuild] = useState<"rebuild" | "repaint" | null>(null);
+  // The Rig step shows the character and a short panel; "Edit bones manually" opens the full rig editor.
+  const [rigExpanded, setRigExpanded] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [deleteReplacementId, setDeleteReplacementId] = useState("");
   const [historyUi, setHistoryUi] = useState<HistoryUi>({ canUndo: false, canRedo: false, undoLabel: null, redoLabel: null });
@@ -198,8 +202,18 @@ export function RigEditor() {
 
   useEffect(() => {
     let cancelled = false;
+    let redirectTimer: number | undefined;
     const uploadedUrls = uploadedUrlsRef.current;
     const operation = commandService.captureProjectOperation("rig-editor-hydration");
+    // The project menu reopens the disk project this browser last had open, a moment after the page loads. Until it
+    // has, "nothing to edit" is not true yet: wait for it (this effect re-runs when it arrives) before sending the
+    // person elsewhere, and only send them if it never comes.
+    const remembered = rememberedDiskProjectId();
+    const reopening = remembered !== null && remembered !== hydrationIdentity.activeProjectId;
+    const leaveFor = (path: string, notice: string): void => {
+      const go = () => { try { window.sessionStorage.setItem(STAGE_NOTICE_KEY, notice); } catch { /* the redirect still happens */ } router.replace(path); };
+      if (reopening) { setMessage("Opening the project…"); redirectTimer = window.setTimeout(() => { if (!cancelled) go(); }, 20000); } else go();
+    };
     void (async () => {
       try {
         const [rigResponse, animationResponse, ...sampleResponses] = await Promise.all([fetch("/rig-test/minimal-rig.json"), fetch("/rig-test/idle-animation.json"), ...SAMPLE_ANIMATION_PATHS.map((path) => fetch(path))]);
@@ -218,11 +232,15 @@ export function RigEditor() {
           window.localStorage.removeItem(RIG_EDITOR_HANDOFF_KEY);
         }
         let generatedProject: GeneratedCharacterProject | null = null;
+        // The open disk project when it has art but no rig yet: that character belongs in Parts, not Create.
+        let openUnrigged: GeneratedCharacterProject | null = null;
         try {
           const durable = commandService.getDurableSnapshot();
           const durableIdentity = durable.localProjectId ?? durable.project?.id ?? null;
           if (durable.rig && hydrationIdentity.activeProjectId && (durableIdentity === hydrationIdentity.activeProjectId || durable.project?.id === hydrationIdentity.activeProjectId)) {
             initialRig = durable.rig; generatedProject = durable.project; durableAnimations = durable.animations; restored = true; restoredFromDurable = true;
+          } else if (!durable.rig && durable.project?.sourceImage && hydrationIdentity.activeProjectId && (durableIdentity === hydrationIdentity.activeProjectId || durable.project.id === hydrationIdentity.activeProjectId)) {
+            openUnrigged = durable.project;
           }
         } catch { /* no committed disk project; browser draft lookup remains available */ }
         const storedProject = restoredFromDurable ? null : await characterStorage.load();
@@ -236,10 +254,10 @@ export function RigEditor() {
         }
         // The character being worked on has no rig yet: never show a different one (an old draft or the sample knight).
         // Send the user to Parts with a note instead.
-        if (!generatedProject && !restoredFromDurable && !handoff && storedProject?.success && storedProject.data.sourceImage && !storedProject.data.rigDefinition) {
+        const unrigged = openUnrigged ?? (storedProject?.success && storedProject.data.sourceImage && !storedProject.data.rigDefinition ? storedProject.data : null);
+        if (!generatedProject && !restoredFromDurable && !handoff && unrigged) {
           if (cancelled) return;
-          try { window.sessionStorage.setItem(STAGE_NOTICE_KEY, `Build the rig first: ${storedProject.data.name || "this character"} has no rig yet. Cut its parts, then press Build rig.`); } catch { /* the redirect still happens */ }
-          router.replace("/part-cutter");
+          leaveFor("/part-cutter", `Build the rig first: ${unrigged.name || "this character"} has no rig yet. Cut its parts, then press Build rig.`);
           return;
         }
         if (localDraft && !generatedProject && !restoredFromDurable) {
@@ -249,8 +267,7 @@ export function RigEditor() {
         // Nothing to edit yet: start where a character starts instead of showing the bundled sample knight.
         if (!restored && !handoff) {
           if (cancelled) return;
-          try { window.sessionStorage.setItem(STAGE_NOTICE_KEY, "Choose art first: there is no character to rig yet. Describe one and generate its art, or upload an image."); } catch { /* the redirect still happens */ }
-          router.replace("/create-character");
+          leaveFor("/create-character", "Choose art first: there is no character to rig yet. Describe one and generate its art, or upload an image.");
           return;
         }
         const parsedAnimation = safeParseAnimationJson(animationSource, initialRig);
@@ -287,6 +304,7 @@ export function RigEditor() {
     })();
     return () => {
       cancelled = true;
+      window.clearTimeout(redirectTimer);
       uploadedUrls.forEach((url) => URL.revokeObjectURL(url));
       uploadedUrls.clear();
     };
@@ -700,7 +718,13 @@ export function RigEditor() {
     window.addEventListener("keydown", keyDown); return () => window.removeEventListener("keydown", keyDown);
   }, [blockingValidationIssues.length, commandPaletteOpen, focusMode, router]);
 
-  if (!rig) return <main className="rig-editor-shell is-loading"><div className="editor-loading">{error ?? "Loading rig editor"}</div></main>;
+  // Loading still renders the frame: its project menu is what reopens the project this browser last had open.
+  if (!rig) return <main className="rig-editor-shell is-loading">
+    <StepShell step={editorMode === "export" ? "export" : editorMode === "animate" ? "animate" : "rig"} state={stepState} projectName="Opening…" saved="saved"
+      stage={<div className="editor-loading">{error ?? "Loading the rig…"}</div>} panel={null}
+      instruction={error ?? message ?? "Loading the rig…"} tone={error ? "error" : "info"}
+      primary={{ label: editorMode === "export" ? "Back to Animate" : editorMode === "animate" ? "Export →" : "Make animations →", onClick: () => undefined, disabled: true, disabledReason: "Still loading the rig" }} />
+  </main>;
 
   const commitRigName = (value: string): void => { if (value.trim() && value !== rigName(rig)) run("Rename rig", (current) => updateRigIdentity(current, current.id, value)); };
   const toggleSetValue = (setter: React.Dispatch<React.SetStateAction<Set<string>>>, value: string): void => setter((current) => { const next = new Set(current); if (next.has(value)) next.delete(value); else next.add(value); return next; });
@@ -718,7 +742,7 @@ export function RigEditor() {
     setTested(true);
     writeStageMark(TESTED_KEY, projectKey);
   };
-  const enterMode = (mode: EditorMode): void => { router.replace(`/?mode=${mode}`, { scroll: false }); setEditorMode(mode); setSweep(null); setPosed(false); setContextMenu(null); setFocusMode(false); };
+  const enterMode = (mode: EditorMode): void => { router.replace(`/?mode=${mode}`, { scroll: false }); setEditorMode(mode); if (mode === "animate" || mode === "export") setRigExpanded(false); setSweep(null); setPosed(false); setContextMenu(null); setFocusMode(false); };
   const showProblems = (): void => { setUtilityTab("problems"); setUtilityOpen(true); };
   const modeSelect = (mode: EditorMode | "prepare"): void => {
     if (mode === "prepare") router.push("/part-cutter");
@@ -812,13 +836,12 @@ export function RigEditor() {
   const inAnimate = editorMode === "animate";
   const railUndo = inAnimate ? animationHistory : historyUi;
   const hierarchyDisabled = previewMode || testing;
-  return <main className={`rig-editor-shell workflow-v2 mode-${editorMode} ${focusMode ? "is-focus-mode" : ""}`} style={workspaceStyle} data-project-id={hydrationIdentity.activeProjectId ?? "browser-draft"} data-project-session-token={hydrationIdentity.projectSessionToken} data-hydration-token={hydrationIdentity.hydrationToken}>
-    <input ref={loadInputRef} hidden type="file" accept="application/json,.json" onChange={(event) => void loadJson(event)} />
-    <input ref={uploadInputRef} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void uploadAttachment(event)} />
-    <input ref={prepareInputRef} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void importSpriteForCutting(event)} />
-    <StepShell step={editorMode === "export" ? "export" : inAnimate ? "animate" : "rig"} state={stepState} projectName={rigName(rig)} saved={dirty ? "unsaved" : "saved"} onRename={commitRigName}
-      onUndo={() => inAnimate ? animationCommand("undo") : undo()} onRedo={() => inAnimate ? animationCommand("redo") : redo()} canUndo={!testing && !previewMode && railUndo.canUndo} canRedo={!testing && !previewMode && railUndo.canRedo}
-      stage={editorMode === "export" ? <ExportForGame open inline rig={rig} animations={exportAnimations()} onClose={() => enterMode("animate")} /> : (inAnimate ? <AnimateWorkspace key={hydrationIdentity.projectSessionToken} projectId={hydrationIdentity.activeProjectId} rig={rig} activeSkinId={effectiveSkinId} showGrid={showGrid} showBones={showBones} showBounds={showBounds} viewportRef={viewportRef} initialBoneId={selectedBoneId} onSelectedBone={(boneId) => setSelections((current) => current.length === 1 && current[0].type === "bone" && current[0].id === boneId ? current : [{ type: "bone", id: boneId }])} onHistory={setAnimationHistory} onMotion={(edited) => { if (edited && !hasMotion) { setHasMotion(true); writeStageMark(ANIMATED_KEY, projectKey); } }} onFacing={setFacing} onRebuild={rebuildFromParts} onCursor={setCursor} onZoom={setZoom} onMessage={setMessage} onError={setError} /> : <div key={hydrationIdentity.projectSessionToken} className={`editor-body ${leftCollapsed ? "left-collapsed" : ""} ${rightCollapsed ? "right-collapsed" : ""} ${!primarySelection ? "context-idle" : ""}`} data-canvas-project-id={hydrationIdentity.activeProjectId ?? "browser-draft"} data-inspector-project-id={hydrationIdentity.activeProjectId ?? "browser-draft"}>
+  // Rig step: guided (character, panel, one button) unless the full editor is open; the old Test view opens it too.
+  const rigStep = !inAnimate && editorMode !== "export";
+  const rigFull = rigStep && (rigExpanded || testing);
+  const rebuildWanted = rigStep && needsArtRebuild(rig);
+  const viewportElement = <EditorViewport ref={viewportRef} rig={rig} animation={previewAnimation} previewMode={previewMode} poseMode={testing} pivotEdit={!testing} activeSkinId={effectiveSkinId} selections={selections} hiddenBoneIds={hiddenBoneIds} lockedBoneIds={new Set([...lockedIds].filter((key) => key.startsWith("bone:")).map((key) => key.slice(5)))} showGrid={showGrid} showBones={showBones} showBounds={showBounds} snapToGrid={snapToGrid} wholePixelSnap={wholePixelSnap} rotationSnap={testing ? false : rotationSnap} canvasTool={canvasTool} interactionMode={testing ? "test" : "rig"} onSelect={selectInStage} onCursor={(point) => setCursor(point)} onZoom={setZoom} onBoneDragStart={testing ? () => undefined : beginBoneDrag} onBoneDragPreview={() => undefined} onBoneDragCommit={testing ? () => { setPosed(true); markTested(); } : commitBoneDrag} onPivotCommit={movePivot} onContextMenu={(selection, x, y) => setContextMenu({ selection, x, y, items: contextItems(selection) })} onWarning={setError} />;
+  const rigWorkspace = (<div key={hydrationIdentity.projectSessionToken} className={`editor-body ${leftCollapsed ? "left-collapsed" : ""} ${rightCollapsed ? "right-collapsed" : ""} ${!primarySelection ? "context-idle" : ""}`} data-canvas-project-id={hydrationIdentity.activeProjectId ?? "browser-draft"} data-inspector-project-id={hydrationIdentity.activeProjectId ?? "browser-draft"}>
       <aside className="editor-left-panel" aria-label="Structure">
         <header className="panel-identity"><span>{testing ? "Skeleton" : advancedStructure ? "Advanced structure" : "Structure"}</span><button type="button" onClick={() => setLeftCollapsed(true)} aria-label="Collapse structure panel">‹</button></header>
         <div className="outliner-search"><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={structureView === "parts" && !testing ? "Find a part" : "Find a bone"} aria-label="Search structure" /><button type="button" onClick={() => setSearch("")} disabled={!search} title={search ? "Clear search" : "Nothing to clear"} aria-label="Clear search">×</button></div>
@@ -833,7 +856,7 @@ export function RigEditor() {
         {leftCollapsed && <button type="button" className="restore-panel restore-left" onClick={() => setLeftCollapsed(false)}>{testing ? "Skeleton" : "Structure"} ›</button>}
         {rightCollapsed && <button type="button" className="restore-panel restore-right" onClick={() => setRightCollapsed(false)}>‹ Inspector</button>}
         <div className="viewport-context-row"><div className="selection-breadcrumb"><span>{testing ? "Test" : "Rig"}</span><i>›</i><strong>{primarySelection ? `${primarySelection.type === "bone" ? "Bone" : primarySelection.type === "slot" ? "Part" : humanizeTechnicalId(primarySelection.type)} · ${selectionLabel}` : testing ? "Drag a bone to pose" : "Click a bone or a part"}</strong></div><CanvasControls tool={canvasTool} onTool={setCanvasTool} showBones={showBones} showGrid={showGrid} showBounds={showBounds} snapToGrid={snapToGrid} wholePixelSnap={wholePixelSnap} rotationSnap={rotationSnap} onShowBones={() => setShowBones((value) => !value)} onShowGrid={() => setShowGrid((value) => !value)} onShowBounds={() => setShowBounds((value) => !value)} onSnapToGrid={() => setSnapToGrid((value) => !value)} onWholePixelSnap={() => setWholePixelSnap((value) => !value)} onRotationSnap={() => setRotationSnap((value) => !value)} onFit={() => viewportRef.current?.resetView()} /></div>
-        <EditorViewport ref={viewportRef} rig={rig} animation={previewAnimation} previewMode={previewMode} poseMode={testing} pivotEdit={!testing} activeSkinId={effectiveSkinId} selections={selections} hiddenBoneIds={hiddenBoneIds} lockedBoneIds={new Set([...lockedIds].filter((key) => key.startsWith("bone:")).map((key) => key.slice(5)))} showGrid={showGrid} showBones={showBones} showBounds={showBounds} snapToGrid={snapToGrid} wholePixelSnap={wholePixelSnap} rotationSnap={testing ? false : rotationSnap} canvasTool={canvasTool} interactionMode={testing ? "test" : "rig"} onSelect={selectInStage} onCursor={(point) => setCursor(point)} onZoom={setZoom} onBoneDragStart={testing ? () => undefined : beginBoneDrag} onBoneDragPreview={() => undefined} onBoneDragCommit={testing ? () => { setPosed(true); markTested(); } : commitBoneDrag} onPivotCommit={movePivot} onContextMenu={(selection, x, y) => setContextMenu({ selection, x, y, items: contextItems(selection) })} onWarning={setError} />
+        {viewportElement}
         {previewMode && <div className="preview-notice" role="status">{testing ? "Quick test playing" : "Rotate test playing"} · the rig is not changed · Esc to stop</div>}
         {testing
           ? <TestPoseStrip available={poseTestAvailability} activeTest={sweep?.kind === "test" ? sweep.id : null} posed={posed || sweep !== null} onTest={(id) => runSweep(id ? { kind: "test", id } : null)} onReset={resetPose} onFix={() => enterMode("setup")} onNext={() => { markTested(); modeSelect("animate"); }} />
@@ -845,23 +868,30 @@ export function RigEditor() {
         <header className="panel-identity"><span>{primarySelection ? "Inspector" : "Context"}</span><button type="button" onClick={() => setRightCollapsed(true)} aria-label="Collapse inspector">›</button></header>
         {primarySelection ? <EditorInspector rig={rig} selection={primarySelection} activeSkinId={effectiveSkinId} jointReview={jointReview} previewMode={previewMode || testing} locked={selectedLocked} onSelect={(selection) => select(selection, false)} onFrame={() => viewportRef.current?.resetView()} onIsolate={() => { if (primarySelection?.type === "bone") setHiddenBoneIds(new Set(rig.bones.filter((bone) => bone.id !== primarySelection.id).map((bone) => bone.id))); }} onBonePatch={(id, patch, label) => run(label, (current) => updateBone(current, id, patch))} onPivot={movePivot} onSlotPatch={(id, patch, label) => run(label, (current) => updateSlot(current, id, patch))} onAttachmentPatch={(id, patch, label) => run(label, (current) => updateAttachment(current, id, patch))} onRenameSkin={(id, name) => run("Rename skin", (current) => renameSkin(current, id, name))} onAssignSkin={(skinId, slotId, attachmentId) => run("Assign skin attachment", (current) => assignSkinAttachment(current, skinId, slotId, attachmentId))} onTestRotation={testRotation} onEditRegion={() => router.push("/part-cutter")} /> : <div className="context-rail-empty"><span>⌁</span><p>Click a bone or a part</p></div>}
       </aside>
-    </div>)}
-      panel={<>
-        {!inAnimate && editorMode !== "export" && <><RebuildNotice rig={rig} onRebuild={rebuildFromParts} /><RepaintNotice rig={rig} onRepaint={repaintFromParts} /><FacingQuestion rig={rig} onFacing={setFacing} /></>}
+    </div>);
+  return <main className={`rig-editor-shell workflow-v2 mode-${editorMode} ${focusMode ? "is-focus-mode" : ""}`} style={workspaceStyle} data-project-id={hydrationIdentity.activeProjectId ?? "browser-draft"} data-project-session-token={hydrationIdentity.projectSessionToken} data-hydration-token={hydrationIdentity.hydrationToken}>
+    <input ref={loadInputRef} hidden type="file" accept="application/json,.json" onChange={(event) => void loadJson(event)} />
+    <input ref={uploadInputRef} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void uploadAttachment(event)} />
+    <input ref={prepareInputRef} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void importSpriteForCutting(event)} />
+    <StepShell step={editorMode === "export" ? "export" : inAnimate ? "animate" : "rig"} state={stepState} projectName={rigName(rig)} saved={dirty ? "unsaved" : "saved"} onRename={commitRigName}
+      onUndo={() => inAnimate ? animationCommand("undo") : undo()} onRedo={() => inAnimate ? animationCommand("redo") : redo()} canUndo={!testing && !previewMode && railUndo.canUndo} canRedo={!testing && !previewMode && railUndo.canRedo}
+      stage={editorMode === "export" ? <ExportForGame open inline rig={rig} animations={exportAnimations()} onClose={() => enterMode("animate")} /> : (inAnimate ? <AnimateWorkspace key={hydrationIdentity.projectSessionToken} projectId={hydrationIdentity.activeProjectId} rig={rig} activeSkinId={effectiveSkinId} showGrid={showGrid} showBones={showBones} showBounds={showBounds} viewportRef={viewportRef} initialBoneId={selectedBoneId} onSelectedBone={(boneId) => setSelections((current) => current.length === 1 && current[0].type === "bone" && current[0].id === boneId ? current : [{ type: "bone", id: boneId }])} onHistory={setAnimationHistory} onMotion={(edited) => { if (edited && !hasMotion) { setHasMotion(true); writeStageMark(ANIMATED_KEY, projectKey); } }} onFacing={setFacing} onRebuild={rebuildFromParts} onCursor={setCursor} onZoom={setZoom} onMessage={setMessage} onError={setError} /> : <div className="rig-guided-stage">{viewportElement}{previewMode && <div className="preview-notice" role="status">Pose test playing · the rig is not changed · Esc to stop</div>}</div>)}
+      expanded={rigFull ? <div className="rig-full">{rigWorkspace}</div> : undefined}
+      panel={rigStep ? <><RepaintNotice rig={rig} onRepaint={repaintFromParts} /><RigGuidedPanel rig={rig} review={review} available={poseTestAvailability} activeTest={sweep?.kind === "test" ? sweep.id : null} posed={posed} problems={blockingValidationIssues.length} onFacing={setFacing} onChain={(id) => { setRigExpanded(true); selectChain(id); }} onTest={(id) => runSweep(id ? { kind: "test", id } : null)} onRest={resetPose} onProblems={showProblems} onExpand={() => setRigExpanded(true)} /></> : <>
         <p className="panel-label">{editorMode === "export" ? "Export" : inAnimate ? "Animations" : "Rig"}</p>
         <div className="panel-row"><span>Bones</span><span className="num">{rig.bones.length}</span></div>
         <button type="button" className="panel-row" onClick={showProblems}><span>Problems</span><span className={validationIssues.length ? "is-warn" : "is-ok"}>{validationIssues.length ? validationIssues.length : "None"}</span></button>
-        {!inAnimate && editorMode !== "export" && <button type="button" className="panel-button" onClick={() => enterMode(testing ? "setup" : "test")}>{testing ? "Back to joints" : "Try poses"}</button>}
         <ImageProductionStatus projectId={agentSession.activeProjectId?.startsWith("character-") ? agentSession.activeProjectId : null} />
         <p className="panel-label">Rig file</p>
         <div className="ex-buttons"><button type="button" className="panel-button" onClick={() => loadInputRef.current?.click()} disabled={previewMode || inAnimate} title={previewMode || inAnimate ? "Not while animating" : undefined}>Load rig file…</button><button type="button" className="panel-button" onClick={discardDraft} disabled={previewMode || inAnimate} title={previewMode || inAnimate ? "Not while animating" : undefined}>Discard draft</button></div>
         <button type="button" className="panel-link" onClick={resetWorkspace}>Reset workspace layout</button>
       </>}
-      instruction={error ? error : `${agentSession.lastOperation ? `${agentSession.lastOperation} · ` : ""}${message ?? (editorMode === "export" ? "Choose how to export, then make the sprite sheet." : inAnimate ? "Preview the animations, then export." : testing ? "Try a pose to check the joints bend well." : "Check the joints, then make the animations.")}`}
+      instruction={error ? error : rebuildWanted && !rigFull ? "Built before gap filling: joints can open when parts move. Rebuild to fix it." : `${agentSession.lastOperation ? `${agentSession.lastOperation} · ` : ""}${message ?? (editorMode === "export" ? "Choose how to export, then make the sprite sheet." : inAnimate ? "Preview the animations, then export." : rigFull ? "Select a bone on the character or in the skeleton to edit it." : rebuildWanted ? "Built before gap filling: joints can open when parts move. Rebuild to fix it." : "Check the joints, then make the animations.")}`}
       tone={error ? "error" : "info"}
-      secondary={editorMode === "export" ? <button type="button" onClick={() => enterMode("animate")}>← Back</button> : inAnimate ? <button type="button" onClick={() => enterMode("setup")}>← Back</button> : <button type="button" onClick={() => router.push("/part-cutter")}>← Back</button>}
+      secondary={editorMode === "export" ? <button type="button" onClick={() => enterMode("animate")}>← Back</button> : inAnimate ? <button type="button" onClick={() => enterMode("setup")}>← Back</button> : rigFull ? <button type="button" onClick={() => { setRigExpanded(false); if (testing) enterMode("setup"); }}>← Back</button> : <><button type="button" onClick={() => router.push("/part-cutter")}>← Back</button>{rebuildWanted && <button type="button" title="Rebuild the rig from its parts with gap filling (asks first)" onClick={rebuildFromParts}>Rebuild</button>}</>}
       primary={editorMode === "export" ? { label: "Back to Animate", onClick: () => enterMode("animate") }
         : inAnimate ? { label: "Export →", onClick: () => enterMode("export"), disabled: blockingValidationIssues.length > 0, disabledReason: "Fix the rig problems first" }
+        : rigFull ? { label: "Done, back to Rig", onClick: () => { setRigExpanded(false); if (testing) enterMode("setup"); } }
         : { label: "Make animations →", onClick: () => modeSelect("animate") }} />
     {focusMode && inAnimate && <div className="focus-playback-controls" aria-label="Focus playback controls"><button type="button" onClick={() => animationCommand("play")}>▶ Play</button><button type="button" onClick={() => animationCommand("pause")}>Ⅱ Pause</button><button type="button" onClick={() => animationCommand("restart")}>↺ Restart</button><button type="button" onClick={() => setFocusMode(false)}>Exit Focus</button></div>}
 

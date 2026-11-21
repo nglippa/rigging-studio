@@ -1082,3 +1082,11 @@ details.ai-section > :last-child { margin-bottom: 10px; }
 .motion-review-content > details { padding: 10px 12px; border-top: 1px solid #27343d; }
 .motion-review .inspector-heading { min-height: 54px; padding: 6px 0; background: transparent; }
 .motion-review-actions button { min-height: 32px; padding: 4px 10px; border: 1px solid #534579; border-radius: 4px; }
+
+/* Rig step, guided: the character and its skeleton fill the stage, nothing else on it. */
+.step-shell .rig-guided-stage { position: relative; display: grid; min-height: 0; min-width: 0; }
+.step-shell .rig-guided-stage > * { min-height: 0; min-width: 0; }
+.step-shell .rig-guided-stage .preview-notice { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); }
+/* Rig step, full editor: fills the space between the top bar and the action bar. */
+.step-shell .rig-full { display: grid; min-height: 0; min-width: 0; }
+.step-shell .rig-full > .editor-body { min-height: 0; }

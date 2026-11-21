@@ -122,7 +122,7 @@ async function checkEveryControl(page: Page, href: string, label: string, enter?
   const problems: string[] = [];
   const consoleErrors: string[] = [];
   page.on("console", (message) => { if (message.type() === "error" && !/WebSocket|ERR_CONNECTION_REFUSED|Failed to load resource/.test(message.text())) consoleErrors.push(message.text()); });
-  page.on("pageerror", (error) => consoleErrors.push(error.message));
+  page.on("pageerror", (error) => consoleErrors.push(`${error.message}${error.stack ? ` @ ${error.stack.split("\n").slice(1, 4).map((line) => line.trim().replace(/https?:\/\/[^/]+/, "")).join(" < ")}` : ""}`));
   let sideEffects = 0;
   page.on("request", (request) => { if (!/\.(png|js|css|woff2?)(\?|$)|_next|@vite|hmr/.test(request.url())) sideEffects += 1; });
   page.on("filechooser", () => { sideEffects += 1; });
@@ -296,6 +296,34 @@ async function checkPartsExpanded(page: Page): Promise<void> {
   assert.deepEqual(problems, [], `\n  ${problems.join("\n  ")}`);
 }
 
+/** Opens a rig step the way a person does: the project on Parts first, then the step in the step bar. */
+async function openRigStep(page: Page, step: "Rig" | "Animate" | "Export"): Promise<void> {
+  await page.goto(`${APP_URL}/part-cutter`, { waitUntil: "domcontentloaded" }); await page.locator(".step-shell").first().waitFor({ timeout: 90000 });
+  await page.locator(".step-panel .panel-link").first().waitFor({ state: "visible", timeout: 60000 });
+  await page.locator(".step-nav button").filter({ hasText: step }).first().click();
+  await page.waitForURL(/mode=/, { timeout: 30000 }); await page.locator(".step-shell canvas").first().waitFor({ timeout: 90000 }); await page.waitForTimeout(4000);
+}
+
+/** Guided Rig: Facing once, joint groups, pose tests that move the character, and Make animations as the main button. */
+async function checkRigGuided(page: Page): Promise<void> {
+  await openRigStep(page, "Rig");
+  const labels = (await page.locator(".step-panel .panel-label").allTextContents()).map((text) => text.trim().toLowerCase());
+  for (const label of ["facing", "joints", "try a pose"]) assert.ok(labels.includes(label), `the Rig panel has no "${label}" section (has: ${labels.join(", ")})`);
+  assert.equal(await page.locator(".step-shell [aria-label='Which way the character faces'], .step-shell .facing-ask").count(), 1, "Facing is asked more than once");
+  assert.equal(await page.locator(".step-shell .editor-left-panel, .step-shell .editor-right-panel, .step-shell .stage-strip").count(), 0, "the guided Rig stage still shows editor panels or strips");
+  assert.equal((await page.locator(".step-primary").textContent())?.trim(), "Make animations →");
+  const before = await page.locator(".step-stage").screenshot();
+  await page.locator(".step-panel button").filter({ hasText: /^Swing arms$/ }).click(); await page.waitForTimeout(900);
+  const after = await page.locator(".step-stage").screenshot();
+  assert.ok(!before.equals(after), "Swing arms did not change the stage");
+  await page.locator(".step-panel button").filter({ hasText: /^Rest$/ }).click();
+  await page.locator(".step-panel .panel-link").filter({ hasText: /Edit bones manually/ }).click();
+  await page.locator(".step-shell.is-expanded").waitFor({ timeout: 15000 });
+  assert.equal((await page.locator(".step-primary").textContent())?.trim(), "Done, back to Rig");
+  await page.locator(".step-primary").click();
+  assert.equal(await page.locator(".step-shell.is-expanded").count(), 0, "Done, back to Rig did not return to the guided view");
+}
+
 const checks: readonly (readonly [string, (page: Page) => Promise<void>, string?])[] = [
   ["Create stays on Create with a rigged project open", checkCreateStaysOnCreate],
   ["Every step renders in the shared frame", checkShellOnEveryStep],
@@ -305,6 +333,7 @@ const checks: readonly (readonly [string, (page: Page) => Promise<void>, string?
   ["Create: expanded view works and returns", checkCreateExpanded],
   ["Parts: guided view with regions", checkPartsGuided],
   ["Parts: expanded cutter works and returns", checkPartsExpanded],
+  ["Rig: guided view with joints and pose tests", checkRigGuided],
   ["Every control on every step does something", checkEveryControlOnEveryStep],
 ];
 

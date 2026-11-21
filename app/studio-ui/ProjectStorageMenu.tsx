@@ -11,6 +11,8 @@ import { StudioDialog } from "./StudioDialog";
 import "./project-storage.css";
 
 const ACTIVE_DISK_PROJECT_KEY = "rig-studio:active-disk-project:v1";
+/** The disk project this browser last had open, which the menu reopens on load; null when none is remembered. */
+export const rememberedDiskProjectId = (): string | null => { try { return window.localStorage.getItem(ACTIVE_DISK_PROJECT_KEY); } catch { return null; } };
 
 /**
  * Called when a new character is started in the browser (an imported image). The project menu reopens the last active
