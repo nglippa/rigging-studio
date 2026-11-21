@@ -386,9 +386,19 @@ export class StudioBridgeServer {
       try {
         const body = await this.readJsonBody(request, 64_000_000) as Record<string, unknown> | null;
         if (!body || typeof body !== "object" || !body.rig || !Array.isArray(body.animations) || (body.mode !== "rig" && body.mode !== "polish" && body.mode !== "redraw")) throw new Error("A bake needs rig, animations and mode (rig, polish or redraw)");
-        const job = this.bake.start({ rig: body.rig as import("../../src/rigging/schema/types").RigDefinition, animations: body.animations as import("../../src/rigging/schema/types").AnimationDefinition[], mode: body.mode, ...(typeof body.profileId === "string" ? { profileId: body.profileId } : {}), ...(typeof body.prompt === "string" ? { prompt: body.prompt } : {}) });
+        const job = this.bake.start({ rig: body.rig as import("../../src/rigging/schema/types").RigDefinition, animations: body.animations as import("../../src/rigging/schema/types").AnimationDefinition[], mode: body.mode, ...(typeof body.projectId === "string" && body.projectId ? { projectId: body.projectId } : {}), ...(typeof body.profileId === "string" ? { profileId: body.profileId } : {}), ...(typeof body.prompt === "string" ? { prompt: body.prompt } : {}) });
         response.writeHead(202, { "Content-Type": "application/json" }).end(JSON.stringify(job));
       } catch (error: unknown) { response.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error instanceof Error ? error.message : "Bake could not start" })); }
+      return;
+    }
+    // Which of a project's clips already have a current redraw (RedrawStore), so Animate and Export never redraw twice.
+    if (request.method === "POST" && request.url === "/bake/redraws/lookup") {
+      try {
+        const body = await this.readJsonBody(request, 64_000_000) as Record<string, unknown> | null;
+        if (!body || typeof body.projectId !== "string" || !body.projectId || !body.rig || !Array.isArray(body.animations) || (body.mode !== "redraw" && body.mode !== "polish")) throw new Error("A lookup needs projectId, rig, animations and mode (redraw or polish)");
+        const clips = await this.bake.lookupRedraws(body.projectId, body.rig as import("../../src/rigging/schema/types").RigDefinition, body.animations as import("../../src/rigging/schema/types").AnimationDefinition[], body.mode);
+        response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ clips }));
+      } catch (error: unknown) { response.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error instanceof Error ? error.message : "Lookup failed" })); }
       return;
     }
     if (request.method === "GET" && request.url?.startsWith("/bake/jobs/")) {

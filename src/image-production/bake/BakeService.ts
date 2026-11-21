@@ -9,6 +9,7 @@
  * Output (in .rigging-studio/bakes/<job>/): sheet.png (one row per clip, one cell per drawing, at the art's own resolution)
  * and sheet.json (cells, durations in ms, loop, the pivot the game places at the character's position, the scale to draw).
  */
+import { fingerprint, RedrawStore, type RedrawMode } from "./redrawStore";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { PNG } from "pngjs";
@@ -24,7 +25,11 @@ import { characterPalette, POLISH_PROMPT, polishInput, snapPolished } from "./po
 import { poseJoints, renderPoseSkeleton } from "./poseSkeleton";
 
 export type BakeMode = "rig" | "polish" | "redraw";
-export type BakeRequest = { readonly rig: RigDefinition; readonly animations: readonly AnimationDefinition[]; readonly mode: BakeMode; readonly seed?: number; readonly profileId?: string; readonly prompt?: string };
+export type BakeRequest = { readonly rig: RigDefinition; readonly animations: readonly AnimationDefinition[]; readonly mode: BakeMode; readonly seed?: number; readonly profileId?: string; readonly prompt?: string;
+  /** The project the clips belong to: a finished redraw or polish is recorded under it (RedrawStore), so it is found again. */
+  readonly projectId?: string };
+/** Where each clip of a project stands: redrawn and current (with its job's files), or not. */
+export type RedrawLookup = { readonly id: string; readonly status: "ready" | "missing"; readonly jobId?: string; readonly sheet?: string; readonly json?: string };
 export type BakeJob = {
   readonly jobId: string; readonly mode: BakeMode; readonly status: "queued" | "running" | "completed" | "failed";
   readonly progress: { readonly done: number; readonly total: number; readonly clip: string | null };
@@ -92,7 +97,18 @@ const drawingTimes = (clip: AnimationDefinition): number[] => clip.drawings?.len
 
 export class BakeService {
   private readonly jobs = new Map<string, BakeJob>();
-  constructor(private readonly production: ImageProductionService, private readonly root = path.join(process.cwd(), ".rigging-studio", "bakes")) {}
+  private readonly redraws: RedrawStore;
+  constructor(private readonly production: ImageProductionService, private readonly root = path.join(process.cwd(), ".rigging-studio", "bakes")) { this.redraws = new RedrawStore(root); }
+
+  /** Each clip's stored redraw, if one matches the rig and clip as they are now and its files are still on disk. */
+  async lookupRedraws(projectId: string, rig: RigDefinition, animations: readonly AnimationDefinition[], mode: RedrawMode): Promise<RedrawLookup[]> {
+    return Promise.all(animations.map(async (clip): Promise<RedrawLookup> => {
+      const hit = await this.redraws.lookup(projectId, clip.id, fingerprint(rig, clip, mode));
+      if (!hit) return { id: clip.id, status: "missing" };
+      try { await this.asset(hit.jobId, "sheet.json"); } catch { return { id: clip.id, status: "missing" }; }
+      return { id: clip.id, status: "ready", jobId: hit.jobId, sheet: `/bake/assets/${hit.jobId}/sheet.png`, json: `/bake/assets/${hit.jobId}/sheet.json` };
+    }));
+  }
 
   start(request: BakeRequest): BakeJob {
     if (!request.animations.length) throw new Error("Choose at least one animation to bake");
@@ -227,6 +243,8 @@ export class BakeService {
     await writeFile(path.join(directory, "sheet.png"), PNG.sync.write(sheet));
     const json = { format: "rigging-studio-sheet/1", character: rig.metadata?.name ?? rig.id, mode: request.mode, pixelScale: k, cell: { w: cellWidth, h: cellHeight }, pivot, clips };
     await writeFile(path.join(directory, "sheet.json"), `${JSON.stringify(json, null, 2)}\n`);
+    // A redraw or polish is recorded per clip, after its sheet is on disk, so a lost job page can still find it.
+    if (request.projectId && request.mode !== "rig") { const mode = request.mode; const projectId = request.projectId; await Promise.all(request.animations.map((clip) => this.redraws.record(projectId, clip.id, fingerprint(rig, clip, mode), jobId))); }
     this.update(jobId, { status: "completed", progress: { done, total: done, clip: null }, result: { sheet: `/bake/assets/${jobId}/sheet.png`, json: `/bake/assets/${jobId}/sheet.json`, drawings: done, polished, keptFromRig: kept } });
   }
 }
