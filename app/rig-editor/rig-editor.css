@@ -1124,3 +1124,24 @@ details.ai-section > :last-child { margin-bottom: 10px; }
 .step-shell .clip-pick.is-active .clip-pick-name { color: var(--sh-accent); }
 .step-shell .clip-pick-status { font-size: 11px; color: var(--sh-muted); display: flex; gap: 6px; align-items: center; }
 .step-shell .clip-pick-status.tone-ok { color: var(--sh-ok); } .step-shell .clip-pick-status.tone-warn { color: var(--sh-warn); } .step-shell .clip-pick-status.tone-busy { color: var(--sh-accent); }
+
+/* Animate, expanded: the keyframe editor in the shared layout, filling the (wide) stage. */
+.step-shell .animate-workspace.animate-expanded { display: grid; min-height: 0; min-width: 0; height: 100%; }
+.step-shell .animate-expanded > .expanded { min-height: 0; }
+.step-shell .animate-expanded .expanded-stage > .editor-viewport { position: absolute; inset: 0; }
+.step-shell .animate-expanded .animate-timeline { display: grid; grid-template-rows: auto minmax(0, 1fr); height: var(--timeline-height, 220px); min-height: 0; min-width: 0; border-top: 1px solid var(--sh-line); background: var(--sh-panel); }
+.step-shell .animate-expanded .animate-left, .step-shell .animate-expanded .animate-inspector { display: flex; flex-direction: column; min-height: 0; }
+.step-shell .animate-expanded .expanded-tools .transport { display: flex; }
+.step-shell .animate-workspace.animate-expanded { grid-template-rows: minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); position: relative; inset: auto; }
+.step-shell .animate-expanded > .expanded { height: 100%; }
+.step-shell .animate-expanded .expanded-bottom { max-height: none; overflow: hidden; }
+.step-shell .animate-expanded .animate-timeline { height: var(--timeline-height, 240px); }
+.step-shell .animate-expanded .animate-timeline > .dope-sheet, .step-shell .animate-expanded .animate-timeline > :last-child { min-height: 0; height: 100%; }
+.step-shell .animate-expanded .animate-inspector { gap: 0; }
+.step-shell .animate-expanded .animate-tabs { margin: 12px; }
+.step-shell .animate-expanded .animate-tabs button { font-size: 12px; }
+.step-shell .animate-expanded .inspector-tab-content { min-height: 0; overflow-y: auto; }
+.step-shell .animate-expanded .expanded-zoom { display: flex; align-items: center; gap: 6px; }
+.step-shell .animate-expanded .expanded-zoom .animation-fit-view { position: static; inset: auto; transform: none; }
+.step-shell .animate-expanded .expanded-zoom .speed-control { position: static; display: flex; }
+.step-shell .animate-expanded .expanded-zoom .speed-control select { height: 28px; min-width: 64px; padding: 0 6px; border: 1px solid var(--sh-line); border-radius: 6px; background: var(--sh-raised); color: var(--sh-text); }

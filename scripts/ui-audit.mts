@@ -386,6 +386,24 @@ async function checkAnimateGuided(page: Page): Promise<void> {
   await offline.close();
 }
 
+/** Expanded Animate: every control works, the timeline stays inside the centre column, and K keys the selected bone. */
+async function checkAnimateExpanded(page: Page): Promise<void> {
+  const problems = await checkEveryControl(page, "/?mode=animate", "Animate expanded", expandWith(/Edit keyframes manually/));
+  await page.goto(`${APP_URL}/?mode=animate`, { waitUntil: "domcontentloaded" }); await page.locator(".step-panel .clip-pick").first().waitFor({ timeout: 90000 }); await page.waitForTimeout(1500);
+  await expandWith(/Edit keyframes manually/)(page); await page.waitForTimeout(1200);
+  const centre = await page.locator(".expanded-center").boundingBox(); const timeline = await page.locator(".expanded-bottom").boundingBox();
+  assert.ok(centre && timeline && timeline.x >= centre.x - 1 && timeline.x + timeline.width <= centre.x + centre.width + 1, "the timeline is wider than the centre column");
+  const pauseButton = page.locator(".expanded-tools button[aria-label='Pause']"); if (await pauseButton.count()) await pauseButton.click();
+  await page.locator(".clip-bones button").first().click();
+  for (let step = 0; step < 3; step += 1) await page.keyboard.press("ArrowRight");
+  const before = await page.locator(".key-diamond").count();
+  await page.keyboard.press("k"); await page.waitForTimeout(500);
+  assert.ok(await page.locator(".key-diamond").count() > before, "K did not add a key at the playhead");
+  await page.locator(".step-primary").click();
+  assert.equal(await page.locator(".step-shell.is-expanded").count(), 0, "Done, back to Animate did not leave the expanded view");
+  assert.deepEqual(problems, [], `\n  ${problems.join("\n  ")}`);
+}
+
 const checks: readonly (readonly [string, (page: Page) => Promise<void>, string?])[] = [
   ["Create stays on Create with a rigged project open", checkCreateStaysOnCreate],
   ["Every step renders in the shared frame", checkShellOnEveryStep],
@@ -398,6 +416,7 @@ const checks: readonly (readonly [string, (page: Page) => Promise<void>, string?
   ["Rig: guided view with joints and pose tests", checkRigGuided],
   ["Rig: expanded view (skeleton, joint, bend test)", checkRigExpanded],
   ["Animate: Look switch, previews, redraw status", checkAnimateGuided],
+  ["Animate: expanded keyframe editor", checkAnimateExpanded],
   ["Every control on every step does something", checkEveryControlOnEveryStep],
 ];
 

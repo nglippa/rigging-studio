@@ -182,6 +182,7 @@ describe("stage-driven workspace shell", () => {
     expect(shell).toContain("useDismissibleMenus();");
     expect(source("../../app/studio-ui/ProjectStorageMenu.tsx").match(/data-dismissible-menu/g)).toHaveLength(1);
     expect(canvas.match(/data-dismissible-menu/g)).toHaveLength(2);
-    expect(animate.match(/data-dismissible-menu/g)).toHaveLength(3);
+    // Clip options and the timeline menu (the Ghosts menu became the Onion skin toggle).
+    expect(animate.match(/data-dismissible-menu/g)).toHaveLength(2);
   });
 });
