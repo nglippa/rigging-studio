@@ -129,7 +129,14 @@ async function checkEveryControl(page: Page, href: string, label: string, enter?
   page.on("download", () => { sideEffects += 1; });
   let nativeConfirms = 0;
   page.on("dialog", (dialog) => { sideEffects += 1; nativeConfirms += 1; void dialog.dismiss(); });
-  const open = async () => { await page.goto(`${APP_URL}${href}`, { waitUntil: "domcontentloaded" }); await page.locator(".step-shell").first().waitFor({ timeout: 40000 }); await page.waitForTimeout(1500); if (enter) { await enter(page); await page.waitForTimeout(600); } };
+  // The golden fixture's images are large: a step can take a while to open in a fresh browser, so wait long and retry once.
+  const open = async () => {
+    for (let attempt = 0; ; attempt += 1) {
+      try { await page.goto(`${APP_URL}${href}`, { waitUntil: "domcontentloaded" }); await page.locator(".step-shell").first().waitFor({ timeout: 90000 }); break; }
+      catch (error) { if (attempt) throw error; }
+    }
+    await page.waitForTimeout(1500); if (enter) { await enter(page); await page.waitForTimeout(600); }
+  };
   await open();
   const controls = await page.evaluate(() => [...document.querySelectorAll(".step-shell :is(button, a[href], [role=tab], select, input[type=checkbox], input[type=radio], summary)")].map((element, index) => {
     const r = element.getBoundingClientRect(); const style = getComputedStyle(element);
@@ -170,6 +177,7 @@ async function checkEveryControl(page: Page, href: string, label: string, enter?
       await page.evaluate(() => { try { window.localStorage.removeItem("rigging-studio-workspace-v1"); } catch { /* none */ } });
       await open();
       await page.evaluate((wanted) => { const match = [...document.querySelectorAll(`[aria-label="${wanted}"]`)][0]; document.querySelectorAll("[data-audit-target]").forEach((element) => element.removeAttribute("data-audit-target")); match?.setAttribute("data-audit-target", "1"); }, control.text);
+      await page.locator("[data-audit-target]").first().waitFor({ state: "visible", timeout: 40000 }).catch(() => undefined);
       const handle = await page.locator("[data-audit-target]").first().boundingBox();
       const box = handle ? { ...handle, y: handle.y + Math.min(200, handle.height / 2) - handle.height / 2 } : null;
       const sizeOf = () => page.evaluate(() => [...document.querySelectorAll(".step-shell *")].slice(0, 3000).map((element) => { const r = element.getBoundingClientRect(); return `${Math.round(r.width)}x${Math.round(r.height)}`; }).join(","));
@@ -249,7 +257,7 @@ async function checkCreateOffline(page: Page): Promise<void> {
 }
 
 /** Opens a step's expanded view from the panel link whose text matches. */
-const expandWith = (link: RegExp) => async (page: Page) => { await page.locator(".step-panel .panel-link").filter({ hasText: link }).first().click(); await page.locator(".step-shell.is-expanded").waitFor({ timeout: 10000 }); };
+const expandWith = (link: RegExp) => async (page: Page) => { const target = page.locator(".step-panel .panel-link").filter({ hasText: link }).first(); await target.waitFor({ state: "visible", timeout: 30000 }); await target.click(); await page.locator(".step-shell.is-expanded").waitFor({ timeout: 10000 }); };
 
 /** Create's expanded view: every control works, and Done returns to the guided view. */
 async function checkCreateExpanded(page: Page): Promise<void> {
@@ -261,6 +269,15 @@ async function checkCreateExpanded(page: Page): Promise<void> {
   assert.deepEqual(problems, [], `\n  ${problems.join("\n  ")}`);
 }
 
+/** Guided Parts: no cutting toolbars, the body by region, and the main button to cut or build. */
+async function checkPartsGuided(page: Page): Promise<void> {
+  await page.goto(`${APP_URL}/part-cutter`, { waitUntil: "domcontentloaded" }); await page.locator(".step-shell").first().waitFor({ timeout: 40000 }); await page.waitForTimeout(2000);
+  assert.equal(await page.locator(".step-shell [role=tablist], .step-shell .cutter-toolbar").count(), 0, "the guided view still shows cutting toolbars");
+  const rows = (await page.locator(".step-panel .panel-row").allTextContents()).map((text) => text.trim());
+  for (const region of ["Head", "Body", "Arms", "Legs"]) assert.ok(rows.some((row) => row.startsWith(region)), `no ${region} row in the panel (rows: ${rows.join(" | ")})`);
+  assert.match((await page.locator(".step-primary").textContent())?.trim() ?? "", /^(Build rig →|Cut all parts)$/);
+}
+
 const checks: readonly (readonly [string, (page: Page) => Promise<void>, string?])[] = [
   ["Create stays on Create with a rigged project open", checkCreateStaysOnCreate],
   ["Every step renders in the shared frame", checkShellOnEveryStep],
@@ -268,6 +285,7 @@ const checks: readonly (readonly [string, (page: Page) => Promise<void>, string?
   ["Create: model cards, description, Generate", checkCreateGuided],
   ["Create: says when the Mac Studio is unreachable", checkCreateOffline],
   ["Create: expanded view works and returns", checkCreateExpanded],
+  ["Parts: guided view with regions", checkPartsGuided],
   ["Every control on every step does something", checkEveryControlOnEveryStep],
 ];
 

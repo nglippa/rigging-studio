@@ -511,3 +511,12 @@
 .cutter-canvas .piece-preview { fill:rgba(255,193,94,.45);stroke:#ffc15e;stroke-width:2;vector-effect:non-scaling-stroke;pointer-events:none; }
 /* Messages wrap instead of being cut off mid-sentence. */
 .part-cutter-shell .part-cutter-toast { max-width:min(560px,60vw); padding:6px 10px; white-space:normal; line-height:1.35; }
+
+/* Guided Parts: the character with its parts tinted, nothing else over it, and view only (cutting is in the expanded view). */
+.step-shell .parts-guided-stage { display: grid; place-items: center; padding: 20px; }
+.step-shell .parts-guided-stage .cutter-canvas-wrap { width: 100%; height: 100%; pointer-events: none; }
+.step-shell .parts-guided-stage svg text, .step-shell .parts-guided-stage :is(.canvas-region-readout, .coverage-legend, .anatomical-guide, .guide-landmark-point, .guide-landmark-hit, .region-controls, .region-bounds, .unassigned-toggle, .assignment-path) { display: none !important; }
+/* Expanded Parts: the cutter's own toolbar sits in the shared toolbar slot. */
+.step-shell .expanded-tools > .cutter-toolbar { display: flex; align-items: center; gap: 4px; padding: 0 4px; border: 0; background: transparent; min-height: 0; }
+.step-shell .expanded-left > .cutter-left, .step-shell .expanded-right > .cutter-right { display: contents; }
+.step-shell .expanded-center .cutter-canvas-wrap { padding-top: 56px; }
