@@ -30,7 +30,7 @@ import {
   anatomicalGuidePrompt, buildAdaptiveAnatomicalPartitionGuide, buildAnatomicalPartitionGuide, createPartCutterState, cutterStateFor, ensureOwnershipPartition, evaluateRotationTest, guidedProposalFromSegmentation, mergeParts, moveAdaptiveLandmark, ownerAt, partCutToSegmentation, recordOwnershipRelabel, rejectProposal,
   removeOwnershipRegion, reshapeRegionEdge, riggingPaddingFor, setRiggingPadding, simplifiedRegionContour, unresolvedMask,
   semanticLabel, semanticShortcut, splitPart, createManualRegionFromSelection, intersectSelectionWithForeground, derivePrepareWorkflowState,
-  GUIDED_BODY_ORDER, GUIDED_EQUIPMENT_ORDER, GUIDED_BENCHMARK_COHORT, GUIDED_BENCHMARK_STORAGE_KEY, backGuidedSemantic, commitGuidedSelection, createGuidedBenchmarkRun,
+  GUIDED_BODY_ORDER, GUIDED_EQUIPMENT_ORDER, GUIDED_BENCHMARK_COHORT, autoCutBodyParts, GUIDED_BENCHMARK_STORAGE_KEY, backGuidedSemantic, commitGuidedSelection, createGuidedBenchmarkRun,
   applyPoseLandmarks, changedZoneSemantics, recutFromGuide, type GuideProportions, finishGuidedBenchmarkCharacter, finishGuidedBody, finishGuidedEquipment, guideAllBodyParts, guideSelectionForCurrent, guidedBenchmarkCounts, initializeGuidedManual,
   nextGuidedBenchmarkCharacter, parseGuidedBenchmarkRun, recordGuidedBenchmarkEvent, serializeGuidedBenchmarkRun, setGuidedIntent, skipGuidedSemantic,
   startGuidedBenchmarkCharacter, unresolvedComponents,
@@ -345,7 +345,12 @@ export function PartCutterWorkspace() {
       const handPlaced = current.anatomicalGuide?.adaptiveMetadata && current.anatomicalGuide.landmarks.some((landmark) => landmark.source === "manual");
       const guide = handPlaced ? current.anatomicalGuide! : createAdaptiveGuide(current);
       const anatomicalGuide = posed ? applyPoseLandmarks(guide, posed.joints, foreground) : guide;
-      outcome = guideAllBodyParts({ ...current, anatomicalGuide }, foreground, undefined, sourceColoursRef.current ?? undefined);
+      // A fresh cut grows each part from a stroke along its bone, following the drawing (autoCut.ts); parts already cut by
+      // hand are kept, so then only the missing ones are filled in the older way.
+      const colours = sourceColoursRef.current;
+      const fresh = colours && !current.parts.some((part) => (GUIDED_BODY_ORDER as readonly string[]).includes(part.semanticType));
+      if (fresh) { const auto = autoCutBodyParts({ ...current, anatomicalGuide }, foreground, colours); outcome = { state: auto.state, cut: auto.cut as typeof GUIDED_BODY_ORDER[number][], missed: [], hidden: auto.hidden as typeof GUIDED_BODY_ORDER[number][] }; }
+      else outcome = guideAllBodyParts({ ...current, anatomicalGuide }, foreground, undefined, colours ?? undefined);
       // A character described in a long robe or dress keeps the cloth over its legs in one piece (see foldLegsIntoSkirt).
       if (SKIRT_WORDS.test(project.originalUserPrompt ?? "")) {
         const folded = foldLegsIntoSkirt(outcome.state, foreground, sourceColoursRef.current ?? undefined);
@@ -362,7 +367,7 @@ export function PartCutterWorkspace() {
     const laidOut = (result.state.anatomicalGuide?.adaptiveMetadata?.proportions ?? "chibi") === "adult" ? "adult" : "chibi";
     const fromModel = posed ? Object.keys(posed.joints).length : 0;
     const how = fromModel ? `${fromModel} joints from the pose model, the rest from the outline with ${laidOut} proportions${posed?.view ? ` · ${posed.view.view} view` : ""}` : `Joints from the outline with ${laidOut} proportions (the pose model was not sure of any)`;
-    const summary = !result.cut.length ? "Nothing to cut: every part is already done or has no outline." : `Cut ${result.cut.length} ${result.cut.length === 1 ? "part" : "parts"}. ${how}.${missed.length ? ` Draw these yourself: ${missed.join(", ")}.` : ""}${result.hidden.length ? " One leg is hidden behind the other, so it was not cut; the rig draws it from the near leg." : ""}`;
+    const summary = !result.cut.length ? "Nothing to cut: every part is already done or has no outline." : `Cut ${result.cut.length} ${result.cut.length === 1 ? "part" : "parts"}. ${how}.${missed.length ? ` Draw these yourself: ${missed.join(", ")}.` : ""}${result.hidden.length ? ` Not visible in the art, so not cut: ${result.hidden.map((semantic) => SEMANTIC_TAXONOMY[semantic].label.toLowerCase()).join(", ")}.` : ""}`;
     setMessage(`${summary}${robed ? " The robe is kept in one piece with the body; the feet show the steps." : ""} Check each one and fix any that are wrong with Add or Remove.`);
     // Also when the body was already cut: what the character holds may still be missing (it returns at once when not).
     await cutHeldObjects(result.state, summary);

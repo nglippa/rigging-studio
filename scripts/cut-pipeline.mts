@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import * as ort from "onnxruntime-web";
 import { detectDwpose } from "../src/character-generation/pose/dwpose";
 import { poseToLandmarks } from "../src/character-generation/pose/poseLandmarks";
-import { applyPoseLandmarks, buildAdaptiveAnatomicalPartitionGuide, createPartCutterState, decodeOwnership, ensureOwnershipPartition, guideAllBodyParts } from "../src/part-cutter";
+import { applyPoseLandmarks, autoCutBodyParts, buildAdaptiveAnatomicalPartitionGuide, createPartCutterState, decodeOwnership, ensureOwnershipPartition } from "../src/part-cutter";
 export const BODY_PARTS = ["head", "torso", "leftUpperArm", "leftForearm", "leftHand", "rightUpperArm", "rightForearm", "rightHand", "leftThigh", "leftLowerLeg", "leftFoot", "rightThigh", "rightLowerLeg", "rightFoot"] as const;
 export type LoadedImage = { readonly width: number; readonly height: number; readonly data: Uint8Array; readonly foreground: number[] };
 
@@ -33,7 +33,7 @@ export async function cutAllParts(image: LoadedImage): Promise<{ readonly predic
     poseJoints = Object.keys(joints).length;
     if (poseJoints) guide = applyPoseLandmarks(guide, joints, foreground);
   }
-  const result = guideAllBodyParts({ ...base, anatomicalGuide: guide }, foreground, AT, data);
+  const result = autoCutBodyParts({ ...base, anatomicalGuide: guide }, foreground, data, AT);
   const state = ensureOwnershipPartition(result.state); const owners = decodeOwnership(state.ownership!);
   const semanticByOwner = state.ownership!.regionIds.map((id) => state.parts.find((part) => part.partId === id)?.semanticType);
   const predicted = new Uint8Array(width * height);

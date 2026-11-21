@@ -13,3 +13,5 @@ export * from "./adaptiveGuide";
 export * from "./refinementEvaluation";
 export * from "./prepareWorkflow";
 export * from "./manualPartition";
+export * from "./autoCut";
+export * from "./cutPlan";
