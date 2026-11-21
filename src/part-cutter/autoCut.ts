@@ -93,8 +93,16 @@ export function legJoints(width: number, height: number, foreground: ArrayLike<n
  * wrist further than that from the body's axis (the pose model puts it on a held sword or staff) is pulled in along the line
  * from its shoulder.
  */
-export function settleArms(joints: Joints): Joints {
-  const { neck, pelvis } = joints;
+export function settleArms(joints: Joints, figureHeight?: number): Joints {
+  const { pelvis } = joints; let { neck } = joints;
+  // A plausibility check for big-headed (chibi) figures, whose head point sits 0.14-0.28 of the figure's height above the
+  // chin: the joints can put the neck right under the head point when a long beard or a hood hangs below the face, and the
+  // head ends at its lowest own drawn edge, so a neck less than 0.1 under the head point goes to 0.25 under it. Fitted on one
+  // bench figure (the dwarf, 77.8% -> 85.9%), so only applied when figureHeight is given, i.e. for chibi proportions:
+  // an adult's head is about an eighth of its height, and its neck is rightly ~0.07 under the head point.
+  const head = joints.head;
+  if (figureHeight && neck && head && neck.y - head.y < figureHeight * .1) neck = { x: neck.x, y: head.y + figureHeight * .25 };
+  if (neck && neck !== joints.neck) joints = { ...joints, neck };
   if (!neck || !pelvis) return joints;
   const out: Record<string, Point> = { ...joints }; const floor = neck.y + (pelvis.y - neck.y) * .3;
   for (const side of ["left", "right"]) { const shoulder = joints[`${side}Shoulder`]; if (shoulder && shoulder.y < floor) out[`${side}Shoulder`] = { x: shoulder.x, y: floor }; }
@@ -172,7 +180,7 @@ export function autoCutBodyParts(state: PartCutterState, foreground: readonly nu
   const legs = legJoints(width, height, foreground, colours);
   let top = height; let bottom = -1; let left = width; let right = -1;
   for (let index = 0; index < width * height; index += 1) if (foreground[index]) { const x = index % width; const y = (index - x) / width; if (y < top) top = y; if (y > bottom) bottom = y; if (x < left) left = x; if (x > right) right = x; }
-  const joints: Joints = settleArms(legs ? { ...centreOnLegs(fromGuide, legs, sources, (left + right) / 2, bottom - top + 1), ...legs } : fromGuide);
+  const joints: Joints = settleArms(legs ? { ...centreOnLegs(fromGuide, legs, sources, (left + right) / 2, bottom - top + 1), ...legs } : fromGuide, state.anatomicalGuide?.adaptiveMetadata?.proportions === "adult" ? undefined : bottom - top + 1);
   const labels = applyCutPlan(bonePlan(joints), { width, height, data: colours, foreground });
   let current = initializeGuidedManual(state, at); const cut: string[] = []; const hidden: string[] = [];
   for (const semantic of GUIDED_BODY_ORDER) {
