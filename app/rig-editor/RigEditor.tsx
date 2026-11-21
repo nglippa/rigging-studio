@@ -47,6 +47,7 @@ import { useRouter } from "next/navigation";
 import { needsArtRebuild, RECUT_PART_KEY, RepaintNotice, writeRebuildRequest } from "./RigNotices";
 import { RigGuidedPanel } from "./RigGuidedPanel";
 import { RigExpanded, type RigTool } from "./RigExpanded";
+import { excludedOf, lookOf, useRedraws, type ExportLook, type RedrawMethod } from "./AnimateGuided";
 import { landmarkFor, snapPivotToLandmark } from "@/src/rigging/editing/snapToLandmark";
 import { defaultBendLimits, type BendLimits } from "@/src/rigging/motion/bendLimits";
 import { createRestPose } from "@/src/rigging/runtime/pose";
@@ -155,6 +156,10 @@ export function RigEditor() {
   const [testBend, setTestBend] = useState<{ readonly boneId: string; readonly angle: number } | null>(null);
   const [rigAdvanced, setRigAdvanced] = useState(false);
   const swapSlotRef = useRef<string | null>(null);
+  // Animate: the full keyframe editor or the guided preview; how redraws are made; where the guided panel renders.
+  const [animateExpanded, setAnimateExpanded] = useState(false);
+  const [redrawMethod, setRedrawMethod] = useState<RedrawMethod>("redraw");
+  const [animatePanel, setAnimatePanel] = useState<HTMLElement | null>(null);
   // Space held in the expanded view: the hand tool until it is let go.
   useEffect(() => {
     if (!rigExpanded || rigAdvanced) return;
@@ -746,6 +751,8 @@ export function RigEditor() {
     window.addEventListener("keydown", keyDown); return () => window.removeEventListener("keydown", keyDown);
   }, [blockingValidationIssues.length, commandPaletteOpen, focusMode, router]);
 
+  const exportClips = exportAnimations();
+  const redraws = useRedraws({ projectId: hydrationIdentity.activeProjectId, rig, clips: exportClips, method: redrawMethod, enabled: editorMode === "animate" || editorMode === "export" });
   // Loading still renders the frame: its project menu is what reopens the project this browser last had open.
   if (!rig) return <main className="rig-editor-shell is-loading">
     <StepShell step={editorMode === "export" ? "export" : editorMode === "animate" ? "animate" : "rig"} state={stepState} projectName="Opening…" saved="saved"
@@ -770,8 +777,13 @@ export function RigEditor() {
     setTested(true);
     writeStageMark(TESTED_KEY, projectKey);
   };
+  const setLook = (look: ExportLook): void => { run(look === "redrawn" ? "Look: redrawn via Comfy" : "Look: rigged", (current) => ({ ...current, metadata: { ...current.metadata, exportLook: look } })); };
+  const setIncluded = (id: string, included: boolean): void => {
+    const name = exportClips.find((clip) => clip.id === id)?.name ?? id;
+    run(included ? `Include ${name}` : `Leave out ${name}`, (current) => { const left = new Set(excludedOf(current)); if (included) left.delete(id); else left.add(id); return { ...current, metadata: { ...current.metadata, exportExcluded: [...left] } }; });
+  };
   const closeRigExpanded = (): void => { setRigExpanded(false); setRigAdvanced(false); setRigTool("move"); setTestBend(null); };
-  const enterMode = (mode: EditorMode): void => { router.replace(`/?mode=${mode}`, { scroll: false }); setEditorMode(mode); if (mode === "animate" || mode === "export") closeRigExpanded(); setSweep(null); setPosed(false); setContextMenu(null); setFocusMode(false); };
+  const enterMode = (mode: EditorMode): void => { router.replace(`/?mode=${mode}`, { scroll: false }); setEditorMode(mode); if (mode === "animate" || mode === "export") closeRigExpanded(); if (mode !== "animate") setAnimateExpanded(false); setSweep(null); setPosed(false); setContextMenu(null); setFocusMode(false); };
   const showProblems = (): void => { setUtilityTab("problems"); setUtilityOpen(true); };
   const modeSelect = (mode: EditorMode | "prepare"): void => {
     if (mode === "prepare") router.push("/part-cutter");
@@ -867,6 +879,11 @@ export function RigEditor() {
   const hierarchyDisabled = previewMode || testing;
   // Rig step: guided (character, panel, one button) unless the full editor is open; the old Test view opens it too.
   const rigStep = !inAnimate && editorMode !== "export";
+  const look = lookOf(rig); const excluded = excludedOf(rig);
+  const includedClips = exportClips.filter((clip) => !excluded.has(clip.id));
+  const missingRedraws = includedClips.filter((clip) => redraws.status[clip.id]?.state !== "ready");
+  const startableRedraws = missingRedraws.filter((clip) => redraws.status[clip.id]?.state !== "running");
+  const redrawMinutes = startableRedraws.reduce((sum, clip) => sum + Math.max(1, Math.round((clip.drawings?.length ?? Math.round(clip.duration * 12)) * (redrawMethod === "polish" ? 13 : 30) / 60)), 0);
   const rigFull = rigStep && (rigExpanded || testing);
   const selectedRigBone = rigFull && selectedBoneId ? rig.bones.find((bone) => bone.id === selectedBoneId) ?? null : null;
   const restWorld = computeWorldTransforms(rig, createRestPose(rig));
@@ -924,7 +941,7 @@ export function RigEditor() {
     <input ref={prepareInputRef} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void importSpriteForCutting(event)} />
     <StepShell step={editorMode === "export" ? "export" : inAnimate ? "animate" : "rig"} state={stepState} projectName={rigName(rig)} saved={dirty ? "unsaved" : "saved"} onRename={commitRigName}
       onUndo={() => inAnimate ? animationCommand("undo") : undo()} onRedo={() => inAnimate ? animationCommand("redo") : redo()} canUndo={!testing && !previewMode && railUndo.canUndo} canRedo={!testing && !previewMode && railUndo.canRedo}
-      stage={editorMode === "export" ? <ExportForGame open inline rig={rig} animations={exportAnimations()} onClose={() => enterMode("animate")} /> : (inAnimate ? <AnimateWorkspace key={hydrationIdentity.projectSessionToken} projectId={hydrationIdentity.activeProjectId} rig={rig} activeSkinId={effectiveSkinId} showGrid={showGrid} showBones={showBones} showBounds={showBounds} viewportRef={viewportRef} initialBoneId={selectedBoneId} onSelectedBone={(boneId) => setSelections((current) => current.length === 1 && current[0].type === "bone" && current[0].id === boneId ? current : [{ type: "bone", id: boneId }])} onHistory={setAnimationHistory} onMotion={(edited) => { if (edited && !hasMotion) { setHasMotion(true); writeStageMark(ANIMATED_KEY, projectKey); } }} onFacing={setFacing} onRebuild={rebuildFromParts} onCursor={setCursor} onZoom={setZoom} onMessage={setMessage} onError={setError} /> : <div className="rig-guided-stage">{viewportElement}{previewMode && <div className="preview-notice" role="status">Pose test playing · the rig is not changed · Esc to stop</div>}</div>)}
+      stage={editorMode === "export" ? <ExportForGame open inline rig={rig} animations={exportAnimations()} onClose={() => enterMode("animate")} /> : (inAnimate ? <AnimateWorkspace key={hydrationIdentity.projectSessionToken} projectId={hydrationIdentity.activeProjectId} rig={rig} activeSkinId={effectiveSkinId} showGrid={showGrid} showBones={showBones && animateExpanded} showBounds={showBounds} viewportRef={viewportRef} initialBoneId={selectedBoneId} onSelectedBone={(boneId) => setSelections((current) => current.length === 1 && current[0].type === "bone" && current[0].id === boneId ? current : [{ type: "bone", id: boneId }])} onHistory={setAnimationHistory} onMotion={(edited) => { if (edited && !hasMotion) { setHasMotion(true); writeStageMark(ANIMATED_KEY, projectKey); } }} onFacing={setFacing} onRebuild={rebuildFromParts} onCursor={setCursor} onZoom={setZoom} onMessage={setMessage} onError={setError} view={animateExpanded ? "expanded" : "guided"} panelTarget={animatePanel} guided={{ look, onLook: setLook, excluded, onIncluded: setIncluded, redraws, method: redrawMethod, onMethod: setRedrawMethod, onExpand: () => setAnimateExpanded(true) }} /> : <div className="rig-guided-stage">{viewportElement}{previewMode && <div className="preview-notice" role="status">Pose test playing · the rig is not changed · Esc to stop</div>}</div>)}
       expanded={!rigFull ? undefined : rigAdvanced || testing ? <div className="rig-full">{rigWorkspace}</div> : <RigExpanded rig={rig} skinId={effectiveSkinId} review={review} bone={selectedRigBone} search={search} onSearch={setSearch}
         onSelectBone={(id) => { setTestBend(null); setSweep(null); setShowBones(true); setMessage(""); select({ type: "bone", id }, false); }} viewport={viewportElement}
         tool={rigTool} onTool={(tool) => { setRigTool(tool); setTestBend(null); if (tool !== "rotate") { viewportRef.current?.resetPose(); setPosed(false); } }}
@@ -938,21 +955,21 @@ export function RigEditor() {
         onSwapArt={(slotId) => { swapSlotRef.current = slotId; uploadInputRef.current?.click(); }}
         onRecut={(partId) => { try { window.sessionStorage.setItem(RECUT_PART_KEY, partId); } catch { /* Parts opens without the part selected */ } router.push("/part-cutter"); }}
         poses={{ available: poseTestAvailability, active: sweep?.kind === "test" ? sweep.id : null, posed: posed || testBend !== null, onTest: (id) => { setTestBend(null); runSweep(id ? { kind: "test", id } : null); }, onRest: () => { setTestBend(null); resetPose(); } }}
-        disabled={editsHeld} advanced={() => setRigAdvanced(true)} />}
-      panel={rigStep ? <><RepaintNotice rig={rig} onRepaint={repaintFromParts} /><RigGuidedPanel rig={rig} review={review} available={poseTestAvailability} activeTest={sweep?.kind === "test" ? sweep.id : null} posed={posed} problems={blockingValidationIssues.length} onFacing={setFacing} onChain={(id) => { setMessage(""); setRigExpanded(true); selectChain(id); }} onTest={(id) => runSweep(id ? { kind: "test", id } : null)} onRest={resetPose} onProblems={showProblems} onExpand={() => { setMessage(""); setRigExpanded(true); }} /></> : <>
+        disabled={editsHeld} advanced={() => setRigAdvanced(true)} fileActions={<><div className="ex-buttons"><button type="button" className="panel-button" onClick={() => loadInputRef.current?.click()} disabled={previewMode} title={previewMode ? "Not while a pose test plays" : undefined}>Load rig file…</button><button type="button" className="panel-button" onClick={discardDraft} disabled={previewMode} title={previewMode ? "Not while a pose test plays" : undefined}>Discard draft</button></div>         <button type="button" className="panel-link" onClick={resetWorkspace}>Reset workspace layout</button></>} />}
+      wide={inAnimate && animateExpanded}
+      panel={inAnimate ? <div ref={setAnimatePanel} className="animate-panel-slot" /> : rigStep ? <><RepaintNotice rig={rig} onRepaint={repaintFromParts} /><RigGuidedPanel rig={rig} review={review} available={poseTestAvailability} activeTest={sweep?.kind === "test" ? sweep.id : null} posed={posed} problems={blockingValidationIssues.length} onFacing={setFacing} onChain={(id) => { setMessage(""); setRigExpanded(true); selectChain(id); }} onTest={(id) => runSweep(id ? { kind: "test", id } : null)} onRest={resetPose} onProblems={showProblems} onExpand={() => { setMessage(""); setRigExpanded(true); }} /></> : <>
         <p className="panel-label">{editorMode === "export" ? "Export" : inAnimate ? "Animations" : "Rig"}</p>
         <div className="panel-row"><span>Bones</span><span className="num">{rig.bones.length}</span></div>
         <button type="button" className="panel-row" onClick={showProblems}><span>Problems</span><span className={validationIssues.length ? "is-warn" : "is-ok"}>{validationIssues.length ? validationIssues.length : "None"}</span></button>
         <ImageProductionStatus projectId={agentSession.activeProjectId?.startsWith("character-") ? agentSession.activeProjectId : null} />
-        <p className="panel-label">Rig file</p>
-        <div className="ex-buttons"><button type="button" className="panel-button" onClick={() => loadInputRef.current?.click()} disabled={previewMode || inAnimate} title={previewMode || inAnimate ? "Not while animating" : undefined}>Load rig file…</button><button type="button" className="panel-button" onClick={discardDraft} disabled={previewMode || inAnimate} title={previewMode || inAnimate ? "Not while animating" : undefined}>Discard draft</button></div>
-        <button type="button" className="panel-link" onClick={resetWorkspace}>Reset workspace layout</button>
       </>}
-      instruction={error ? error : rigFull && !rigAdvanced && !testing ? (message || boneHint || "Pick a bone in the skeleton or on the character to edit it.") : rebuildWanted && !rigFull ? "Built before gap filling: joints can open when parts move. Rebuild to fix it." : `${agentSession.lastOperation ? `${agentSession.lastOperation} · ` : ""}${message ?? (editorMode === "export" ? "Choose how to export, then make the sprite sheet." : inAnimate ? "Preview the animations, then export." : rigFull ? (boneHint ?? "Pick a bone in the skeleton or on the character to edit it.") : rebuildWanted ? "Built before gap filling: joints can open when parts move. Rebuild to fix it." : "Check the joints, then make the animations.")}`}
+      instruction={error ? error : inAnimate && !animateExpanded ? (look === "rigged" ? "Preview the animations, untick any you don't want, then export." : !redraws.reachable && redraws.reachable !== null ? "The Mac Studio isn't reachable: redraws already made still export." : startableRedraws.length ? `${startableRedraws.length} to redraw, about ${redrawMinutes} min on the Mac Studio. Export what is ready any time.` : missingRedraws.length ? "Redrawing on the Mac Studio…" : "Every animation is redrawn. Export when ready.") : rigFull && !rigAdvanced && !testing ? (message || boneHint || "Pick a bone in the skeleton or on the character to edit it.") : rebuildWanted && !rigFull ? "Built before gap filling: joints can open when parts move. Rebuild to fix it." : `${agentSession.lastOperation ? `${agentSession.lastOperation} · ` : ""}${message ?? (editorMode === "export" ? "Choose how to export, then make the sprite sheet." : inAnimate ? "Preview the animations, then export." : rigFull ? (boneHint ?? "Pick a bone in the skeleton or on the character to edit it.") : rebuildWanted ? "Built before gap filling: joints can open when parts move. Rebuild to fix it." : "Check the joints, then make the animations.")}`}
       tone={error ? "error" : "info"}
       secondary={editorMode === "export" ? <button type="button" onClick={() => enterMode("animate")}>← Back</button> : inAnimate ? <button type="button" onClick={() => enterMode("setup")}>← Back</button> : rigFull ? (rigAdvanced || testing ? <button type="button" onClick={() => { setRigAdvanced(false); if (testing) { enterMode("setup"); setRigExpanded(true); } }}>← Simple view</button> : <button type="button" disabled={!selectedRigBone || (atLandmark && !selectedRigBone.rotationLimits) || previewMode} title={!selectedRigBone ? "Pick a bone first" : atLandmark && !selectedRigBone.rotationLimits ? "Already as Build rig made it" : "Put this bone's joint back on its landmark and remove its bend range"} onClick={() => { if (selectedRigBone) resetBone(selectedRigBone.id); }}>Reset this bone</button>) : <><button type="button" onClick={() => router.push("/part-cutter")}>← Back</button>{rebuildWanted && <button type="button" title="Rebuild the rig from its parts with gap filling (asks first)" onClick={rebuildFromParts}>Rebuild</button>}</>}
       primary={editorMode === "export" ? { label: "Back to Animate", onClick: () => enterMode("animate") }
-        : inAnimate ? { label: "Export →", onClick: () => enterMode("export"), disabled: blockingValidationIssues.length > 0, disabledReason: "Fix the rig problems first" }
+        : inAnimate && animateExpanded ? { label: "Done, back to Animate", onClick: () => setAnimateExpanded(false) }
+        : inAnimate && look === "redrawn" && startableRedraws.length > 0 ? { label: "Redraw the rest", onClick: () => void redraws.start(startableRedraws.map((clip) => clip.id)), disabled: redraws.reachable === false, disabledReason: "The Mac Studio isn't reachable" }
+        : inAnimate ? { label: "Export →", onClick: () => enterMode("export"), disabled: blockingValidationIssues.length > 0 || includedClips.length === 0, disabledReason: includedClips.length === 0 ? "Tick at least one animation" : "Fix the rig problems first" }
         : rigFull ? { label: "Done, back to Rig", onClick: () => { closeRigExpanded(); if (testing) enterMode("setup"); } }
         : { label: "Make animations →", onClick: () => modeSelect("animate") }} />
     {focusMode && inAnimate && <div className="focus-playback-controls" aria-label="Focus playback controls"><button type="button" onClick={() => animationCommand("play")}>▶ Play</button><button type="button" onClick={() => animationCommand("pause")}>Ⅱ Pause</button><button type="button" onClick={() => animationCommand("restart")}>↺ Restart</button><button type="button" onClick={() => setFocusMode(false)}>Exit Focus</button></div>}

@@ -47,6 +47,7 @@ type Props = {
   readonly disabled: boolean;
   /** Opens the raw editor: every bone, slot, attachment and skin, with their numbers. */
   readonly advanced: () => void;
+  readonly fileActions: ReactNode;
 };
 
 const number = (value: number): string => (Math.round(value * 10) / 10).toString();
@@ -154,7 +155,7 @@ export function RigExpanded(props: Props) {
           <button type="button" className="panel-button" disabled={!props.poses.active && !props.poses.posed} title={props.poses.active || props.poses.posed ? "Back to the rest pose" : "Already at rest"} onClick={props.poses.onRest}>Rest</button>
         </div>
       </section>
-      <section className="ex-section"><button type="button" className="panel-link" onClick={props.advanced}>Advanced: bones, slots and skins →</button></section>
-    </div> : <><p className="panel-note ex-empty">Pick a bone in the skeleton or on the character.</p><section className="ex-section"><button type="button" className="panel-link" onClick={props.advanced}>Advanced: bones, slots and skins →</button></section></>}
+      <section className="ex-section"><button type="button" className="panel-link" onClick={props.advanced}>Advanced: bones, slots and skins →</button>{props.fileActions}</section>
+    </div> : <><p className="panel-note ex-empty">Pick a bone in the skeleton or on the character.</p><section className="ex-section"><button type="button" className="panel-link" onClick={props.advanced}>Advanced: bones, slots and skins →</button>{props.fileActions}</section></>}
   />;
 }

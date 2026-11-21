@@ -27,6 +27,8 @@ import { AnimationInspector } from "./AnimationInspector";
 import { AIAnimationPanel } from "./AIAnimationPanel";
 import { DopeSheet, type DopeSheetHandle } from "./DopeSheet";
 import { EditorViewport, type EditorViewportHandle } from "./EditorViewport";
+import { createPortal } from "react-dom";
+import { AnimateGuidedPanel, LookCompare, type ExportLook, type RedrawMethod, type Redraws } from "./AnimateGuided";
 import { VisualReviewPanel } from "./VisualReviewPanel";
 import { MotionReviewPanel } from "./MotionReviewPanel";
 import { humanizeTechnicalId } from "@/app/studio-ui/humanize";
@@ -71,9 +73,13 @@ type Props = {
   readonly onZoom: (zoom: number) => void;
   readonly onMessage: (message: string) => void;
   readonly onError: (message: string | null) => void;
+  /** Guided: the selected clip plays on the stage and the panel (portalled into the step's panel) lists the clips. Expanded: the full keyframe editor. */
+  readonly view?: "guided" | "expanded";
+  readonly panelTarget?: HTMLElement | null;
+  readonly guided?: { readonly look: ExportLook; readonly onLook: (look: ExportLook) => void; readonly excluded: ReadonlySet<string>; readonly onIncluded: (id: string, included: boolean) => void; readonly redraws: Redraws; readonly method: RedrawMethod; readonly onMethod: (method: RedrawMethod) => void; readonly onExpand: () => void };
 };
 
-export function AnimateWorkspace({ projectId, rig, activeSkinId, showGrid, showBones, showBounds, viewportRef, initialBoneId, onSelectedBone, onHistory, onMotion, onFacing, onRebuild, onCursor, onZoom, onMessage, onError }: Props) {
+export function AnimateWorkspace({ projectId, rig, activeSkinId, showGrid, showBones, showBounds, viewportRef, initialBoneId, onSelectedBone, onHistory, onMotion, onFacing, onRebuild, onCursor, onZoom, onMessage, onError, view = "expanded", panelTarget = null, guided }: Props) {
   const commandService = useMemo(() => getRiggingCommandService(), []);
   const [library, setLibrary] = useState<AnimationLibrary>(() => createAnimationLibrary(rig.id, [{ schemaVersion: 1, id: "loading", name: "Loading", duration: 1, loop: true, tracks: [] }]));
   const [activeId, setActiveId] = useState("loading");
@@ -240,6 +246,8 @@ export function AnimateWorkspace({ projectId, rig, activeSkinId, showGrid, showB
   const chooseAnimation = useCallback((id: string): void => { setPlaying(false); playingRef.current = false; setAiPreview(null); setVisualIssueMarkers([]); setActiveId(id); commandService.syncAnimationSelectionFromUi(id); setSelectedKeys([]); setCurrentTime(0); }, [commandService, setCurrentTime]);
   const play = useCallback((): void => { setPlaying(true); playingRef.current = true; viewportRef.current?.playAnimation(); }, [viewportRef]);
   const pause = useCallback((): void => { setPlaying(false); playingRef.current = false; viewportRef.current?.pauseAnimation(); }, [viewportRef]);
+  // The guided view is a preview: the selected clip plays without asking.
+  useEffect(() => { if (view !== "guided" || playingRef.current) return; const timer = window.setTimeout(play, 300); return () => window.clearTimeout(timer); }, [view, play, library]);
   const stop = useCallback((): void => { pause(); setCurrentTime(0); }, [pause, setCurrentTime]);
   const onRuntimeTime = useCallback((current: number, isPlaying: boolean): void => {
     timeRef.current = current; timelineRef.current?.setPlayhead(current);
@@ -379,6 +387,13 @@ export function AnimateWorkspace({ projectId, rig, activeSkinId, showGrid, showB
   };
   const toggleTimelineHeight = (): void => setTimelineHeight((current) => { const bounds = timelineBounds(); return bounds.compact ? current <= 150 ? Math.min(bounds.max, 300) : 132 : current <= 220 ? Math.min(bounds.max, 360) : 220; });
 
+  const viewportElement = <EditorViewport ref={viewportRef} rig={rig} animation={viewportAnimation} previewMode={false} authoringMode animationTime={time} animationPlaying={playing} playbackSpeed={speed} showPreviousGhost={onionPrevious} showNextGhost={onionNext} activeSkinId={activeSkinId} selections={selectedBones.map((id) => ({ type: "bone", id }) as EditorSelection)} hiddenBoneIds={new Set()} lockedBoneIds={aiPreview ? new Set(rig.bones.map((bone) => bone.id)) : new Set()} showGrid={showGrid} showBones={showBones} showBounds={showBounds} snapToGrid={false} wholePixelSnap rotationSnap onSelect={(selection, additive) => { if (selection?.type !== "bone") return; setSelectedBones((current) => additive ? current.includes(selection.id) ? current.filter((id) => id !== selection.id) : [...current, selection.id] : [selection.id]); }} onCursor={onCursor} onZoom={onZoom} onBoneDragStart={() => setPendingEdit(null)} onBoneDragPreview={() => undefined} onBoneDragCommit={commitViewportEdit} onAnimationTime={onRuntimeTime} onWarning={(message) => onError(message)} />;
+  if (view === "guided" && guided) {
+    return <>
+      <div className="animate-guided-stage" data-project-id={projectId ?? "browser-draft"}>{guided.look === "redrawn" ? <LookCompare rigged={viewportElement} clip={animation} redraw={guided.redraws.status[animation.id]} /> : viewportElement}</div>
+      {panelTarget && createPortal(<AnimateGuidedPanel clips={library.animations} activeId={animation.id} onPreview={(id) => { chooseAnimation(id); window.setTimeout(play, 0); }} look={guided.look} onLook={guided.onLook} excluded={guided.excluded} onIncluded={guided.onIncluded} redraws={guided.redraws} method={guided.method} onMethod={guided.onMethod} onExpand={guided.onExpand} />, panelTarget)}
+    </>;
+  }
   return <><div className="animate-workspace" data-project-id={projectId ?? "browser-draft"} data-canvas-project-id={projectId ?? "browser-draft"} data-timeline-project-id={projectId ?? "browser-draft"} data-inspector-project-id={projectId ?? "browser-draft"}>
     <input ref={importRef} hidden type="file" accept="application/json,.json" onChange={(event) => void importAnimations(event)} />
     <div className="animation-toolbar"><div className="animation-command-row">
@@ -414,7 +429,7 @@ export function AnimateWorkspace({ projectId, rig, activeSkinId, showGrid, showB
       <section className="animate-center" style={{ "--timeline-height": `${timelineHeight}px` } as CSSProperties}>
         <div className="animate-viewport-wrap">
           <button type="button" className="animation-fit-view" onClick={() => viewportRef.current?.resetView()} title="Fit character in viewport">Fit character</button>
-          <EditorViewport ref={viewportRef} rig={rig} animation={viewportAnimation} previewMode={false} authoringMode animationTime={time} animationPlaying={playing} playbackSpeed={speed} showPreviousGhost={onionPrevious} showNextGhost={onionNext} activeSkinId={activeSkinId} selections={selectedBones.map((id) => ({ type: "bone", id }) as EditorSelection)} hiddenBoneIds={new Set()} lockedBoneIds={aiPreview ? new Set(rig.bones.map((bone) => bone.id)) : new Set()} showGrid={showGrid} showBones={showBones} showBounds={showBounds} snapToGrid={false} wholePixelSnap rotationSnap onSelect={(selection, additive) => { if (selection?.type !== "bone") return; setSelectedBones((current) => additive ? current.includes(selection.id) ? current.filter((id) => id !== selection.id) : [...current, selection.id] : [selection.id]); }} onCursor={onCursor} onZoom={onZoom} onBoneDragStart={() => setPendingEdit(null)} onBoneDragPreview={() => undefined} onBoneDragCommit={commitViewportEdit} onAnimationTime={onRuntimeTime} onWarning={(message) => onError(message)} />
+          {viewportElement}
           {onRebuild && <RebuildNotice rig={rig} onRebuild={onRebuild} />}
           {aiPreview && <div className="ai-preview-notice">Previewing a suggestion · your clip is not changed yet</div>}
           

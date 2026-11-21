@@ -36,6 +36,8 @@ export type StepShellProps = {
   readonly secondary?: ReactNode;
   /** The step's expert view; when present it replaces the stage and the panel. */
   readonly expanded?: ReactNode;
+  /** The stage takes the whole width and the panel is hidden: an expert view rendered inside the stage, so it keeps its state. */
+  readonly wide?: boolean;
 };
 
 const SAVED_LABEL = { saved: "Saved", unsaved: "Unsaved changes", "not-saved": "Not saved yet" } as const;
@@ -77,10 +79,11 @@ export function StepShell(props: StepShellProps) {
   useDismissibleMenus();
   const { step, state, primary, expanded } = props;
   const label = STEPS.find((item) => item.id === step)?.label ?? "";
-  return <div className={`step-shell${expanded ? " is-expanded" : ""}`} data-step={step}>
+  const isExpanded = Boolean(expanded) || Boolean(props.wide);
+  return <div className={`step-shell${isExpanded ? " is-expanded" : ""}${props.wide ? " is-wide" : ""}`} data-step={step}>
     <header className="step-top">
       <Link href="/create-character" className="step-mark" aria-label="Rig Studio home">RS</Link>
-      <div className="step-project"><ProjectName name={props.projectName} onRename={props.onRename} /><small>{SAVED_LABEL[props.saved]}{expanded ? ` · ${label}, expanded` : ""}</small></div>
+      <div className="step-project"><ProjectName name={props.projectName} onRename={props.onRename} /><small>{SAVED_LABEL[props.saved]}{isExpanded ? ` · ${label}, expanded` : ""}</small></div>
       <StepNav step={step} state={state} />
       <div className="step-tools">
         {props.onUndo && <button type="button" onClick={props.onUndo} disabled={!props.canUndo} title={props.canUndo ? "Undo" : "Nothing to undo"} aria-description={props.canUndo ? undefined : "Nothing to undo"}>↶ Undo</button>}

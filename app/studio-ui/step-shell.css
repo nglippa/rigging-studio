@@ -58,3 +58,6 @@
 .step-shell .ex-section .seg button { font-size: 12px; text-transform: none; letter-spacing: 0; }
 .step-shell .pose-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .step-shell .pose-grid > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+
+.step-shell.is-wide .step-body { grid-template-columns: minmax(0, 1fr); } .step-shell.is-wide .step-panel { display: none; }
+.step-shell .step-panel > *, .step-shell .animate-panel-slot > * { flex-shrink: 0; }

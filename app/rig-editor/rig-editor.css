@@ -1106,3 +1106,21 @@ details.ai-section > :last-child { margin-bottom: 10px; }
 .step-shell .rig-zoom { min-width: 44px; text-align: center; color: var(--sh-secondary); font-size: 12px; }
 .step-shell .expanded .expanded-stage > .editor-viewport { position: absolute; inset: 0; }
 .step-shell .expanded .rig-group > .ex-item { width: auto; }
+
+/* Animate, guided: the selected clip plays on the stage; in the Redrawn look, rigged and redrawn side by side. */
+.step-shell .animate-guided-stage { position: relative; display: grid; min-width: 0; min-height: 0; }
+.step-shell .animate-guided-stage > .editor-viewport { min-width: 0; min-height: 0; }
+.step-shell .look-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; min-height: 0; background: var(--sh-line-soft); }
+.step-shell .look-compare figure { margin: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; background: var(--sh-bg); }
+.step-shell .look-compare figcaption { padding: 8px 12px; font-size: 12px; color: var(--sh-secondary); border-bottom: 1px solid var(--sh-line-soft); }
+.step-shell .look-compare-stage { position: relative; display: grid; place-items: center; min-height: 0; overflow: hidden; }
+.step-shell .look-compare-stage > .editor-viewport { position: absolute; inset: 0; }
+.step-shell .look-compare-stage .export-player canvas { max-width: 90%; max-height: 70vh; image-rendering: pixelated; width: auto; height: 60vh; object-fit: contain; }
+.step-shell .look-compare-empty { color: var(--sh-muted); font-size: 13px; }
+.step-shell .animate-panel-slot { display: contents; }
+.step-shell .clip-pick { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--sh-line-soft); }
+.step-shell .clip-pick input { accent-color: var(--sh-accent); margin: 0; }
+.step-shell .clip-pick-name { border: 0; background: transparent; color: var(--sh-text); text-align: left; padding: 2px 0; cursor: pointer; }
+.step-shell .clip-pick.is-active .clip-pick-name { color: var(--sh-accent); }
+.step-shell .clip-pick-status { font-size: 11px; color: var(--sh-muted); display: flex; gap: 6px; align-items: center; }
+.step-shell .clip-pick-status.tone-ok { color: var(--sh-ok); } .step-shell .clip-pick-status.tone-warn { color: var(--sh-warn); } .step-shell .clip-pick-status.tone-busy { color: var(--sh-accent); }

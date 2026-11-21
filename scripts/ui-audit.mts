@@ -353,6 +353,39 @@ async function checkRigExpanded(page: Page): Promise<void> {
   assert.deepEqual(problems, [], `\n  ${problems.join("\n  ")}`);
 }
 
+/** Guided Animate: the Look switch, side-by-side previews, a status per clip, a lost job with Retry, and Redrawn off without the bridge. */
+async function checkAnimateGuided(page: Page): Promise<void> {
+  const bridge = "http://127.0.0.1:47831";
+  // A bridge that knows nothing yet and then loses the job (as when Rigging Studio restarts mid-redraw).
+  await page.route(`${bridge}/studio/queue`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: "{}" }));
+  await page.route(`${bridge}/bake/redraws/lookup`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ clips: [] }) }));
+  await page.route(`${bridge}/bake/jobs`, (route) => route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify({ jobId: "bake-00000000-0000-0000-0000-000000000000", status: "queued", progress: { done: 0, total: 4, clip: null } }) }));
+  await page.route(`${bridge}/bake/jobs/*`, (route) => route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ error: "Bake does not exist" }) }));
+  await page.goto(`${APP_URL}/?mode=animate`, { waitUntil: "domcontentloaded" }); await page.locator(".step-panel .clip-pick").first().waitFor({ timeout: 90000 }); await page.waitForTimeout(1500);
+  assert.equal(await page.locator(".step-panel [aria-label='Export look'] button").count(), 2, "no Look switch with Rigged and Redrawn");
+  await page.locator(".step-panel [aria-label='Export look'] button").filter({ hasText: /^Redrawn$/ }).click(); await page.waitForTimeout(800);
+  const captions = (await page.locator(".look-compare figcaption").allTextContents()).map((text) => text.trim());
+  assert.ok(captions.length === 2 && /^Rigged · ▶/.test(captions[0]) && /^Redrawn · ▶/.test(captions[1]), `the Redrawn look does not show two labelled previews (${captions.join(" | ")})`);
+  const rows = await page.locator(".step-panel .clip-pick").count(); const statuses = await page.locator(".step-panel .clip-pick-status").count();
+  assert.ok(rows > 0 && statuses === rows, `${rows} animations but ${statuses} statuses`);
+  assert.equal((await page.locator(".step-primary").textContent())?.trim(), "Redraw the rest");
+  // Start one clip's redraw from its row's status line: the bridge loses it, so the row says so and offers Retry.
+  const first = page.locator(".step-panel .clip-pick").first();
+  await page.locator(".step-primary").click();
+  await first.locator(".clip-pick-status").filter({ hasText: /Lost: Rigging Studio restarted/ }).waitFor({ timeout: 15000 });
+  assert.equal(await first.locator(".clip-pick-status button").filter({ hasText: /^Retry$/ }).count(), 1, "a lost redraw offers no Retry");
+  // No bridge at all: Redrawn cannot be chosen, and says why.
+  const offline = await page.context().newPage();
+  await offline.route(`${bridge}/**`, (route) => route.abort("connectionrefused"));
+  await offline.goto(`${APP_URL}/?mode=animate`, { waitUntil: "domcontentloaded" }); await offline.locator(".step-panel .clip-pick").first().waitFor({ timeout: 90000 }); await offline.waitForTimeout(2500);
+  const redrawn = offline.locator(".step-panel [aria-label='Export look'] button").filter({ hasText: /^Redrawn$/ });
+  if (await redrawn.getAttribute("aria-pressed") !== "true") {
+    assert.ok(await redrawn.isDisabled(), "Redrawn can be chosen with the Mac Studio unreachable");
+    assert.match(await redrawn.getAttribute("title") ?? "", /isn't reachable/);
+  } else assert.match(await offline.locator(".step-instruction").textContent() ?? "", /isn't reachable/);
+  await offline.close();
+}
+
 const checks: readonly (readonly [string, (page: Page) => Promise<void>, string?])[] = [
   ["Create stays on Create with a rigged project open", checkCreateStaysOnCreate],
   ["Every step renders in the shared frame", checkShellOnEveryStep],
@@ -364,6 +397,7 @@ const checks: readonly (readonly [string, (page: Page) => Promise<void>, string?
   ["Parts: expanded cutter works and returns", checkPartsExpanded],
   ["Rig: guided view with joints and pose tests", checkRigGuided],
   ["Rig: expanded view (skeleton, joint, bend test)", checkRigExpanded],
+  ["Animate: Look switch, previews, redraw status", checkAnimateGuided],
   ["Every control on every step does something", checkEveryControlOnEveryStep],
 ];
 
