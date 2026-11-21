@@ -134,3 +134,9 @@
 .step-shell .choice-badge.is-warn { color: var(--sh-warn); }
 .step-shell .create-controls label { display: grid; gap: 4px; color: var(--sh-muted); font-size: 11px; }
 .step-shell .create-controls input { padding: 6px 8px; border: 1px solid var(--sh-line); border-radius: 6px; background: var(--sh-bg); color: var(--sh-text); font-size: 13px; }
+.step-shell .create-art-view { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 16px; padding: 56px 24px 24px; }
+.step-shell .create-art-view figure { margin: 0; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; justify-items: center; gap: 8px; overflow: hidden; }
+.step-shell .create-art-view img { height: 100%; max-width: 100%; object-fit: contain; image-rendering: pixelated; transform-origin: center; background: repeating-conic-gradient(#1a2029 0 25%, #202734 0 50%) 0 0 / 16px 16px; border-radius: 8px; transition: transform .15s ease; }
+.step-shell .create-art-view figcaption { color: var(--sh-muted); font-size: 12px; }
+.step-shell .ex-thumb { width: 24px; height: 32px; object-fit: contain; image-rendering: pixelated; border-radius: 3px; background: #1a2029; }
+.step-shell .ex-empty { padding: 0 12px; }

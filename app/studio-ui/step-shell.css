@@ -39,3 +39,7 @@
 /* The current step is disabled (it is where you are) but must not look faded by legacy :disabled rules. */
 .step-shell .step-nav button.is-current { opacity: 1; color: var(--sh-text); }
 .step-shell .expanded-stage > :not(.expanded-tools):not(.expanded-view-toggles):not(.expanded-zoom) { align-self: stretch; justify-self: stretch; width: 100%; height: 100%; min-width: 0; min-height: 0; }
+.step-shell .ex-item { width: calc(100% - 12px); }
+.step-shell .expanded-right .profile-picker label { display: grid; gap: 6px; }
+.step-shell .expanded-right .profile-picker select { width: 100%; padding: 7px 8px; border: 1px solid var(--sh-line); border-radius: 6px; background: var(--sh-bg); color: var(--sh-text); }
+.step-shell .expanded-right .profile-picker :is(button, a) { text-decoration: none; }

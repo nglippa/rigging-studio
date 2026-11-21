@@ -118,7 +118,7 @@ const DESTRUCTIVE = /archive|start over|remove part|delete|rebuild|discard|repai
  * Clicks every visible, enabled control in the step and fails on any that changes nothing (a dead button), on console
  * errors, on destructive controls that act without asking, and on disabled controls that do not say why.
  */
-async function checkEveryControl(page: Page, href: string, label: string): Promise<string[]> {
+async function checkEveryControl(page: Page, href: string, label: string, enter?: (page: Page) => Promise<void>): Promise<string[]> {
   const problems: string[] = [];
   const consoleErrors: string[] = [];
   page.on("console", (message) => { if (message.type() === "error" && !/WebSocket|ERR_CONNECTION_REFUSED|Failed to load resource/.test(message.text())) consoleErrors.push(message.text()); });
@@ -129,7 +129,7 @@ async function checkEveryControl(page: Page, href: string, label: string): Promi
   page.on("download", () => { sideEffects += 1; });
   let nativeConfirms = 0;
   page.on("dialog", (dialog) => { sideEffects += 1; nativeConfirms += 1; void dialog.dismiss(); });
-  const open = async () => { await page.goto(`${APP_URL}${href}`, { waitUntil: "domcontentloaded" }); await page.locator(".step-shell").first().waitFor({ timeout: 40000 }); await page.waitForTimeout(1500); };
+  const open = async () => { await page.goto(`${APP_URL}${href}`, { waitUntil: "domcontentloaded" }); await page.locator(".step-shell").first().waitFor({ timeout: 40000 }); await page.waitForTimeout(1500); if (enter) { await enter(page); await page.waitForTimeout(600); } };
   await open();
   const controls = await page.evaluate(() => [...document.querySelectorAll(".step-shell :is(button, a[href], [role=tab], select, input[type=checkbox], input[type=radio], summary)")].map((element, index) => {
     const r = element.getBoundingClientRect(); const style = getComputedStyle(element);
@@ -144,7 +144,8 @@ async function checkEveryControl(page: Page, href: string, label: string): Promi
   for (const control of controls.filter((item) => item.visible && item.disabled)) if (!control.reason) problems.push(`${label} / "${control.text}": disabled without a reason`);
   const seen = new Set<string>();
   for (const control of controls.filter((item) => item.visible && !item.disabled && !item.alreadyOn)) {
-    if (seen.has(control.text) || /^(Rig Studio home|RS)$/.test(control.text)) continue; seen.add(control.text);
+    // Leaving the expanded view is checked on its own (it is the expanded view's main button).
+    if (seen.has(control.text) || /^(Rig Studio home|RS)$/.test(control.text) || (enter && /^Done, back to/.test(control.text))) continue; seen.add(control.text);
     if (`${page.url()}`.indexOf(href) < 0) await open();
     // Found by its text at click time: positions shift as the page changes between clicks.
     const found = await page.evaluate((wanted) => {
@@ -196,7 +197,7 @@ async function checkEveryControl(page: Page, href: string, label: string): Promi
     }
     if (consoleErrors.length > errorsBefore) problems.push(`${label} / "${control.text}": console error: ${consoleErrors.slice(errorsBefore).join(" ; ").slice(0, 160)}`);
     await page.keyboard.press("Escape").catch(() => undefined);
-    if (new URL(page.url()).pathname + new URL(page.url()).search !== href) await open();
+    if (new URL(page.url()).pathname + new URL(page.url()).search !== href || (enter && !(await page.locator(".step-shell.is-expanded").count()))) await open();
   }
   return problems;
 }
@@ -247,12 +248,26 @@ async function checkCreateOffline(page: Page): Promise<void> {
   assert.equal(await page.locator(".step-nav button").count(), 5);
 }
 
+/** Opens a step's expanded view from the panel link whose text matches. */
+const expandWith = (link: RegExp) => async (page: Page) => { await page.locator(".step-panel .panel-link").filter({ hasText: link }).first().click(); await page.locator(".step-shell.is-expanded").waitFor({ timeout: 10000 }); };
+
+/** Create's expanded view: every control works, and Done returns to the guided view. */
+async function checkCreateExpanded(page: Page): Promise<void> {
+  const problems = await checkEveryControl(page, "/create-character", "Create expanded", expandWith(/Tune this model/));
+  await page.goto(`${APP_URL}/create-character`, { waitUntil: "domcontentloaded" }); await page.locator(".step-shell").first().waitFor({ timeout: 40000 });
+  await expandWith(/Tune this model/)(page);
+  await page.locator(".step-primary").click();
+  assert.equal(await page.locator(".step-shell.is-expanded").count(), 0, "Done, back to Create did not leave the expanded view");
+  assert.deepEqual(problems, [], `\n  ${problems.join("\n  ")}`);
+}
+
 const checks: readonly (readonly [string, (page: Page) => Promise<void>, string?])[] = [
   ["Create stays on Create with a rigged project open", checkCreateStaysOnCreate],
   ["Every step renders in the shared frame", checkShellOnEveryStep],
   ["A step that is not open yet redirects with its reason", checkUnavailableStepRedirects, UNRIGGED.id],
   ["Create: model cards, description, Generate", checkCreateGuided],
   ["Create: says when the Mac Studio is unreachable", checkCreateOffline],
+  ["Create: expanded view works and returns", checkCreateExpanded],
   ["Every control on every step does something", checkEveryControlOnEveryStep],
 ];
 

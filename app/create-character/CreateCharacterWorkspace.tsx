@@ -16,7 +16,7 @@ import { useAgentBridge } from "@/src/agent-control/protocol/useAgentBridge";
 import { StudioDialog } from "@/app/studio-ui/StudioDialog";
 import { StepShell } from "@/app/studio-ui/StepShell";
 import { ExpandedView } from "@/app/studio-ui/ExpandedView";
-import { ChooseArt, CreatePanel, DescribeCanvas, type ArtCandidate } from "./CreateGuided";
+import { ChooseArt, CreateArtList, CreateArtView, CreatePanel, DescribeCanvas, type ArtCandidate, type ArtEntry } from "./CreateGuided";
 import { ModelCards } from "./ModelCards";
 import type { StepState } from "@/app/studio-ui/steps";
 import { useProjectHydrationIdentity } from "@/app/studio-ui/ProjectHydrationBoundary";
@@ -92,6 +92,9 @@ export function CreateCharacterWorkspace() {
   const [generationReview, setGenerationReview] = useState<GenerationProposalReview | null>(null);
   const [pickedId, setPickedId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [selectedArtKey, setSelectedArtKey] = useState<string | null>(null);
+  const [compareArt, setCompareArt] = useState(false);
+  const [artZoom, setArtZoom] = useState(1);
   // "Use this art" approves the picked option; the approved art reaches the project a render later, then Parts opens.
   const continueToParts = useRef(false);
   const importRef = useRef<HTMLInputElement>(null);
@@ -230,6 +233,14 @@ export function CreateCharacterWorkspace() {
   // Create shows only its own views: the description, or the art to choose. A project in a later stage shows its art.
   const showDescribe = project.stage === "describe" || (!project.sourceImage && !generationReview);
   const candidates: readonly ArtCandidate[] = generationReview?.candidates.map((candidate) => ({ id: candidate.candidateId, image: candidate.imageUrl, width: candidate.width, height: candidate.height, rejected: candidate.status === "rejected" })) ?? [];
+  // Every piece of art this character has had: the new options, the current art, and earlier generations by description.
+  const briefOf = (prompt: string): string => (/Character brief:\s*([^.\n]+)/.exec(prompt)?.[1] ?? prompt).trim() || "Earlier";
+  const artEntries: readonly ArtEntry[] = [
+    ...candidates.filter((candidate) => !candidate.rejected).map((candidate, index) => ({ key: `option:${candidate.id}`, image: candidate.image, width: candidate.width, height: candidate.height, group: "New options", label: `Option ${index + 1}` })),
+    ...(project.sourceImage ? [{ key: "current", image: project.sourceImage.image, width: project.sourceImage.width, height: project.sourceImage.height, group: "Current", label: "Current art" }] : []),
+    ...project.generationHistory.filter((item) => item.generationId !== project.sourceImage?.generationId).map((item, index) => ({ key: `history:${item.generationId}`, image: item.image, width: item.width, height: item.height, group: briefOf(item.generationPrompt), label: item.seed !== undefined && item.seed !== null ? `Seed ${item.seed}` : `Earlier ${index + 1}` })),
+  ];
+  const selectedArt = artEntries.find((entry) => entry.key === selectedArtKey) ?? artEntries.find((entry) => entry.key === `option:${pickedId}`) ?? artEntries[0] ?? null;
   const generatorStatus = generatorStatuses.find((item) => item.provider === generator);
   const generatorReady = generator === "studio_fixture" || generatorStatus?.characterGeneration.available === true;
   const generatorReason = generatorReady ? undefined : generator === "comfyui" ? "The Mac Studio isn't reachable" : generatorStatus?.characterGeneration.reason ?? "This generator isn't set up";
@@ -254,12 +265,17 @@ export function CreateCharacterWorkspace() {
           {project.suitability && !candidates.length && <div className="panel-row"><span>Rigs well</span><span className={project.suitability.usable ? "is-ok" : "is-warn"}>{Math.round(project.suitability.score * 100)}%</span></div>}
         </>} />}
       expanded={expanded ? <ExpandedView
-        left={<><div className="ex-head"><strong>Options</strong><span className="num">{candidates.length || (project.sourceImage ? 1 : 0)}</span></div>
-          {candidates.length ? candidates.map((candidate, index) => <button key={candidate.id} type="button" className="ex-item" aria-pressed={candidate.id === pickedId} onClick={() => setPickedId(candidate.id)}>Option {index + 1}{candidate.rejected && <small>Rejected</small>}</button>)
-            : project.sourceImage ? <button type="button" className="ex-item" aria-pressed="true">Current art</button> : <p className="panel-note" style={{ padding: "0 12px" }}>Nothing generated yet.</p>}</>}
-        center={candidates.length || project.sourceImage ? <ChooseArt candidates={candidates.filter((candidate) => !pickedId || candidate.id === pickedId)} selectedId={pickedId} onSelect={setPickedId} chosen={project.sourceImage ?? null} /> : <p className="panel-note">Generate to see options here.</p>}
-        tools={<button type="button" aria-pressed={!pickedId} onClick={() => setPickedId(null)}>Show all</button>}
+        left={<CreateArtList entries={artEntries} selectedKey={selectedArt?.key ?? null} onSelect={setSelectedArtKey} />}
+        center={<CreateArtView selected={selectedArt} current={artEntries.find((entry) => entry.key === "current") ?? null} compare={compareArt} zoom={artZoom} />}
+        tools={<button type="button" aria-pressed={compareArt} disabled={!project.sourceImage || !selectedArt || selectedArt.key === "current"} title={!project.sourceImage ? "There is no current art to compare with" : !selectedArt || selectedArt.key === "current" ? "Pick other art on the left to compare" : "Show it beside the current art"} onClick={() => setCompareArt((value) => !value)}>Compare</button>}
+        zoom={<><button type="button" onClick={() => setArtZoom((value) => Math.max(.5, value / 1.25))} disabled={artZoom <= .5} title={artZoom <= .5 ? "Smallest" : "Zoom out"} aria-label="Zoom out">−</button><button type="button" onClick={() => setArtZoom(1)} disabled={artZoom === 1} title={artZoom === 1 ? "Already at 100%" : "Back to 100%"}><span className="num">{Math.round(artZoom * 100)}%</span></button><button type="button" onClick={() => setArtZoom((value) => Math.min(4, value * 1.25))} disabled={artZoom >= 4} title={artZoom >= 4 ? "Largest" : "Zoom in"} aria-label="Zoom in">+</button></>}
         right={<>
+          <div className="ex-section"><h5>Selected<span>{selectedArt?.label ?? "Nothing"}</span></h5>
+            {selectedArt && selectedArt.key !== "current" && <button type="button" className="panel-button" disabled={Boolean(busy) || (!selectedArt.key.startsWith("option:") && Boolean(project.segmentationData))}
+              title={!selectedArt.key.startsWith("option:") && project.segmentationData ? "Parts are already cut from the current art" : undefined}
+              onClick={() => { if (selectedArt.key.startsWith("option:")) { continueToParts.current = false; void decideGeneration(selectedArt.key.slice(7), "approve"); } else { const item = project.generationHistory.find((entry) => `history:${entry.generationId}` === selectedArt.key); if (item) setProject((current) => updateProject(current, { sourceImage: item, suitability: undefined })); } }}>Use this art</button>}
+            {(!selectedArt || selectedArt.key === "current") && <p className="panel-note">This is the character&apos;s art.</p>}
+          </div>
           <div className="ex-section"><h5>Generator</h5>
             <div className="seg" role="group" aria-label="Generator">{(["comfyui", "draw_things", "studio_fixture"] as const).map((id) => <button key={id} type="button" aria-pressed={generator === id} onClick={() => setGenerator(id)}>{id === "comfyui" ? "Mac Studio" : id === "draw_things" ? "Draw Things" : "Fixture"}</button>)}</div></div>
           {generator === "comfyui" && <div className="ex-section"><h5>Model settings</h5><ProfilePicker profiles={profiles} selectedId={profileId} values={profileValues} onSelect={(id) => { setProfileId(id); setProfileValues({}); }} onValues={setProfileValues} onImport={importProfile} loading={profilesLoading} error={profilesError} /></div>}
@@ -276,7 +292,7 @@ export function CreateCharacterWorkspace() {
         </>} /> : undefined}
       instruction={persistenceWarning ? `Draft storage needs attention: ${persistenceWarning}` : error ? `That did not work: ${error}` : busy ? `Working · ${busy}` : notice ?? message ?? (showDescribe ? "Describe a character, pick a model, then generate." : candidates.length ? "Pick the art to rig. It should show the whole body." : "This is the character's art. Use it, or generate more.")}
       tone={persistenceWarning || error ? "error" : "info"}
-      secondary={expanded ? <button type="button" onClick={() => setProfileValues({})}>Reset settings</button>
+      secondary={expanded ? <button type="button" onClick={() => setProfileValues({})} disabled={!Object.keys(profileValues).length} title={Object.keys(profileValues).length ? "Put the model's settings back to their defaults" : "The settings are already the model's defaults"}>Reset settings</button>
         : persistenceWarning ? <button type="button" onClick={() => { void characterStorage.save(projectRef.current).then((result) => setPersistenceWarning(result.success ? null : `Retry failed in ${result.layer}: ${result.message}`)); }}>Retry save</button>
         : error ? <button type="button" onClick={() => setError(null)}>Dismiss</button> : null}
       primary={expanded ? { label: "Done, back to Create", onClick: () => setExpanded(false) }

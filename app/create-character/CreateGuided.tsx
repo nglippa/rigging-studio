@@ -56,3 +56,34 @@ export function CreatePanel({ models, facing, onFacing, actions, onExpand }: {
     <button type="button" className="panel-link" onClick={onExpand}>Tune this model&apos;s settings · Add a model file →</button>
   </>;
 }
+
+export type ArtEntry = { readonly key: string; readonly image: string; readonly width: number; readonly height: number; readonly group: string; readonly label: string };
+
+/**
+ * Create's expanded view: every option and every earlier generation on the left (grouped by the description that made
+ * them), the selected art in the centre (side by side with the current art when comparing, zoomable), and the model's
+ * settings on the right. Rendered inside the shared ExpandedView by the workspace.
+ */
+export function CreateArtList({ entries, selectedKey, onSelect }: { readonly entries: readonly ArtEntry[]; readonly selectedKey: string | null; readonly onSelect: (key: string) => void }) {
+  const groups = [...new Set(entries.map((entry) => entry.group))];
+  return <>
+    <div className="ex-head"><strong>Art</strong><span className="num">{entries.length}</span></div>
+    {!entries.length && <p className="panel-note ex-empty">Nothing generated yet.</p>}
+    {groups.map((group) => <div key={group}>
+      <div className="ex-group"><span title={group}>{group.length > 30 ? `${group.slice(0, 30)}…` : group}</span></div>
+      {entries.filter((entry) => entry.group === group).map((entry) => <button key={entry.key} type="button" className="ex-item" aria-pressed={entry.key === selectedKey} onClick={() => onSelect(entry.key)}>
+        <img className="ex-thumb" src={entry.image} alt="" />{entry.label}</button>)}
+    </div>)}
+  </>;
+}
+
+export function CreateArtView({ selected, current, compare, zoom }: { readonly selected: ArtEntry | null; readonly current: ArtEntry | null; readonly compare: boolean; readonly zoom: number }) {
+  const shown = compare && current && selected && selected.key !== current.key ? [current, selected] : selected ? [selected] : current ? [current] : [];
+  if (!shown.length) return <p className="panel-note">Generate to see the art here.</p>;
+  return <div className="create-art-view" data-count={shown.length}>
+    {shown.map((entry, index) => <figure key={entry.key}>
+      <img src={entry.image} alt={entry.label} style={{ transform: `scale(${zoom})` }} />
+      <figcaption>{shown.length > 1 ? (index === 0 ? "Current art" : entry.label) : entry.label} · <span className="num">{entry.width} × {entry.height}</span></figcaption>
+    </figure>)}
+  </div>;
+}
