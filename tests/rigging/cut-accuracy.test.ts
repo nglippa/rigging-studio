@@ -1,8 +1,8 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
-import { loadImage, readTruth, scoreCut, seamTolerantAccuracy, truthLabels, truthNames } from "../../scripts/cut-bench.mts";
-import { cutAllParts } from "../../scripts/cut-pipeline.mts";
+import { loadImage, readTruth, scoreCut, seamTolerantAccuracy, truthLabels, truthNames } from "../../scripts/cut-bench.mjs";
+import { cutAllParts } from "../../scripts/cut-pipeline.mjs";
 
 /**
  * Cut all parts, run as the app runs it, against hand-labelled parts (tests/fixtures/rigging/part-truth, see

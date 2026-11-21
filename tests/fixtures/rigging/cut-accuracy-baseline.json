@@ -1,46 +1,46 @@
 {
   "archer": {
-    "strict": 0.9124,
-    "tolerant": 0.9545
+    "strict": 0.9432,
+    "tolerant": 0.9863
   },
   "cat-mage": {
-    "strict": 0.8216,
-    "tolerant": 0.8964
+    "strict": 0.8305,
+    "tolerant": 0.9073
   },
   "dwarf": {
-    "strict": 0.7243,
+    "strict": 0.7293,
     "tolerant": 0.7995
   },
   "fox-rogue-front": {
     "strict": 0.872,
-    "tolerant": 0.9338
+    "tolerant": 0.9347
   },
   "fox-rogue-side": {
-    "strict": 0.7763,
-    "tolerant": 0.8561
+    "strict": 0.7914,
+    "tolerant": 0.8642
   },
   "goblin-side": {
-    "strict": 0.7934,
-    "tolerant": 0.8358
+    "strict": 0.8187,
+    "tolerant": 0.8628
   },
   "hearthcap-tinker": {
-    "strict": 0.8257,
-    "tolerant": 0.9043
+    "strict": 0.8347,
+    "tolerant": 0.9049
   },
   "knight": {
-    "strict": 0.9048,
-    "tolerant": 0.9613
+    "strict": 0.9152,
+    "tolerant": 0.9698
   },
   "orc": {
-    "strict": 0.887,
-    "tolerant": 0.9492
+    "strict": 0.9208,
+    "tolerant": 0.9761
   },
   "robot": {
-    "strict": 0.9436,
-    "tolerant": 0.9878
+    "strict": 0.9639,
+    "tolerant": 0.9985
   },
   "skeleton": {
-    "strict": 0.8677,
-    "tolerant": 0.9407
+    "strict": 0.8681,
+    "tolerant": 0.9436
   }
 }

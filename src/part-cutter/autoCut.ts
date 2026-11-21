@@ -85,6 +85,31 @@ export function legJoints(width: number, height: number, foreground: ArrayLike<n
   };
 }
 
+/**
+ * Upper-body joints settled from what the cut conventions and the drawing say, where the pose model is systematically off.
+ * Shoulders go to where the sleeve meets the body: the pose model puts them at the anatomical shoulder, on the neck line, 2–12%
+ * of the figure's height too high, so they go to at least 0.3 of the way from the neck down to the pelvis (the proportion the
+ * hand-labelled seams average; x is left to the pose model). A hanging hand is not much wider apart than the shoulders, so a
+ * wrist further than that from the body's axis (the pose model puts it on a held sword or staff) is pulled in along the line
+ * from its shoulder.
+ */
+export function settleArms(joints: Joints): Joints {
+  const { neck, pelvis } = joints;
+  if (!neck || !pelvis) return joints;
+  const out: Record<string, Point> = { ...joints }; const floor = neck.y + (pelvis.y - neck.y) * .3;
+  for (const side of ["left", "right"]) { const shoulder = joints[`${side}Shoulder`]; if (shoulder && shoulder.y < floor) out[`${side}Shoulder`] = { x: shoulder.x, y: floor }; }
+  const { leftShoulder, rightShoulder } = out;
+  if (!leftShoulder || !rightShoulder) return out;
+  const reach = Math.abs(rightShoulder.x - leftShoulder.x) * 1.05; const axis = (leftShoulder.x + rightShoulder.x) / 2;
+  for (const side of ["left", "right"]) {
+    const shoulder = out[`${side}Shoulder`]; const wrist = joints[`${side}Wrist`];
+    if (!wrist || Math.abs(wrist.x - axis) <= reach || wrist.x === shoulder.x) continue;
+    const x = axis + Math.sign(wrist.x - axis) * reach; const along = (x - shoulder.x) / (wrist.x - shoulder.x);
+    if (along > 0 && along < 1) out[`${side}Wrist`] = { x, y: shoulder.y + (wrist.y - shoulder.y) * along };
+  }
+  return out;
+}
+
 /** A stroke along the middle of each bone (and past the wrist and ankle for the hand and foot), as a cut plan. */
 export function bonePlan(joints: Joints): CutPlan {
   const strokes: Record<string, PlanPoint[][]> = {};
@@ -94,7 +119,8 @@ export function bonePlan(joints: Joints): CutPlan {
   along("torso", joints.neck, joints.pelvis, .2, .85);
   for (const side of ["left", "right"]) {
     const j = (name: string) => joints[`${side}${name}`];
-    along(`${side}UpperArm`, j("Shoulder"), j("Elbow"), .3, .7); along(`${side}Forearm`, j("Elbow"), j("Wrist"), .3, .7); along(`${side}Hand`, j("Elbow"), j("Wrist"), 1.15, 1.35);
+    // The arm seeds sit towards the elbow and the wrist's middle: the shoulder and wrist joints are the least certain.
+    along(`${side}UpperArm`, j("Shoulder"), j("Elbow"), .6, .8); along(`${side}Forearm`, j("Elbow"), j("Wrist"), .4, .6); along(`${side}Hand`, j("Elbow"), j("Wrist"), 1.15, 1.35);
     along(`${side}Thigh`, j("Hip"), j("Knee"), .3, .7); along(`${side}LowerLeg`, j("Knee"), j("Ankle"), .3, .7); along(`${side}Foot`, j("Knee"), j("Ankle"), 1.15, 1.3);
   }
   return { scribbles: strokes };
@@ -111,7 +137,7 @@ export function autoCutBodyParts(state: PartCutterState, foreground: readonly nu
   const { width, height } = state.sourceCanvasSize;
   const fromGuide = Object.fromEntries((state.anatomicalGuide?.landmarks ?? []).map((landmark) => [landmark.landmarkId, landmark.point])) as Record<string, Point>;
   const legs = legJoints(width, height, foreground, colours);
-  const joints: Joints = legs ? { ...fromGuide, ...legs } : fromGuide;
+  const joints: Joints = settleArms(legs ? { ...fromGuide, ...legs } : fromGuide);
   const labels = applyCutPlan(bonePlan(joints), { width, height, data: colours, foreground });
   let current = initializeGuidedManual(state, at); const cut: string[] = []; const hidden: string[] = [];
   for (const semantic of GUIDED_BODY_ORDER) {
