@@ -6,6 +6,14 @@ export type TextureLoadResult =
   | { readonly success: true; readonly url: string; readonly texture: Texture }
   | { readonly success: false; readonly url: string; readonly error: Error };
 
+/**
+ * How many loaders hold each URL. Pixi's Assets cache is global, so one loader unloading a URL destroys the texture for
+ * every other loader too: leaving a step while the next step's viewport picks up the same art left that viewport
+ * drawing a destroyed texture ("Cannot read properties of null (reading 'alphaMode')"). A URL is unloaded only when the
+ * last loader holding it lets go.
+ */
+const holders = new Map<string, number>();
+
 export class RigAssetLoader {
   private readonly loads = new Map<string, Promise<TextureLoadResult>>();
   private destroyed = false;
@@ -21,6 +29,7 @@ export class RigAssetLoader {
     const url = resolveAssetUrl(imagePath, this.baseUrl);
     const existing = this.loads.get(url);
     if (existing) return existing;
+    holders.set(url, (holders.get(url) ?? 0) + 1);
     const load = Assets.load<Texture>(url)
       .then((texture): TextureLoadResult => { if (this.scaleMode) texture.source.scaleMode = this.scaleMode; return { success: true, url, texture }; })
       .catch((error: unknown): TextureLoadResult => ({
@@ -53,6 +62,7 @@ export class RigAssetLoader {
     this.destroyed = true;
     const urls = [...this.loads.keys()];
     this.loads.clear();
-    await Promise.allSettled(urls.map((url) => Assets.unload(url)));
+    const released = urls.filter((url) => { const left = (holders.get(url) ?? 1) - 1; if (left > 0) { holders.set(url, left); return false; } holders.delete(url); return true; });
+    await Promise.allSettled(released.map((url) => Assets.unload(url)));
   }
 }
