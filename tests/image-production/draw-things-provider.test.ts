@@ -39,7 +39,7 @@ describe("Draw Things local generation provider", () => {
 
   it("waits for stable watched-folder files, parses a JSON sidecar, and deduplicates content hashes", async () => {
     const cwd = await mkdtemp(path.join(tmpdir(), "draw-things-watch-")); const inbox = path.join(cwd, "inbox"); await mkdir(inbox);
-    const provider = new DrawThingsProvider({ enabled: true, mode: "watched_folder", exportDirectory: inbox, cwd, pollIntervalMs: 2, stableWindowMs: 5, timeoutMs: 250 });
+    const provider = new DrawThingsProvider({ enabled: true, mode: "watched_folder", exportDirectory: inbox, cwd, pollIntervalMs: 2, stableWindowMs: 5, timeoutMs: 2000 }); // generous: under a full parallel test run 250 ms was not always enough to see the copy settle
     await expect(provider.getCapabilities()).resolves.toMatchObject({ connected: true, mode: "watched_folder", metadataCapture: { level: "partial" }, watchedFolder: { available: true } });
     const collecting = provider.generateCharacter({ ...request, candidateCount: 1 });
     await new Promise((resolve) => setTimeout(resolve, 10));

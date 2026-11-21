@@ -10,12 +10,18 @@ async function render(pathname = "/") {
   }, { waitUntil() {}, passThroughOnException() {} });
 }
 
-test("the root route opens the full Rig Editor directly", async () => {
-  const response = await render();
+// The bare root starts a newcomer on Create; the rig editor is the same route with a step (/?mode=setup|animate|export).
+test("the root route starts on Create, and with a step opens the Rig Editor", async () => {
+  const root = await render();
+  assert.equal(root.status, 307);
+  assert.match(root.headers.get("location") ?? "", /\/create-character$/);
+  const response = await render("/?mode=setup");
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /<title>Rig Editor/);
-  assert.match(html, /Loading rig editor/);
+  // Loading renders inside the step frame (its project menu reopens the remembered project).
+  assert.match(html, /Loading the rig/);
+  assert.match(html, /class="step-shell/);
   assert.doesNotMatch(html, /One rig|Every loadout/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/);
 });
@@ -31,11 +37,11 @@ test("server-renders the interactive Rig Lab route", async () => {
 });
 
 test("server-renders the visual Rig Editor route", async () => {
-  const response = await render("/rig-editor");
+  const response = await render("/?mode=animate");
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /<title>Rig Editor/);
-  assert.match(html, /Loading rig editor/);
+  assert.match(html, /Loading the rig/);
 });
 
 test("server-renders the full character runtime compatibility route", async () => {
@@ -52,7 +58,9 @@ test("server-renders the Create Character pipeline", async () => {
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /<title>Create Character/);
-  assert.match(html, /Describe the chibi sprite you need to rig/);
-  assert.match(html, /Generate chibi sprite/);
-  assert.match(html, /Chibi pixel art locked/);
+  // The guided Create step: the description, your own art instead, the models on the Mac Studio, and facing.
+  assert.match(html, /Describe your character/);
+  assert.match(html, /upload your own art/);
+  assert.match(html, /Model · on the Mac Studio/);
+  assert.match(html, /Facing/);
 });
