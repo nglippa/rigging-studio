@@ -98,11 +98,13 @@ describe("stage-driven workspace shell", () => {
     expect(test).toContain("stage-next-action");
   });
 
-  it("keeps Test from editing the rig", () => {
+  it("keeps Test and Rotate to test from editing the rig", () => {
     const rigEditor = source("../../app/rig-editor/RigEditor.tsx");
-    expect(rigEditor).toContain("poseMode={testing}");
-    expect(rigEditor).toContain("pivotEdit={!testing}");
-    expect(rigEditor).toContain("onBoneDragCommit={testing ? () => { setPosed(true); markTested(); } : commitBoneDrag}");
+    // Posing covers the old Test view and the expanded view's Rotate to test tool.
+    expect(rigEditor).toContain('const posing = testing || (rigExpanded && !rigAdvanced && rigTool === "rotate");');
+    expect(rigEditor).toContain("poseMode={posing}");
+    expect(rigEditor).toContain("pivotEdit={!posing}");
+    expect(rigEditor).toContain("onBoneDragCommit={posing ? () => { setPosed(true); markTested(); } : commitBoneDrag}");
   });
 
   it("gives Animate one clip chooser, one undo, and a full transport", () => {

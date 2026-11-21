@@ -21,6 +21,8 @@ const MAX_ZOOM = 24;
 
 export type EditorViewportHandle = {
   readonly resetView: () => void;
+  /** Zooms by `factor` around the centre of the canvas (the − and + buttons). */
+  readonly zoomBy: (factor: number) => void;
   readonly seekAnimation: (time: number) => void;
   readonly playAnimation: () => void;
   readonly pauseAnimation: () => void;
@@ -145,6 +147,15 @@ export const EditorViewport = forwardRef<EditorViewportHandle, Props>(function E
 
   useImperativeHandle(ref, () => ({
     resetView: fitView,
+    zoomBy: (factor) => {
+      const state = stateRef.current; const mount = mountRef.current;
+      if (!state || !mount) return;
+      const screen = { x: mount.clientWidth / 2, y: mount.clientHeight / 2 };
+      const world = { x: (screen.x - state.view.x) / state.view.scale.x, y: (screen.y - state.view.y) / state.view.scale.y };
+      const scale = Math.max(0.1, Math.min(MAX_ZOOM, state.view.scale.x * factor));
+      state.view.scale.set(scale); state.view.position.set(screen.x - world.x * scale, screen.y - world.y * scale);
+      propsRef.current.onZoom(scale);
+    },
     seekAnimation: (time) => { stateRef.current?.player?.seek(time); stateRef.current?.renderer?.update(); },
     playAnimation: () => {
       const state = stateRef.current;

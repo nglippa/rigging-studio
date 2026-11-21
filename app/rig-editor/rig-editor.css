@@ -1090,3 +1090,19 @@ details.ai-section > :last-child { margin-bottom: 10px; }
 /* Rig step, full editor: fills the space between the top bar and the action bar. */
 .step-shell .rig-full { display: grid; min-height: 0; min-width: 0; }
 .step-shell .rig-full > .editor-body { min-height: 0; }
+/* Rig expanded view. */
+.step-shell .expanded .rig-group { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 8px 0; border-bottom: 1px solid var(--sh-line-soft); }
+.step-shell .expanded .rig-group h5 { margin: 0 12px 4px; display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--sh-muted); }
+.step-shell .expanded .rig-group h5 span { text-transform: none; font-weight: 400; }
+.step-shell .expanded .is-ok { color: var(--sh-ok); } .step-shell .expanded .is-warn { color: var(--sh-warn); }
+.step-shell .rig-nudge-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) 28px; gap: 4px; }
+.step-shell .rig-nudge-row .panel-button { padding: 4px 0; }
+.step-shell .rig-nudge-row input { min-width: 0; height: 28px; padding: 0 6px; border: 1px solid var(--sh-line); border-radius: 6px; background: var(--sh-raised); color: var(--sh-text); text-align: right; }
+.step-shell .ex-buttons .rig-nudge { grid-template-columns: 30px minmax(0, 1fr); }
+.step-shell .rig-art { display: grid; gap: 6px; padding-top: 4px; }
+.step-shell .rig-art + .rig-art { border-top: 1px solid var(--sh-line-soft); padding-top: 8px; }
+.step-shell .rig-art-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.step-shell .rig-art-head small { color: var(--sh-muted); font-size: 11px; text-align: right; }
+.step-shell .rig-zoom { min-width: 44px; text-align: center; color: var(--sh-secondary); font-size: 12px; }
+.step-shell .expanded .expanded-stage > .editor-viewport { position: absolute; inset: 0; }
+.step-shell .expanded .rig-group > .ex-item { width: auto; }

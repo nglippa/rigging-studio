@@ -5,6 +5,8 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { computeWorldTransforms } from "../src/rigging/runtime/worldTransforms";
+import { createRestPose } from "../src/rigging/runtime/pose";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { LocalProjectStore } from "../mcp/storage/localProjectStore";
 import type { GeneratedCharacterProject } from "../src/character-generation/project/generatedCharacterProject";
@@ -24,7 +26,10 @@ async function installFixtures(): Promise<void> {
   const project = JSON.parse(await readFile("tests/fixtures/golden/void-ranger/project.json", "utf8")) as GeneratedCharacterProject;
   const rig = JSON.parse(await readFile("tests/fixtures/golden/void-ranger/rig.json", "utf8")) as RigDefinition;
   const animations = JSON.parse(await readFile("tests/fixtures/golden/void-ranger/animations.json", "utf8")) as AnimationLibrary;
-  const named: RigDefinition = { ...rig, metadata: { ...rig.metadata, name: RIGGED.name } };
+  // A landmark for the left shoulder, a little off its joint, so the expanded Rig view's "Snap to shoulder" has work to do.
+  const shoulder = computeWorldTransforms(rig, createRestPose(rig))["left-upper-arm"];
+  const pivotSources = { ...(rig.metadata.pivotSources as Record<string, unknown> | undefined), "left-upper-arm": { source: "landmark", confidence: .9, detail: "shoulder", point: { x: shoulder.x + 6, y: shoulder.y - 4 } } };
+  const named: RigDefinition = { ...rig, metadata: { ...rig.metadata, name: RIGGED.name, pivotSources } };
   const snapshot = {
     storageVersion: 1, localProjectId: RIGGED.id,
     project: { ...project, id: RIGGED.id, name: RIGGED.name, rigDefinition: named, skins: named.skins, updatedAt: new Date().toISOString() },
@@ -168,8 +173,8 @@ async function checkEveryControl(page: Page, href: string, label: string, enter?
     const target = page.locator("[data-audit-target]").first();
     // A view reset only shows on the canvas, and only if the view was moved first: zoom, then compare stage pixels.
     const canvasOnly = /^Fit/.test(control.text);
-    if (canvasOnly) { const stage = page.locator(".step-stage").first(); const box = await stage.boundingBox(); if (box) { await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.wheel(0, -600); await page.waitForTimeout(300); } }
-    const stagePixels = async () => (await page.locator(".step-stage").first().screenshot({ type: "jpeg", quality: 40 }).catch(() => Buffer.alloc(0))).toString("base64");
+    if (canvasOnly) { const stage = page.locator(".step-stage, .expanded-stage").first(); const box = await stage.boundingBox(); if (box) { await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2); await page.mouse.wheel(0, -600); await page.waitForTimeout(300); } }
+    const stagePixels = async () => (await page.locator(".step-stage, .expanded-stage").first().screenshot({ type: "jpeg", quality: 40 }).catch(() => Buffer.alloc(0))).toString("base64");
     const pixelsBefore = canvasOnly ? await stagePixels() : "";
     // A resize handle works by dragging, from a fresh layout (an earlier click may have collapsed its panel).
     if (/^Resize/.test(control.text)) {
@@ -324,6 +329,30 @@ async function checkRigGuided(page: Page): Promise<void> {
   assert.equal(await page.locator(".step-shell.is-expanded").count(), 0, "Done, back to Rig did not return to the guided view");
 }
 
+/** Expanded Rig: every control works; picking a bone selects it on the canvas; Snap is offered; the bend test moves the art. */
+async function checkRigExpanded(page: Page): Promise<void> {
+  const problems = await checkEveryControl(page, "/?mode=setup", "Rig expanded", expandWith(/Edit bones manually/));
+  await page.goto(`${APP_URL}/?mode=setup`, { waitUntil: "domcontentloaded" }); await page.locator(".step-shell canvas").first().waitFor({ timeout: 90000 }); await page.waitForTimeout(3000);
+  await expandWith(/Edit bones manually/)(page);
+  const stage = page.locator(".expanded-stage");
+  const before = await stage.screenshot();
+  const shoulder = page.locator(".expanded-left section[aria-label='Left arm'] .ex-item").first();
+  await shoulder.click(); await page.waitForTimeout(600);
+  assert.equal(await shoulder.getAttribute("aria-pressed"), "true", "the picked bone is not marked as selected");
+  assert.ok(!before.equals(await stage.screenshot()), "picking the left shoulder did not highlight anything on the canvas");
+  const snap = page.locator(".expanded-right button").filter({ hasText: /^Snap to shoulder$/ });
+  assert.ok(await snap.isEnabled(), "Snap to shoulder is not offered for the left upper arm");
+  await page.locator(".expanded-right button").filter({ hasText: /^Set a bend range$/ }).click(); await page.waitForTimeout(300);
+  const rest = await stage.screenshot();
+  await page.locator("input[aria-label='Test the bend']").fill("60"); await page.waitForTimeout(800);
+  assert.ok(!rest.equals(await stage.screenshot()), "the bend test did not move the arm");
+  await snap.click(); await page.waitForTimeout(400);
+  assert.ok(!(await snap.isEnabled()) || (await snap.count()) === 0, "Snap to shoulder still offered after snapping");
+  await page.locator(".step-primary").click();
+  assert.equal(await page.locator(".step-shell.is-expanded").count(), 0, "Done, back to Rig did not leave the expanded view");
+  assert.deepEqual(problems, [], `\n  ${problems.join("\n  ")}`);
+}
+
 const checks: readonly (readonly [string, (page: Page) => Promise<void>, string?])[] = [
   ["Create stays on Create with a rigged project open", checkCreateStaysOnCreate],
   ["Every step renders in the shared frame", checkShellOnEveryStep],
@@ -334,6 +363,7 @@ const checks: readonly (readonly [string, (page: Page) => Promise<void>, string?
   ["Parts: guided view with regions", checkPartsGuided],
   ["Parts: expanded cutter works and returns", checkPartsExpanded],
   ["Rig: guided view with joints and pose tests", checkRigGuided],
+  ["Rig: expanded view (skeleton, joint, bend test)", checkRigExpanded],
   ["Every control on every step does something", checkEveryControlOnEveryStep],
 ];
 
@@ -347,7 +377,7 @@ try {
     const context = await contextWithActiveProject(browser, projectId ?? RIGGED.id);
     const page = await context.newPage();
     try { await check(page); console.log(`PASS  ${name}`); }
-    catch (error: unknown) { failed += 1; console.log(`FAIL  ${name}: ${error instanceof Error ? error.message : String(error)}`); }
+    catch (error: unknown) { failed += 1; console.log(`FAIL  ${name}: ${error instanceof Error ? error.message : String(error)}`); if (process.env.DEBUG && error instanceof Error) console.log(error.stack?.split("\n").slice(1, 6).join("\n")); }
     finally { await context.close(); }
   }
 } finally { await browser.close(); }

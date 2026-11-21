@@ -20,7 +20,7 @@ import { forgetActiveDiskProject } from "@/app/studio-ui/ProjectStorageMenu";
 import { takeStageNotice } from "@/app/studio-ui/stageNotice";
 import { estimateView, poseToLandmarks, type ViewEstimate } from "@/src/character-generation/pose/poseLandmarks";
 import { prepareRiggedPartArt, type HiddenAreaRepaint } from "@/src/character-generation/rigging/riggedPartArt";
-import { REBUILD_REQUEST_KEY, parseRebuildRequest } from "@/app/rig-editor/RigNotices";
+import { RECUT_PART_KEY, REBUILD_REQUEST_KEY, parseRebuildRequest } from "@/app/rig-editor/RigNotices";
 import type { Rect, SegmentationMask } from "@/src/character-generation/segmentation/segmentationSchema";
 import { buildRigProposal, sourcePixelScale } from "@/src/character-generation/rigging/rigProposalBuilder";
 import { validateRigProposal } from "@/src/character-generation/rigging/rigProposalValidator";
@@ -268,6 +268,19 @@ export function PartCutterWorkspace() {
     attempt(4);
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [foregroundRevision, source]);
+  // Rig's "Recut in Parts" sends a part here: open the expanded cutter on it once the parts have loaded.
+  const partsLoaded = Boolean(state?.parts.length);
+  useEffect(() => {
+    if (!partsLoaded) return;
+    let partId: string | null = null;
+    try { partId = window.sessionStorage.getItem(RECUT_PART_KEY); } catch { /* storage unavailable */ }
+    if (!partId) return;
+    if (!state?.parts.some((part) => part.partId === partId)) { try { window.sessionStorage.removeItem(RECUT_PART_KEY); } catch { /* storage unavailable */ } return; }
+    const target = partId;
+    const timer = window.setTimeout(() => { try { window.sessionStorage.removeItem(RECUT_PART_KEY); } catch { /* storage unavailable */ } setSelectedPartId(target); setExpanded(true); setMessage(`Recut ${humanizeTechnicalId(target)}: draw a loop around it, or drag its edges.`); }, 0);
+    return () => window.clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once, when the parts first arrive
+  }, [partsLoaded]);
   useEffect(() => { state?.anatomicalGuide?.landmarks.forEach((landmark) => { const node = document.querySelector<SVGGElement>(`.cutter-canvas [data-landmark-id="${landmark.landmarkId}"]`); if (node) { node.dataset.landmarkState = landmark.visibility ?? "legacy"; node.setAttribute("role", "group"); node.setAttribute("aria-label", `${landmark.landmarkId} · ${landmark.visibility ?? "legacy"} · ${landmark.method ?? "fixed guide"}`); } }); }, [state?.anatomicalGuide]);
   useEffect(() => { if (!drawing && !boundaryDraftRef.current) boundaryDragRef.current = null; }, [drawing]);
 

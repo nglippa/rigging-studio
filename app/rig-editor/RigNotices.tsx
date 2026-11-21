@@ -38,6 +38,8 @@ export function RebuildNotice({ rig, onRebuild }: { readonly rig: RigDefinition;
 
 /** Asks Parts to rebuild this character's rig when it next opens. Session-scoped and tied to the project, so it cannot fire for another character. */
 export const REBUILD_REQUEST_KEY = "rigging-studio-rebuild-request";
+/** Rig's "Recut in Parts": the part to open in the expanded cutter when Parts next loads. */
+export const RECUT_PART_KEY = "rigging-studio-recut-part";
 export type RebuildRequest = { readonly projectId: string; readonly repaint: boolean };
 export const writeRebuildRequest = (request: RebuildRequest): void => {
   try { window.sessionStorage.setItem(REBUILD_REQUEST_KEY, JSON.stringify(request)); } catch { /* storage unavailable: Parts opens without rebuilding */ }
