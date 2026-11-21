@@ -278,6 +278,24 @@ async function checkPartsGuided(page: Page): Promise<void> {
   assert.match((await page.locator(".step-primary").textContent())?.trim() ?? "", /^(Build rig →|Cut all parts)$/);
 }
 
+/** The expanded cutter: every control works, the tool keys switch tools, and Done returns to the guided view. */
+async function checkPartsExpanded(page: Page): Promise<void> {
+  const problems = await checkEveryControl(page, "/part-cutter", "Parts expanded", expandWith(/Edit parts manually/));
+  await page.goto(`${APP_URL}/part-cutter`, { waitUntil: "domcontentloaded" }); await page.locator(".step-shell").first().waitFor({ timeout: 90000 });
+  await expandWith(/Edit parts manually/)(page);
+  // Pick a part so Brush and Erase are available, then try each key.
+  await page.locator(".expanded-left .part-row, .expanded-left [role=treeitem], .expanded-left button").filter({ hasText: /Torso/ }).first().click().catch(() => undefined);
+  const pressed = async () => (await page.locator(".expanded-tools button[aria-pressed=true]").first().textContent())?.replace(/[A-Z]$/, "").trim();
+  for (const [key, name] of [["l", "Lasso"], ["b", "Brush"], ["e", "Erase"]] as const) {
+    await page.locator(".expanded-stage").first().click({ position: { x: 5, y: 5 } }).catch(() => undefined);
+    await page.keyboard.press(key); await page.waitForTimeout(250);
+    const active = await pressed(); if (!(key !== "l" && !(await page.locator(".expanded-tools button", { hasText: name }).first().isEnabled()))) assert.equal(active, name, `pressing ${key.toUpperCase()} left ${active} active`);
+  }
+  await page.locator(".step-primary").click();
+  assert.equal(await page.locator(".step-shell.is-expanded").count(), 0, "Done, back to Parts did not leave the expanded view");
+  assert.deepEqual(problems, [], `\n  ${problems.join("\n  ")}`);
+}
+
 const checks: readonly (readonly [string, (page: Page) => Promise<void>, string?])[] = [
   ["Create stays on Create with a rigged project open", checkCreateStaysOnCreate],
   ["Every step renders in the shared frame", checkShellOnEveryStep],
@@ -286,6 +304,7 @@ const checks: readonly (readonly [string, (page: Page) => Promise<void>, string?
   ["Create: says when the Mac Studio is unreachable", checkCreateOffline],
   ["Create: expanded view works and returns", checkCreateExpanded],
   ["Parts: guided view with regions", checkPartsGuided],
+  ["Parts: expanded cutter works and returns", checkPartsExpanded],
   ["Every control on every step does something", checkEveryControlOnEveryStep],
 ];
 

@@ -43,3 +43,16 @@
 .step-shell .expanded-right .profile-picker label { display: grid; gap: 6px; }
 .step-shell .expanded-right .profile-picker select { width: 100%; padding: 7px 8px; border: 1px solid var(--sh-line); border-radius: 6px; background: var(--sh-bg); color: var(--sh-text); }
 .step-shell .expanded-right .profile-picker :is(button, a) { text-decoration: none; }
+
+/* Shared panel pieces for expanded right columns: a labelled field, the column's one positive action, and a destructive one. */
+.step-shell .panel-field { display: grid; grid-template-columns: 84px minmax(0, 1fr); align-items: center; gap: 8px; color: var(--sh-secondary); font-size: 12px; }
+.step-shell .panel-field select { min-width: 0; height: 28px; padding: 0 6px; border: 1px solid var(--sh-line); border-radius: 6px; background: var(--sh-raised); color: var(--sh-text); }
+.step-shell .panel-field select:disabled { opacity: .45; }
+.step-shell .panel-button.is-primary:not(:disabled) { border-color: var(--sh-accent); color: var(--sh-accent); }
+.step-shell .panel-button.is-primary:disabled { opacity: 1; border-color: var(--sh-line-soft); color: var(--sh-ok); cursor: default; }
+.step-shell .panel-button.is-danger { color: var(--sh-error); border-color: color-mix(in srgb, var(--sh-error) 40%, transparent); }
+.step-shell .panel-button[aria-pressed="true"] { background: var(--sh-raised); color: var(--sh-text); box-shadow: inset 0 -2px 0 var(--sh-accent); }
+.step-shell .panel-button:disabled { opacity: .45; cursor: not-allowed; }
+.step-shell .ex-section h5 .is-ok { color: var(--sh-ok); } .step-shell .ex-section h5 .is-warn { color: var(--sh-warn); }
+.step-shell .ex-section input[type="range"] { width: 100%; accent-color: var(--sh-accent); }
+.step-shell .ex-section .seg button { font-size: 12px; text-transform: none; letter-spacing: 0; }

@@ -520,3 +520,9 @@
 .step-shell .expanded-tools > .cutter-toolbar { display: flex; align-items: center; gap: 4px; padding: 0 4px; border: 0; background: transparent; min-height: 0; }
 .step-shell .expanded-left > .cutter-left, .step-shell .expanded-right > .cutter-right { display: contents; }
 .step-shell .expanded-center .cutter-canvas-wrap { padding-top: 56px; }
+
+/* Expanded cutter: the frame's action bar holds Start over and the left list holds the count, so the canvas strip that repeated them is hidden. */
+.step-shell .expanded .coverage-legend { display: none; }
+.step-shell .expanded .cutter-panel-title { display: flex; justify-content: space-between; align-items: baseline; padding: 10px 12px; border-bottom: 1px solid var(--sh-line-soft); }
+.step-shell .expanded .cutter-panel-title span { font: 600 11px/1.2 var(--sh-font); letter-spacing: .02em; text-transform: uppercase; color: var(--sh-muted); }
+.step-shell .expanded .cutter-panel-title small { font: 400 12px/1.2 var(--sh-font); color: var(--sh-secondary); }
