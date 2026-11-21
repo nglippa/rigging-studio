@@ -12,12 +12,12 @@
     "tolerant": 0.9304
   },
   "fox-rogue-front": {
-    "strict": 0.8741,
-    "tolerant": 0.9429
+    "strict": 0.9033,
+    "tolerant": 0.9693
   },
   "fox-rogue-side": {
-    "strict": 0.8082,
-    "tolerant": 0.8839
+    "strict": 0.8547,
+    "tolerant": 0.93
   },
   "goblin-side": {
     "strict": 0.9427,

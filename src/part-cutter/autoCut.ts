@@ -152,6 +152,46 @@ export function bonePlan(joints: Joints): CutPlan {
 }
 
 /**
+ * Capes and cloaks hang from the shoulders, so by the cut conventions they are torso, but their colour is often the sleeve's
+ * and the nearest limb stroke then floods the whole cape. A large piece of the silhouette far from every stroke (more than
+ * 8% of the figure's height, at least 3% of its area) at body height, between a fifth of the way from neck to pelvis and a
+ * little below the pelvis, gets a torso stroke from its deepest point a third of the way back towards the body's axis. Pieces
+ * higher up (the head, hair, ears) or lower down (a tail, feet) are left alone. Measured on the cut bench: 89.7% -> 90.4%
+ * (95.5% -> 96.2% seam-tolerant), the two capes 80.8% -> 85.8% and 87.4% -> 90.3%.
+ */
+export function addMassStrokes(plan: CutPlan, joints: Joints, width: number, height: number, foreground: ArrayLike<number>): CutPlan {
+  const { neck, pelvis } = joints; if (!neck || !pelvis) return plan;
+  const size = width * height; let area = 0; let top = height; let bottom = -1;
+  for (let index = 0; index < size; index += 1) if (foreground[index]) { area += 1; const y = Math.floor(index / width); if (y < top) top = y; if (y > bottom) bottom = y; }
+  if (!area) return plan;
+  const figure = bottom - top + 1; const far = figure * .08;
+  // Distance to the nearest stroke or hard region corner, through the character, by two chamfer passes.
+  const dist = new Float32Array(size).fill(Number.POSITIVE_INFINITY);
+  const mark = (x: number, y: number) => { x = Math.round(x); y = Math.round(y); if (x >= 0 && y >= 0 && x < width && y < height) dist[y * width + x] = 0; };
+  for (const value of [...Object.values(plan.scribbles ?? {}), ...Object.values(plan.parts ?? {})]) for (const polygon of (typeof (value as readonly PlanPoint[][])[0]?.[0] === "number" ? [value] : value) as readonly (readonly PlanPoint[])[]) for (let i = 0; i < polygon.length; i += 1) {
+    const [ax, ay] = polygon[i]; const [bx, by] = polygon[Math.min(i + 1, polygon.length - 1)]; const steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay)));
+    for (let t = 0; t <= steps; t += 1) mark(ax + (bx - ax) * t / steps, ay + (by - ay) * t / steps);
+  }
+  const relax = (index: number, other: number, cost: number) => { if (foreground[other] && dist[other] + cost < dist[index]) dist[index] = dist[other] + cost; };
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) { const index = y * width + x; if (!foreground[index]) continue; if (x > 0) relax(index, index - 1, 1); if (y > 0) { relax(index, index - width, 1); if (x > 0) relax(index, index - width - 1, 1.414); if (x < width - 1) relax(index, index - width + 1, 1.414); } }
+  for (let y = height - 1; y >= 0; y -= 1) for (let x = width - 1; x >= 0; x -= 1) { const index = y * width + x; if (!foreground[index]) continue; if (x < width - 1) relax(index, index + 1, 1); if (y < height - 1) { relax(index, index + width, 1); if (x > 0) relax(index, index + width - 1, 1.414); if (x < width - 1) relax(index, index + width + 1, 1.414); } }
+  const isFar = (index: number) => foreground[index] && dist[index] > far && Number.isFinite(dist[index]);
+  const low = neck.y + (pelvis.y - neck.y) * .2; const high = pelvis.y + figure * .05;
+  const seen = new Uint8Array(size); const extra: PlanPoint[][] = [];
+  for (let start = 0; start < size; start += 1) {
+    if (seen[start] || !isFar(start)) continue;
+    const piece = [start]; seen[start] = 1; let deepest = start;
+    for (let k = 0; k < piece.length; k += 1) {
+      const at = piece[k]; if (dist[at] > dist[deepest]) deepest = at; const x = at % width;
+      for (const next of [x > 0 ? at - 1 : -1, x < width - 1 ? at + 1 : -1, at - width, at + width]) if (next >= 0 && next < size && !seen[next] && isFar(next)) { seen[next] = 1; piece.push(next); }
+    }
+    const x = deepest % width; const y = Math.floor(deepest / width);
+    if (piece.length >= area * .03 && y >= low && y <= high) extra.push([[x, y], [Math.round(x + (pelvis.x - x) / 3), y]]);
+  }
+  return extra.length ? { ...plan, scribbles: { ...plan.scribbles, torso: [...((plan.scribbles?.torso ?? []) as readonly (readonly PlanPoint[])[]), ...extra] } } : plan;
+}
+
+/**
  * Upper-body joints the silhouette guide placed (not the pose model) sit on the middle of the figure's bounding box, which a
  * held shield, a tail or a long staff drags to one side by up to 8% of the figure's height, while the legs sit under the
  * body: those joints move sideways by the gap between the box's middle and the legs' pelvis. A gap under 2% of the height is
@@ -181,7 +221,7 @@ export function autoCutBodyParts(state: PartCutterState, foreground: readonly nu
   let top = height; let bottom = -1; let left = width; let right = -1;
   for (let index = 0; index < width * height; index += 1) if (foreground[index]) { const x = index % width; const y = (index - x) / width; if (y < top) top = y; if (y > bottom) bottom = y; if (x < left) left = x; if (x > right) right = x; }
   const joints: Joints = settleArms(legs ? { ...centreOnLegs(fromGuide, legs, sources, (left + right) / 2, bottom - top + 1), ...legs } : fromGuide, state.anatomicalGuide?.adaptiveMetadata?.proportions === "adult" ? undefined : bottom - top + 1);
-  const labels = applyCutPlan(bonePlan(joints), { width, height, data: colours, foreground });
+  const labels = applyCutPlan(addMassStrokes(bonePlan(joints), joints, width, height, foreground), { width, height, data: colours, foreground });
   let current = initializeGuidedManual(state, at); const cut: string[] = []; const hidden: string[] = [];
   for (const semantic of GUIDED_BODY_ORDER) {
     const label = PLAN_PARTS.indexOf(semantic as (typeof PLAN_PARTS)[number]) + 1;
