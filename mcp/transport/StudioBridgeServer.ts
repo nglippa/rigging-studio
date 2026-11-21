@@ -391,6 +391,16 @@ export class StudioBridgeServer {
       } catch (error: unknown) { response.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error instanceof Error ? error.message : "Bake could not start" })); }
       return;
     }
+    // One sheet from the finished redraws of several clips (one bake each), for Export's Redrawn look.
+    if (request.method === "POST" && request.url === "/bake/combine") {
+      try {
+        const body = await this.readJsonBody(request, 1_000_000) as Record<string, unknown> | null;
+        if (!body || !Array.isArray(body.jobIds) || !Array.isArray(body.clipIds) || !body.jobIds.every((id) => typeof id === "string") || !body.clipIds.every((id) => typeof id === "string")) throw new Error("Combining needs jobIds and clipIds");
+        const job = await this.bake.combine(body.jobIds as string[], body.clipIds as string[]);
+        response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(job));
+      } catch (error: unknown) { response.writeHead(400, { "Content-Type": "application/json" }).end(JSON.stringify({ error: error instanceof Error ? error.message : "The sheets could not be combined" })); }
+      return;
+    }
     // Which of a project's clips already have a current redraw (RedrawStore), so Animate and Export never redraw twice.
     if (request.method === "POST" && request.url === "/bake/redraws/lookup") {
       try {

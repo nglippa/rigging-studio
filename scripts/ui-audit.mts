@@ -404,6 +404,37 @@ async function checkAnimateExpanded(page: Page): Promise<void> {
   assert.deepEqual(problems, [], `\n  ${problems.join("\n  ")}`);
 }
 
+/** Export: no dialog anywhere; the Rigged look's button downloads the sheet; the Redrawn look waits for missing redraws, saying why. */
+async function checkExport(page: Page): Promise<void> {
+  // Earlier checks may have saved another look to the disk project; start from the fixture as installed.
+  await installFixtures();
+  const bridge = "http://127.0.0.1:47831"; const jobId = "bake-00000000-0000-0000-0000-0000000000e1";
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+  const sheetJson = JSON.stringify({ format: "rigging-studio-sheet/1", cell: { w: 1, h: 1 }, pivot: { x: 0, y: 1 }, clips: [{ id: "idle", name: "Idle", loop: true, frames: [{ x: 0, y: 0, w: 1, h: 1, durationMs: 100 }] }] });
+  const job = { jobId, mode: "rig", status: "completed", progress: { done: 1, total: 1, clip: null }, result: { sheet: `/bake/assets/${jobId}/sheet.png`, json: `/bake/assets/${jobId}/sheet.json`, drawings: 1, polished: 0, keptFromRig: 0 } };
+  await page.route(`${bridge}/studio/queue`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: "{}" }));
+  await page.route(`${bridge}/bake/redraws/lookup`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ clips: [] }) }));
+  await page.route(`${bridge}/bake/jobs`, (route) => route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify(job) }));
+  await page.route(`${bridge}/bake/jobs/*`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(job) }));
+  await page.route(`${bridge}/bake/assets/**`, (route) => route.request().url().endsWith(".png")
+    ? route.fulfill({ status: 200, contentType: "image/png", headers: { "Content-Disposition": 'attachment; filename="sheet.png"' }, body: png })
+    : route.fulfill({ status: 200, contentType: "application/json", headers: { "Content-Disposition": 'attachment; filename="sheet.json"' }, body: sheetJson }));
+  await page.goto(`${APP_URL}/?mode=export`, { waitUntil: "domcontentloaded" }); await page.locator(".step-panel [aria-label='Export format']").waitFor({ timeout: 90000 });
+  assert.equal(await page.locator(".export-for-game, .studio-dialog.export-for-game").count(), 0, "the old export dialog is still on the page");
+  const primary = page.locator(".step-primary");
+  await page.waitForFunction(() => document.querySelector(".step-primary")?.textContent?.trim() === "Download sprite sheet", undefined, { timeout: 30000 })
+    .catch(async () => { throw new Error(`Export's button never read "Download sprite sheet": "${await primary.textContent()}" · ${await page.locator(".step-instruction").textContent()} · ${(await page.locator(".step-panel").innerText()).replace(/\n+/g, " | ").slice(0, 300)}`); });
+  await page.waitForFunction(() => !(document.querySelector(".step-primary") as HTMLButtonElement | null)?.disabled, undefined, { timeout: 30000 });
+  const [download] = await Promise.all([page.waitForEvent("download", { timeout: 15000 }), primary.click()]);
+  assert.match(download.suggestedFilename(), /sheet\.(png|json)$/);
+  // Redrawn look with nothing redrawn yet: the button waits, and says why.
+  await page.locator(".step-nav button").filter({ hasText: "Animate" }).click(); await page.locator(".step-panel [aria-label='Export look']").waitFor({ timeout: 60000 });
+  await page.locator(".step-panel [aria-label='Export look'] button").filter({ hasText: /^Redrawn$/ }).click(); await page.waitForTimeout(500);
+  await page.locator(".step-nav button").filter({ hasText: "Export" }).click(); await page.locator(".step-panel [aria-label='Export format']").waitFor({ timeout: 60000 }); await page.waitForTimeout(1500);
+  assert.ok(await primary.isDisabled(), `Download sprite sheet is offered while animations are not redrawn (button "${await primary.textContent()}", title "${await primary.getAttribute("title")}", instruction "${await page.locator(".step-instruction").textContent()}", note "${await page.locator(".step-panel .panel-note").first().textContent()}")`);
+  assert.match(await primary.getAttribute("title") ?? "", /redrawn yet; finish them in Animate/);
+}
+
 const checks: readonly (readonly [string, (page: Page) => Promise<void>, string?])[] = [
   ["Create stays on Create with a rigged project open", checkCreateStaysOnCreate],
   ["Every step renders in the shared frame", checkShellOnEveryStep],
@@ -417,6 +448,7 @@ const checks: readonly (readonly [string, (page: Page) => Promise<void>, string?
   ["Rig: expanded view (skeleton, joint, bend test)", checkRigExpanded],
   ["Animate: Look switch, previews, redraw status", checkAnimateGuided],
   ["Animate: expanded keyframe editor", checkAnimateExpanded],
+  ["Export: downloads, and waits for missing redraws", checkExport],
   ["Every control on every step does something", checkEveryControlOnEveryStep],
 ];
 

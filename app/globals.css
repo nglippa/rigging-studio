@@ -259,32 +259,9 @@ footer { max-width: 1280px; margin: 0 auto; padding: 24px 30px 34px; display: fl
   :is(.rig-editor-shell,.part-cutter-shell,.character-workspace) button:active:not(:disabled) { transform:none; }
 }
 
-/* Export for a game (ExportForGame): three paths, the clips, progress and the baked sheet. */
-/* Inline on the Export step's stage. */
-.export-for-game.is-inline { width: min(640px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow-y: auto; display: flex; flex-direction: column; border: 1px solid var(--ws-line, #283341); border-radius: 10px; background: var(--ws-panel, #11161e); color: var(--ws-text, #e9eef6); }
-.export-for-game.is-inline > footer { max-width: none; margin: 0; display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--ws-line-soft, #1d2733); font: 600 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: inherit; }
-.export-for-game.is-inline > footer button { padding: 8px 16px; border-radius: 8px; border: 1px solid var(--ws-line, #283341); background: transparent; color: inherit; }
-.export-for-game.is-inline > footer button.primary { background: var(--ws-signal, #68e1ef); color: #04161a; border-color: transparent; }
-.studio-dialog.export-for-game { width: min(640px, calc(100vw - 32px)); max-height: calc(100dvh - 36px); display: flex; flex-direction: column; }
-/* Header and footer stay put; a finished bake's preview scrolls inside the body instead of pushing Close off screen. */
-.export-for-game > header, .export-for-game > footer { flex: none; }
-.export-for-game > .studio-dialog-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-.studio-dialog.export-for-game fieldset { border: 0; margin: 12px 0 0; padding: 0; display: grid; gap: 6px; }
-.export-for-game legend { font-size: 12px; opacity: .7; margin-bottom: 4px; }
-.export-paths label { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; padding: 10px 12px; border: 1px solid rgba(255,255,255,.12); border-radius: 6px; cursor: pointer; }
-.export-paths label:has(input:checked) { border-color: rgba(120,200,255,.7); background: rgba(120,200,255,.06); }
-.export-paths span { display: grid; gap: 2px; } .export-paths small { opacity: .75; line-height: 1.4; }
-.export-clips { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
-.export-clips label { display: flex; gap: 8px; align-items: center; font-size: 13px; } .export-clips small { margin-left: auto; opacity: .6; }
-.export-progress { margin-top: 14px; display: grid; gap: 8px; } .export-progress progress { width: 100%; }
-.export-preview { max-width: 100%; max-height: 260px; image-rendering: pixelated; background: repeating-conic-gradient(#2a2a30 0 25%, #34343a 0 50%) 0 0 / 16px 16px; border-radius: 4px; }
+/* SheetPlayer: a baked sheet played at its own timing (Animate's Redrawn preview and the Export step). */
 .export-player { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: end; }
 .export-player canvas { width: auto; height: 180px; image-rendering: pixelated; background: repeating-conic-gradient(#2a2a30 0 25%, #34343a 0 50%) 0 0 / 16px 16px; border-radius: 4px; }
 .export-player-clips { display: flex; flex-wrap: wrap; gap: 4px; align-self: start; }
 .export-player-clips button { font-size: 12px; padding: 4px 10px; border-radius: 4px; border: 1px solid rgba(255,255,255,.14); background: transparent; color: inherit; cursor: pointer; }
 .export-player-clips button[aria-selected="true"] { border-color: rgba(120,200,255,.7); background: rgba(120,200,255,.1); }
-.export-preview { max-height: 120px; }
-.export-downloads { display: flex; gap: 16px; } .export-error { color: #ff8a8a; }
-.export-for-game .studio-dialog-body label { margin-top: 0; color: inherit; font-size: 12px; }
-.export-for-game input[type="radio"], .export-for-game input[type="checkbox"] { width: auto; min-height: 0; margin: 2px 0 0; }
-.export-for-game .studio-dialog-body p { font-size: 12px; }

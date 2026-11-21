@@ -38,6 +38,8 @@ export type StepShellProps = {
   readonly expanded?: ReactNode;
   /** The stage takes the whole width and the panel is hidden: an expert view rendered inside the stage, so it keeps its state. */
   readonly wide?: boolean;
+  /** Handles a step-bar click in place; return true when handled (see StepNav). */
+  readonly onStep?: (id: StepId) => boolean;
 };
 
 const SAVED_LABEL = { saved: "Saved", unsaved: "Unsaved changes", "not-saved": "Not saved yet" } as const;
@@ -53,7 +55,11 @@ function ProjectName({ name, onRename }: { readonly name: string; readonly onRen
 }
 
 /** The five steps, each a button: done, current or ahead; a locked step is disabled and says why. */
-export function StepNav({ step, state }: { readonly step: StepId; readonly state: StepState }) {
+/**
+ * `onStep` handles a step in place and returns true (the rig editor switches Rig, Animate and Export without reloading,
+ * so nothing changed a moment ago is lost); any other step loads its page.
+ */
+export function StepNav({ step, state, onStep }: { readonly step: StepId; readonly state: StepState; readonly onStep?: (id: StepId) => boolean }) {
   const open = stepAvailability(state);
   const currentIndex = STEPS.findIndex((item) => item.id === step);
   return <nav className="step-nav" aria-label="Steps">
@@ -63,7 +69,7 @@ export function StepNav({ step, state }: { readonly step: StepId; readonly state
       return <button key={item.id} type="button" className={current ? "is-current" : done ? "is-done" : ""}
         aria-current={current ? "step" : undefined} disabled={current || !lock.available}
         title={current ? "You are on this step" : lock.available ? undefined : lock.reason} aria-description={current ? "You are on this step" : lock.available ? undefined : lock.reason}
-        onClick={() => { if (!current) window.location.assign(item.href); }}>
+        onClick={() => { if (!current && !onStep?.(item.id)) window.location.assign(item.href); }}>
         <b aria-hidden="true">{done ? "✓" : index + 1}</b>{item.label}
       </button>;
     })}
@@ -84,7 +90,7 @@ export function StepShell(props: StepShellProps) {
     <header className="step-top">
       <Link href="/create-character" className="step-mark" aria-label="Rig Studio home">RS</Link>
       <div className="step-project"><ProjectName name={props.projectName} onRename={props.onRename} /><small>{SAVED_LABEL[props.saved]}{isExpanded ? ` · ${label}, expanded` : ""}</small></div>
-      <StepNav step={step} state={state} />
+      <StepNav step={step} state={state} onStep={props.onStep} />
       <div className="step-tools">
         {props.onUndo && <button type="button" onClick={props.onUndo} disabled={!props.canUndo} title={props.canUndo ? "Undo" : "Nothing to undo"} aria-description={props.canUndo ? undefined : "Nothing to undo"}>↶ Undo</button>}
         {props.onRedo && <button type="button" onClick={props.onRedo} disabled={!props.canRedo} title={props.canRedo ? "Redo" : "Nothing to redo"} aria-description={props.canRedo ? undefined : "Nothing to redo"}>↷ Redo</button>}

@@ -125,6 +125,46 @@ export class BakeService {
     return readFile(path.join(this.root, jobId, file));
   }
 
+  /**
+   * One sheet from several finished bakes (one per redrawn clip): each listed clip becomes a row, its frames' pixels
+   * unchanged. Bakes are trimmed to their own drawing area, so every source cell is placed to put its pivot on one shared
+   * pivot, in a cell large enough for all of them; the result reads like any other bake (rigging-studio-sheet/1).
+   */
+  async combine(jobIds: readonly string[], clipIds: readonly string[]): Promise<BakeJob> {
+    type SheetClip = { readonly id: string; readonly name?: string; readonly loop?: boolean; readonly frames: readonly { readonly x: number; readonly y: number; readonly w: number; readonly h: number; readonly durationMs: number }[] };
+    type Sheet = { readonly format: string; readonly character?: string; readonly mode?: string; readonly pixelScale?: number; readonly cell: { readonly w: number; readonly h: number }; readonly pivot: { readonly x: number; readonly y: number }; readonly clips: readonly SheetClip[] };
+    if (!clipIds.length) throw new Error("Choose at least one animation to combine");
+    const sources = await Promise.all(jobIds.map(async (jobId) => ({ json: JSON.parse((await this.asset(jobId, "sheet.json")).toString()) as Sheet, png: PNG.sync.read(await this.asset(jobId, "sheet.png")) })));
+    const picked = clipIds.map((clipId) => {
+      const source = sources.find((candidate) => candidate.json.clips.some((clip) => clip.id === clipId));
+      if (!source) throw new Error(`No finished redraw holds the animation "${clipId}"`);
+      return { source, clip: source.json.clips.find((clip) => clip.id === clipId)! };
+    });
+    const used = [...new Set(picked.map(({ source }) => source))];
+    const left = Math.max(...used.map(({ json }) => json.pivot.x)); const right = Math.max(...used.map(({ json }) => json.cell.w - json.pivot.x));
+    const top = Math.max(...used.map(({ json }) => json.pivot.y)); const bottom = Math.max(...used.map(({ json }) => json.cell.h - json.pivot.y));
+    const cell = { w: left + right, h: top + bottom }; const pivot = { x: left, y: top };
+    const columns = Math.max(...picked.map(({ clip }) => clip.frames.length));
+    const sheet = new PNG({ width: cell.w * columns, height: cell.h * picked.length });
+    const clips = picked.map(({ source, clip }, row) => ({
+      id: clip.id, name: clip.name ?? clip.id, loop: clip.loop ?? true,
+      frames: clip.frames.map((frame, column) => {
+        // Every frame is a whole combined cell, so the one pivot holds for all of them; the source sits inside it, shifted.
+        const at = { x: column * cell.w + (pivot.x - source.json.pivot.x), y: row * cell.h + (pivot.y - source.json.pivot.y) };
+        for (let y = 0; y < frame.h; y += 1) { const from = ((frame.y + y) * source.png.width + frame.x) * 4; sheet.data.set(source.png.data.subarray(from, from + frame.w * 4), ((at.y + y) * sheet.width + at.x) * 4); }
+        return { x: column * cell.w, y: row * cell.h, w: cell.w, h: cell.h, durationMs: frame.durationMs };
+      }),
+    }));
+    const first = used[0].json;
+    const jobId = `bake-${crypto.randomUUID()}`; const directory = path.join(this.root, jobId); await mkdir(directory, { recursive: true });
+    await writeFile(path.join(directory, "sheet.png"), PNG.sync.write(sheet));
+    await writeFile(path.join(directory, "sheet.json"), `${JSON.stringify({ format: "rigging-studio-sheet/1", character: first.character, mode: first.mode, pixelScale: first.pixelScale, cell, pivot, clips }, null, 2)}\n`);
+    const drawings = clips.reduce((sum, clip) => sum + clip.frames.length, 0);
+    const job: BakeJob = { jobId, mode: (first.mode === "polish" || first.mode === "rig" ? first.mode : "redraw") as BakeMode, status: "completed", progress: { done: drawings, total: drawings, clip: null }, result: { sheet: `/bake/assets/${jobId}/sheet.png`, json: `/bake/assets/${jobId}/sheet.json`, drawings, polished: drawings, keptFromRig: 0 } };
+    this.jobs.set(jobId, job);
+    return job;
+  }
+
   private update(jobId: string, patch: Partial<BakeJob>): void { const job = this.get(jobId); this.jobs.set(jobId, { ...job, ...patch }); }
 
   private async run(jobId: string, request: BakeRequest): Promise<void> {
