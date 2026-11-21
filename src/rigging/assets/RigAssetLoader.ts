@@ -13,6 +13,12 @@ export type TextureLoadResult =
  * last loader holding it lets go.
  */
 const holders = new Map<string, number>();
+/**
+ * Unloads still in flight, by URL. A viewport that mounts as another unmounts can ask for a texture the other has just
+ * started unloading; Pixi would hand back the cached texture that is about to be destroyed. It waits for the unload and
+ * loads the texture afresh instead.
+ */
+const unloading = new Map<string, Promise<unknown>>();
 
 export class RigAssetLoader {
   private readonly loads = new Map<string, Promise<TextureLoadResult>>();
@@ -30,7 +36,7 @@ export class RigAssetLoader {
     const existing = this.loads.get(url);
     if (existing) return existing;
     holders.set(url, (holders.get(url) ?? 0) + 1);
-    const load = Assets.load<Texture>(url)
+    const load = (unloading.get(url) ?? Promise.resolve()).then(() => Assets.load<Texture>(url))
       .then((texture): TextureLoadResult => { if (this.scaleMode) texture.source.scaleMode = this.scaleMode; return { success: true, url, texture }; })
       .catch((error: unknown): TextureLoadResult => ({
         success: false,
@@ -63,6 +69,10 @@ export class RigAssetLoader {
     const urls = [...this.loads.keys()];
     this.loads.clear();
     const released = urls.filter((url) => { const left = (holders.get(url) ?? 1) - 1; if (left > 0) { holders.set(url, left); return false; } holders.delete(url); return true; });
-    await Promise.allSettled(released.map((url) => Assets.unload(url)));
+    await Promise.allSettled(released.map((url) => {
+      const done: Promise<unknown> = Assets.unload(url).finally(() => { if (unloading.get(url) === done) unloading.delete(url); });
+      unloading.set(url, done);
+      return done;
+    }));
   }
 }

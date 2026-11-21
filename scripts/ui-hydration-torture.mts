@@ -41,12 +41,31 @@ async function installFixtures(): Promise<void> {
 
 async function openProject(page: Page, name: string, id: string): Promise<void> {
   const details = page.locator("details.project-storage-menu");
-  if (await details.getAttribute("open") === null) await details.evaluate((element) => { (element as HTMLDetailsElement).open = true; });
   const project = details.locator(".recent-projects article").filter({ hasText: name });
+  // The list is fetched by the client, so once it is there the page has hydrated; opening the menu before that
+  // made React report the server and client HTML as different (the dev error overlay then covered the page).
+  await project.waitFor({ state: "attached", timeout: 60000 });
+  if (await details.getAttribute("open") === null) await details.evaluate((element) => { (element as HTMLDetailsElement).open = true; });
   await project.waitFor();
-  await project.getByRole("button", { name: "Open" }).click();
+  const open = project.getByRole("button", { name: "Open" });
+  // The project already open offers "Open now" disabled: there is nothing to switch, so close the menu and carry on.
+  if (await open.isDisabled()) { await details.evaluate((element) => { (element as HTMLDetailsElement).open = false; }); await page.locator(`.project-hydration-root[data-project-id="${id}"]`).waitFor({ state: "attached" }); return; }
+  await open.click();
   await page.locator(`.project-hydration-root[data-project-id="${id}"]`).waitFor({ state: "attached" });
   await page.locator("main.rig-editor-shell").waitFor({ state: "visible" });
+}
+
+/** Every bone of the open project, as buttons: the Rig step's expanded view (the step bar switches in place). */
+async function showSkeleton(page: Page): Promise<void> {
+  // Already showing it (the same project was "opened" again, so nothing reloaded).
+  if (await page.locator(".step-shell.is-expanded .expanded-left .ex-item").count()) return;
+  const current = page.locator(".step-nav button[aria-current=step]"); await current.waitFor({ timeout: 60000 });
+  if (!/Rig/.test(await current.textContent() ?? "")) await page.locator(".step-nav button").filter({ hasText: "Rig" }).click();
+  const link = page.locator(".step-panel .panel-link").filter({ hasText: /Edit bones manually/ });
+  await link.waitFor({ timeout: 60000 });
+  const overlay = page.locator("#__vinext_dev_error_overlay_root"); if (await overlay.count() && (await overlay.innerText()).trim()) throw new Error(`dev error overlay: ${(await overlay.innerText()).slice(0, 1200)}`);
+  await link.click();
+  await page.locator(".expanded-left .ex-item").first().waitFor({ timeout: 30000 });
 }
 
 async function assertIdentity(page: Page, id: string, allowASentinel: boolean): Promise<void> {
@@ -73,12 +92,17 @@ const browser = await chromium.launch({ headless: true, executablePath });
 try {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const page = await context.newPage();
-  await page.goto(`${APP_URL}/?mode=animate`, { waitUntil: "domcontentloaded" });
+  page.on("pageerror", (error) => console.log("PAGEERROR", error.message, (error.stack ?? "").split("\n").slice(1, 5).join(" < ")));
+  page.on("console", (message) => { if (message.type() === "error") console.log("CONSOLE-ERROR", message.text().slice(0, 300)); });
+  // No project is remembered, so the studio starts on Create; its project menu opens the fixtures.
+  await page.goto(`${APP_URL}/create-character`, { waitUntil: "domcontentloaded" });
   await page.locator("details.project-storage-menu").waitFor();
   await openProject(page, "HYDRATION PROJECT A", ids[0]);
+  await showSkeleton(page);
   await page.getByRole("button", { name: "A ONLY BONE", exact: true }).click();
-  await page.locator(".animation-toolbar select").first().selectOption({ label: "A_ONLY_ANIM" });
-  await page.getByRole("button", { name: /Play/ }).click();
+  // A's own clip, playing on the Animate step.
+  await page.locator(".step-nav button").filter({ hasText: "Animate" }).click();
+  await page.locator(".step-panel .clip-pick-name").filter({ hasText: /^A_ONLY_ANIM$/ }).click();
 
   let releaseLoad!: () => void;
   const loadGate = new Promise<void>((resolve) => { releaseLoad = resolve; });
@@ -96,19 +120,21 @@ try {
   assert(!loadingText.includes("A ONLY BONE")); assert(!loadingText.includes("A_ONLY_ANIM")); assert(!loadingText.includes("Pause"));
   releaseLoad();
   await page.locator(`.project-hydration-root[data-project-id="${ids[1]}"]`).waitFor();
+  await page.locator("main.rig-editor-shell").waitFor({ state: "visible" }); await showSkeleton(page);
   await assertIdentity(page, ids[1], false);
 
-  await openProject(page, "HYDRATION PROJECT A", ids[0]);
+  await openProject(page, "HYDRATION PROJECT A", ids[0]); await showSkeleton(page);
   await page.getByRole("button", { name: "COLLISION BONE", exact: true }).click();
-  await openProject(page, "HYDRATION PROJECT B", ids[1]);
-  const collisionClass = await page.getByRole("button", { name: "COLLISION BONE", exact: true }).getAttribute("class");
-  assert(!collisionClass?.includes("selected"), "same entity ID was selected across a project boundary");
+  await openProject(page, "HYDRATION PROJECT B", ids[1]); await showSkeleton(page);
+  const collisionPressed = await page.getByRole("button", { name: "COLLISION BONE", exact: true }).getAttribute("aria-pressed");
+  assert(collisionPressed !== "true", "same entity ID was selected across a project boundary");
 
   let seed = 0x5eed1234;
   for (let index = 0; index < 100; index += 1) {
     seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
     const targetIndex = seed % ids.length; const id = ids[targetIndex];
     await openProject(page, `HYDRATION PROJECT ${String.fromCharCode(65 + targetIndex)}`, id);
+    await showSkeleton(page);
     await assertIdentity(page, id, targetIndex === 0);
   }
 
