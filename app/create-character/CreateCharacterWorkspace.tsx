@@ -13,6 +13,7 @@ import { importCharacterProjectArchive } from "@/src/character-generation/projec
 import { getGeneratedCharacterStorage } from "@/src/character-generation/project/generatedCharacterStorage";
 import { getRiggingCommandService } from "@/src/agent-control";
 import { useAgentBridge } from "@/src/agent-control/protocol/useAgentBridge";
+import { DEFAULT_CHARACTER_NAMES, nameFromDescription } from "@/src/character-generation/project/characterName";
 import { StudioDialog } from "@/app/studio-ui/StudioDialog";
 import { StepShell } from "@/app/studio-ui/StepShell";
 import { ExpandedView } from "@/app/studio-ui/ExpandedView";
@@ -170,7 +171,8 @@ export function CreateCharacterWorkspace() {
       const readiness = generatorStatuses.find((item) => item.provider === generator);
       if (!readiness?.characterGeneration.available) throw new Error(readiness?.characterGeneration.reason ?? readiness?.message ?? `${generator} is not ready`);
       setGenerationReview(null);
-      setProject((current) => updateProject(current, { stage: "generate", generationPrompt: built.prompt }));
+      // A new character still called by a default name is named after what was described ("Small Fox Rogue").
+      setProject((current) => { const named = DEFAULT_CHARACTER_NAMES.includes(current.name) && current.originalUserPrompt.trim() !== TEST_PROMPT ? nameFromDescription(current.originalUserPrompt) : null; return updateProject(current, { stage: "generate", generationPrompt: built.prompt, ...(named ? { name: named } : {}) }); });
       const response = await fetch(`${BRIDGE_URL}/image-generation/jobs`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ projectId: project.id, provider: generator, prompt: built.prompt, negativePrompt: built.negativePrompt, width: Number(controls.artResolution ?? 768), height: Number(controls.artResolution ?? 768), candidateCount: 3, generationIntent: mode === "variant" ? "character_variant" : "character", stylePreset: "chibi-pixel-art", ...(generator === "comfyui" && profileId ? { profileId, profileParams: profileValues } : {}) }) });
       const started = await response.json() as { readonly jobId?: string; readonly error?: string };
       if (!response.ok || !started.jobId) throw new Error(started.error ?? "Local generation job could not start");
