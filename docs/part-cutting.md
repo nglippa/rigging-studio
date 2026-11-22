@@ -1,14 +1,29 @@
 # Part cutting
 
-**Cut all parts** splits a character sprite into the 14 body parts a rig needs. It runs on its own, with no AI model
-apart from the local pose model, in well under a second. This guide covers:
+**Cut all parts** splits a character sprite into the 14 body parts a rig needs. It runs on its own, on this machine,
+with no cloud service. This guide covers:
 
 - how the cut works;
 - how accurate it is;
+- the part model, and how to retrain it;
 - how to make sprites that cut well;
 - how to add a sprite to the accuracy bench, so every later change is measured against it.
 
 ## How the cut works
+
+There are two paths. The app uses the part model when its file is installed (`public/models/partseg/partseg.onnx`,
+built by `npm run part-model:train`), and the joints alone when it is not.
+
+**With the part model** (the normal path):
+
+| Step | What it does | Code |
+|---|---|---|
+| Part model | A segmentation network trained on the hand-labelled bench says, for every pixel, which body part it is or whether it is held equipment. It runs locally in the browser with onnxruntime-web, on the sprite and its mirror image, averaged. | `src/part-cutter/partModel.ts`, `partModelDetector.ts` |
+| Held equipment only | Equipment that no hand or forearm touches (antennae, a ponytail's tip) goes to the part it borders. | `heldEquipmentOnly` in `src/part-cutter/autoCut.ts` |
+| Trousers | The model has learned that cloth over the legs is torso, which is right for robes, coats and tabards. When the silhouette shows the legs apart above the knees, the hip line is known: torso below it between the legs is dropped and the thighs get a stroke along the bone. | `cutFromPrediction` |
+| Grow to the drawing | The model's sure pixels (confidence ≥ .7, away from its own seams) are the seeds. Each part grows from them until it meets a dark outline or a change of colour, so the seams follow the art. | `applyCutPlan` in `src/part-cutter/cutPlan.ts` |
+
+**Without the part model** (fallback; also what the rig's joints come from on both paths):
 
 | Step | What it does | Code |
 |---|---|---|
@@ -16,8 +31,8 @@ apart from the local pose model, in well under a second. This guide covers:
 | Pose model | DWPose replaces the guide's joints wherever it is confident (score ≥ .5). On big-headed art it retries with the head squashed. | `src/character-generation/pose/dwpose.ts` |
 | Legs from the drawing | Tracks each leg up from the foot to the hem or waistband. The ankle is the narrowest point above the sole, the knee is halfway. | `legJoints` in `src/part-cutter/autoCut.ts` |
 | Joint settling | Re-centres guide joints on the legs when a shield or staff skews the outline. Keeps shoulders and wrists off held weapons, and the neck below a beard or hood. | `centreOnLegs`, `settleArms` |
-| Strokes | A short stroke inside each bone (on the bone, away from both ends), plus strokes across the head and torso. Capes and cloaks get a torso stroke. | `bonePlan`, `addMassStrokes` |
-| Grow to the drawing | Each part grows out from its strokes until it meets a dark outline or a change of colour (a seeded watershed), so the seams follow the art. | `applyCutPlan` in `src/part-cutter/cutPlan.ts` |
+| Strokes | A short stroke inside each bone, plus strokes across the head and torso. Capes and cloaks get a torso stroke. | `bonePlan`, `addMassStrokes` |
+| Grow to the drawing | As above, from the strokes. | `applyCutPlan` |
 
 In the app this is `autoCutBodyParts`, called from `cutAllParts` in `app/part-cutter/PartCutterWorkspace.tsx`. It runs
 for a fresh cut only. The bench runs the identical pipeline under Node (`scripts/cut-pipeline.mts`).
@@ -30,41 +45,58 @@ There are two measures:
 - **Seam-tolerant**: also counts a pixel within 2% of the figure's height of a true seam as right for either neighbour.
 
 Where the art draws no line (a knee in plain trousers), the exact seam is a convention that careful people place
-differently.
+differently. Two independent planners following the conventions below agreed with the labels on 89–91% of pixels strict
+and 95–96% seam-tolerant, so strict accuracy above about 93% is not a sensible target. Seam-tolerant accuracy is the
+number to watch.
 
-On the 16-character bench (November 2026) the cut scores **88.0% strict and 94.4% seam-tolerant**. The worst character
-(caped-paladin) scores 71.0% and 81.3%.
+The bench has 25 hand-labelled characters (November 2026): 11 picked by hand, and 14 fresh Studio generations taken as
+they came (robes, capes, cloaks, plate and samurai armour, tails, coats, a grass skirt, side and three-quarter views).
 
-The bench has two groups:
+The part model is measured by **4-fold cross-validation** (`npm run part-model:crossval`): each character is cut by a
+model trained without it, so these are the numbers to expect on a new sprite.
 
-- **The first 11 characters** were picked by hand. They average 91.1% strict and 96.8% seam-tolerant.
-- **The 5 later ones** are fresh Studio generations, taken as they came: dwarf-ranger, robed-wizard, lizard-spearman,
-  cloaked-rogue and caped-paladin. They score 71–87% strict.
+| | Strict (mean) | Seam-tolerant (mean) | Worst character |
+|---|---|---|---|
+| With the part model | **91.5%** | **96.8%** | 82.0% / 87.9% |
+| Without it (joints and strokes) | 84.5% | 91.6% | 68.3% / 73.5% |
 
-Expect new sprites to cut like the second group. Read the bench mean as a lower bound on the error, not as a typical
-result.
+With the model, 21 of the 25 characters are at or above 95% seam-tolerant. The fresh generations gain the most (the
+pirate captain 77.6 → 97.7, the witch 68.6 → 97.7, the horned knight 78.4 → 93.7 strict). Where it is still weakest:
 
-Two reference points show what these numbers mean:
+- **Side views and unusual builds** (hearthcap-tinker 82.3%, goblin-side 89.1%): few of them in the training data.
+- **Baggy trousers** (cat-thief 82.0%): the trousers rule recovers most of it, the knee seam is the rest.
 
-- With exact, hand-marked joints the same method reaches 93.0% and 97.5%.
-- Two independent AI planners following the conventions below agreed with the labels on 89–91% of pixels strict and
-  95–96% seam-tolerant. That is human-level agreement.
+Every labelled character added makes the model better on the next one: label it, retrain, and rerun the
+cross-validation.
 
-So strict accuracy above about 93% is not a sensible target. Seam-tolerant accuracy is the number to watch. Most of what
-remains wrong comes from joint positions.
+Without the model, most of what goes wrong is joint placement and material: shoulder pads given to the torso, hip plates
+given to the torso, knees too low, cloak beside a hand given to the hand. Even with exact joints that path reaches only
+about 90–93% on caped and armoured sprites, which is why the model exists.
 
-On the generated sprites, the largest errors are these (share of body pixels, summed over four characters):
+## The part model
 
-| Error | Share | Cause |
-|---|---|---|
-| Shoulder pads and the top of the sleeve given to the torso | 13.9 | The upper-arm stroke sits mid-bone, so the torso reaches the shoulder first. |
-| Hip plates given to the torso | 9.0 | The plates are counted as thighs by the conventions below. |
-| Knee placed too low | 6.2 | The labels put the knee at a boot or wrap top. |
-| Cloak or robe beside a hand given to the hand | 5.6 | |
-| Elbow too low | 4.6 | |
+A U-Net with a pretrained ResNet-34 encoder (about 24 million weights, 98 MB as ONNX). Training and export run on this
+Mac's GPU with PyTorch through `uv`; nothing is sent anywhere.
 
-Fixing the shoulder needs a rule that tells a large pad from a shoulder joint that already sits on the sleeve. See
-"Tried and rejected".
+| File | What it is |
+|---|---|
+| `scripts/part-model/export-data.mts` | Writes each labelled character's image and per-pixel labels to `.bench/train/` (`npm run part-model:data`). |
+| `scripts/part-model/train.py` | Trains, predicts held-out characters and, with `--export`, writes the ONNX file. |
+| `scripts/part-model/crossval.mts` | The cross-validation behind the table above (`npm run part-model:crossval`, about 25 minutes a fold). |
+| `public/models/partseg/partseg.onnx` | The model the app and the bench load. Git-ignored like the pose model: build it with `npm run part-model:train` (about 30 minutes) and copy it to the Mac Studio with the rest of `public/models`. |
+
+What the training does so the model learns shapes rather than one character's colours: each sample is scaled, moved,
+turned slightly and mirrored (left and right labels swap with it), its whole colour is shifted, and each part is
+recoloured on its own.
+
+Things to know:
+
+- **Left and right are screen sides**, as everywhere in the cutter.
+- **The model is confident even when it is wrong** (on the orc it was sure of 87% of pixels and right on 82% of those).
+  Its confidence is not a usable signal of a bad cut; the cross-validation is.
+- **On the bench characters themselves it scores near 100%**, because they are its training data. The accuracy test
+  (`npm run test:cut`) keeps a separate baseline for that path (`cut-accuracy-baseline.model.json`), which only guards
+  the export, the decoding and the rules around the model against breakage.
 
 ## Making sprites that cut well
 
@@ -85,7 +117,7 @@ Add a sprite whenever a new kind of character appears, such as a new species, a 
 to the cutter is then measured on it too.
 
 1. Put the image (a PNG with a transparent or flat background) in `tests/fixtures/rigging/cut/<name>.png`.
-2. Draft the labels from the engine's own cut:
+2. Draft the labels from the cutter's own cut (from the part model when it is installed, which is much closer):
    `npm run cut:new -- tests/fixtures/rigging/cut/<name>.png <name> front`.
    The last argument is the view: `front`, `side` or `three-quarter`. Side and three-quarter views let the scorer swap
    the near and far limbs.
@@ -103,7 +135,9 @@ to the cutter is then measured on it too.
    Check the result as you go with `npm run cut:check -- .bench/cut/<name>.draft.json .bench/cut/<name>.check.png`.
 4. Move the file to `tests/fixtures/rigging/part-truth/<name>.json`.
 5. Run `npm run cut:score`, then record the new character's baseline:
-   `UPDATE_CUT_BASELINE=1 npm run test:cut`.
+   `UPDATE_CUT_BASELINE=1 npm run test:cut` (once with the model installed, once with `CUT_PART_MODEL=0`).
+6. Retrain the part model with the new character (`npm run part-model:train`) and copy `public/models/partseg` to the
+   Studio. Every few characters, rerun `npm run part-model:crossval` and update the table above.
 
 A draft scores 100% against itself, which is why it stays in `.bench/cut` until a person has corrected it. Never move
 labels toward what the engine does: the labels follow the conventions, and the engine is what gets fixed.
@@ -166,7 +200,9 @@ Where the seams go:
 
 ## Changing the cutter
 
-- **Measure every change on the whole bench.** Run `npm run cut:score`. It writes `<name>.cut.png` (the cut) and
+- **Measure model changes with cross-validation** (`npm run part-model:crossval`), never on the bench characters the
+  model was trained on. Keep a change when both cross-validated means go up and no character drops more than 0.3 points.
+- **Measure every rule change on the whole bench.** Run `npm run cut:score`. It writes `<name>.cut.png` (the cut) and
   `<name>.wrong.png` (wrong pixels in red) to `.bench/cut/`.
 - **Keep a change only when it helps overall.** Strict and seam-tolerant means must both go up, and no character may
   drop more than 0.3 points.
@@ -190,5 +226,9 @@ Where the seams go:
 | Narrower torso strokes | Worse (cat-mage −1.7). |
 | Longer upper-arm stroke (from .3 of shoulder to elbow) | Means down; dwarf-ranger −1.2. |
 | Extra upper-arm stroke at the shoulder, reaching out over a pad | +2–3 on paladin, rogue and lizard. −1.5 to −2.3 on dwarf, robot, archer and cat-mage, whose shoulder joint already sits on the sleeve. |
+| Local edit models repainting the sprite as a flat-colour part map (FLUX.2 Klein 4B, Qwen-Image-Edit 2511), used as the cut, as seeds, as joints or as a judge | Klein follows the anatomy on arms but not legs or tails; best combination 87.9 / 94.4, no better than the engine. Qwen took 7–12 minutes a sprite and repainted chests and torsos. Agreement with the engine only loosely predicted accuracy (correlation 0.5). |
+| Sapiens (Meta's body-part segmenter) without training | Out of its domain: it labelled only 1–41% of each figure and never found a torso or upper arm. |
+| Generating every character in one fixed pose (Klein RefControl pose LoRA) so the joints are known | The pose is followed only roughly (arms about 5% of the figure's height off, held weapons override it); cutting with the skeleton's joints was no better than the engine. |
+| Colour regions given to the nearest bone, with exact joints | 83.0 / 89.9 against 90.5 / 96.0 for strokes on the same joints. |
 | The same stroke, only where the pad's colour differs from a chest sample | Best variant raised both means (88.2 / 94.7), but archer fell 1.3. It also depends on a hand-picked colour threshold. Untested: compare the pad with the colour already under the upper-arm stroke, not with a chest sample. |
 | Knee at the largest colour change between .35 and .65 of hip to ankle | Means flat. |

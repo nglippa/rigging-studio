@@ -1,0 +1,27 @@
+{
+ "image": "tests/fixtures/rigging/cut/posed-caped-paladin.png",
+ "view": "front",
+ "pairedLimbs": false,
+ "note": "Generated in the canonical pose. Hair, face and beard are head. The blue collar, breastplate, belt, blue tabard and the cape with its grey lining are torso. The plates hanging from the belt and the dark under-armour beneath them are thigh down to the greave top (knee); the ankle is the sabaton top. Each arm: pauldron and the dark band below it upper arm, the long plate forearm, the gauntlet cuff and hand hand. The hammer is equipment.",
+ "scribbles": {
+  "head": [[[510, 380], [510, 180]], [[420, 300], [600, 300]], [[430, 220], [590, 220]], [[470, 410], [550, 410]]],
+  "torso": [[[470, 430], [550, 430]], [[440, 520], [580, 520]], [[440, 605], [600, 605]], [[500, 680], [530, 740]], [[700, 760], [740, 800]], [[762, 620], [770, 780]], [[372, 780], [398, 800]], [[480, 805], [535, 805]], [[345, 818], [385, 818]], [[650, 818], [725, 818]]],
+  "leftUpperArm": [[[385, 465], [395, 490]], [[360, 520], [385, 530]]],
+  "leftForearm": [[[335, 580], [355, 620]]],
+  "leftHand": [[[315, 665], [340, 675]], [[350, 690], [358, 712]]],
+  "rightUpperArm": [[[640, 460], [680, 480]], [[650, 520], [680, 530]]],
+  "rightForearm": [[[670, 580], [700, 620]]],
+  "rightHand": [[[680, 690], [710, 690]], [[700, 655], [720, 658]]],
+  "leftThigh": [[[410, 680], [440, 680]], [[415, 760], [450, 760]]],
+  "leftLowerLeg": [[[415, 840], [450, 840]]],
+  "leftFoot": [[[390, 925], [460, 925]]],
+  "rightThigh": [[[585, 680], [615, 680]], [[570, 760], [605, 760]]],
+  "rightLowerLeg": [[[565, 840], [610, 840]]],
+  "rightFoot": [[[565, 925], [630, 925]]]
+ },
+ "parts": {},
+ "equipment": [
+  [[203, 648], [302, 648], [308, 700], [298, 812], [203, 812]],
+  [[300, 730], [345, 725], [342, 790], [318, 872], [266, 872], [274, 800]]
+ ]
+}

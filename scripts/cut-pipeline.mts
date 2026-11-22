@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import * as ort from "onnxruntime-web";
 import { detectDwpose } from "../src/character-generation/pose/dwpose";
 import { poseToLandmarks } from "../src/character-generation/pose/poseLandmarks";
-import { applyPoseLandmarks, autoCutBodyParts, type Joints, buildAdaptiveAnatomicalPartitionGuide, createPartCutterState, decodeOwnership, ensureOwnershipPartition } from "../src/part-cutter";
+import { applyPoseLandmarks, autoCutBodyParts, PART_MODEL_SIZE, predictParts, type Joints, type PartPrediction, buildAdaptiveAnatomicalPartitionGuide, createPartCutterState, decodeOwnership, ensureOwnershipPartition } from "../src/part-cutter";
 export const BODY_PARTS = ["head", "torso", "leftUpperArm", "leftForearm", "leftHand", "rightUpperArm", "rightForearm", "rightHand", "leftThigh", "leftLowerLeg", "leftFoot", "rightThigh", "rightLowerLeg", "rightFoot"] as const;
 export type LoadedImage = { readonly width: number; readonly height: number; readonly data: Uint8Array; readonly foreground: number[] };
 
@@ -22,7 +22,22 @@ const run = async (input: Float32Array) => {
   return { simccX: output[model.outputNames[0]].data as Float32Array, simccY: output[model.outputNames[1]].data as Float32Array };
 };
 
-export async function cutAllParts(image: LoadedImage): Promise<{ readonly predicted: Uint8Array; readonly poseJoints: number; readonly joints: Joints }> {
+/** The part model (src/part-cutter/partModel.ts), when trained and exported; without it the cut uses the joints alone. */
+export const partModelPath = fileURLToPath(new URL(process.env.CUT_PART_MODEL_PATH ?? "../public/models/partseg/partseg.onnx", import.meta.url));
+let partSession: Promise<ort.InferenceSession> | null = null;
+const runPartModel = async (input: Float32Array) => {
+  partSession ??= ort.InferenceSession.create(partModelPath, { executionProviders: ["wasm"] });
+  const model = await partSession;
+  const output = await model.run({ [model.inputNames[0]]: new ort.Tensor("float32", input, [2, 4, PART_MODEL_SIZE, PART_MODEL_SIZE]) });
+  return output[model.outputNames[0]].data as Float32Array;
+};
+
+/** The installed part model's answer for an image, or null without the model. */
+export async function predictWithModel(image: LoadedImage): Promise<PartPrediction | null> {
+  return existsSync(partModelPath) && process.env.CUT_PART_MODEL !== "0" ? predictParts({ width: image.width, height: image.height, data: image.data }, runPartModel) : null;
+}
+
+export async function cutAllParts(image: LoadedImage, given?: PartPrediction | null): Promise<{ readonly predicted: Uint8Array; readonly poseJoints: number; readonly joints: Joints }> {
   const { width, height, data, foreground } = image;
   const base = createPartCutterState("cut-bench", width, height, "manual", AT);
   let guide = buildAdaptiveAnatomicalPartitionGuide(base, foreground, "humanoid", AT);
@@ -33,7 +48,9 @@ export async function cutAllParts(image: LoadedImage): Promise<{ readonly predic
     poseJoints = Object.keys(joints).length;
     if (poseJoints) guide = applyPoseLandmarks(guide, joints, foreground);
   }
-  const result = autoCutBodyParts({ ...base, anatomicalGuide: guide }, foreground, data, AT);
+  // `given`: a prediction made elsewhere (cross-validation scores a model that never saw this character).
+  const prediction = given !== undefined ? given : existsSync(partModelPath) && process.env.CUT_PART_MODEL !== "0" ? await predictParts({ width, height, data }, runPartModel) : null;
+  const result = autoCutBodyParts({ ...base, anatomicalGuide: guide }, foreground, data, AT, prediction);
   const state = ensureOwnershipPartition(result.state); const owners = decodeOwnership(state.ownership!);
   const semanticByOwner = state.ownership!.regionIds.map((id) => state.parts.find((part) => part.partId === id)?.semanticType);
   const predicted = new Uint8Array(width * height);

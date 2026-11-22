@@ -25,9 +25,29 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { PNG } from "pngjs";
 import { estimateForeground } from "../src/character-generation/segmentation/partImageProcessor";
-import { addMassStrokes, bonePlan } from "../src/part-cutter/autoCut";
-import { applyCutPlan, planGrid } from "../src/part-cutter/cutPlan";
-import { BODY_PARTS, cutAllParts, type LoadedImage } from "./cut-pipeline.mjs";
+import { addMassStrokes, bonePlan, heldEquipmentOnly } from "../src/part-cutter/autoCut";
+import { applyCutPlan, PLAN_EQUIPMENT, planGrid, type CutPlan } from "../src/part-cutter/cutPlan";
+import { BODY_PARTS, cutAllParts, predictWithModel, type LoadedImage } from "./cut-pipeline.mjs";
+
+/**
+ * A cut as a plan a person can correct: horizontal strokes every 14 px through each part's core (4 px in from its edges),
+ * and the convex outline of each held piece of equipment. `cut` uses BODY_PARTS + 1; `equipment` marks PLAN_EQUIPMENT.
+ */
+function labelsToPlan(cut: Uint8Array, equipment: Uint8Array, w: number, h: number): CutPlan {
+  const core = new Uint8Array(cut);
+  for (let round = 0; round < 4; round += 1) { const prev = new Uint8Array(core); for (let y = 1; y < h - 1; y += 1) for (let x = 1; x < w - 1; x += 1) { const i = y * w + x; const l = prev[i]; if (l && (prev[i - 1] !== l || prev[i + 1] !== l || prev[i - w] !== l || prev[i + w] !== l)) core[i] = 0; } }
+  const scribbles: Record<string, [number, number][][]> = {};
+  for (let y = 0; y < h; y += 14) for (let x = 0; x < w;) { const l = core[y * w + x]; if (!l) { x += 1; continue; } let e = x; while (e + 1 < w && core[y * w + e + 1] === l) e += 1; if (e - x >= 2) (scribbles[BODY_PARTS[l - 1]] ??= []).push([[x + 1, y], [e - 1, y]]); x = e + 1; }
+  const seen = new Uint8Array(w * h); const pieces: [number, number][][] = [];
+  for (let i = 0; i < w * h; i += 1) {
+    if (equipment[i] !== PLAN_EQUIPMENT || seen[i]) continue; const points: [number, number][] = []; const stack = [i]; seen[i] = 1;
+    while (stack.length) { const j = stack.pop()!; points.push([j % w, Math.floor(j / w)]); const x = j % w; for (const k of [x > 0 ? j - 1 : -1, x + 1 < w ? j + 1 : -1, j - w, j + w]) if (k >= 0 && k < w * h && !seen[k] && equipment[k] === PLAN_EQUIPMENT) { seen[k] = 1; stack.push(k); } }
+    if (points.length < 300) continue; points.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const cross = (o: number[], a: number[], b: number[]) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]); const hull = (list: [number, number][]) => { const out: [number, number][] = []; for (const q of list) { while (out.length >= 2 && cross(out[out.length - 2], out[out.length - 1], q) <= 0) out.pop(); out.push(q); } return out.slice(0, -1); };
+    pieces.push([...hull(points), ...hull([...points].reverse())]);
+  }
+  return { scribbles, equipment: pieces };
+}
 
 export { BODY_PARTS };
 
@@ -162,10 +182,11 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
     const [file, name, view = "front"] = names;
     const problem = !file || !name ? "usage: new <image.png> <name> [front|side|three-quarter]" : !["front", "side", "three-quarter"].includes(view) ? `view must be front, side or three-quarter, not ${view}` : truthNames().includes(name) ? `${TRUTH_DIR}/${name}.json already exists` : null;
     if (problem) { console.error(problem); process.exit(1); }
-    const image = loadImage(file); const { joints } = await cutAllParts(image);
-    const plan = addMassStrokes(bonePlan(joints), joints, image.width, image.height, image.foreground);
+    const image = loadImage(file); const prediction = await predictWithModel(image); const { joints, predicted } = await cutAllParts(image, prediction);
+    // With the part model installed the draft is its cut (much closer to the conventions); without it, the bone strokes.
+    const plan = prediction ? labelsToPlan(predicted, heldEquipmentOnly(prediction.labels, image.width, image.height), image.width, image.height) : addMassStrokes(bonePlan(joints), joints, image.width, image.height, image.foreground);
     const round = (value: unknown): unknown => typeof value === "number" ? Math.round(value) : Array.isArray(value) ? value.map(round) : value && typeof value === "object" ? Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, round(inner)])) : value;
-    const draft = { image: file, view, pairedLimbs: view !== "front", note: "Say where this character's seams fall (chin, hip line, knees, ankles) and what is equipment.", scribbles: round(plan.scribbles ?? {}), parts: round(plan.parts ?? {}), equipment: [] };
+    const draft = { image: file, view, pairedLimbs: view !== "front", note: "Say where this character's seams fall (chin, hip line, knees, ankles) and what is equipment.", scribbles: round(plan.scribbles ?? {}), parts: round(plan.parts ?? {}), equipment: round(plan.equipment ?? []) };
     const target = path.join(out, `${name}.draft.json`); // One stroke or polygon per line, so the draft is easy to edit by hand.
     const text = JSON.stringify(draft, null, 1).replace(/\[\s*(-?\d+),\s*(-?\d+)\s*\]/g, "[$1, $2]").replace(/\[\s*((?:\[-?\d+, -?\d+\],?\s*)+)\]/g, (_, points: string) => `[${points.replace(/\s+/g, " ").trim()}]`);
     writeFileSync(target, `${text}\n`);

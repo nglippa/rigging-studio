@@ -15,3 +15,4 @@ export * from "./prepareWorkflow";
 export * from "./manualPartition";
 export * from "./autoCut";
 export * from "./cutPlan";
+export * from "./partModel";

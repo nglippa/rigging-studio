@@ -35,8 +35,11 @@ const inside = (x: number, y: number, polygon: PlanPolygon): boolean => {
 };
 const bounds = (polygon: PlanPolygon) => polygon.reduce((box, [x, y]) => ({ x0: Math.min(box.x0, x), y0: Math.min(box.y0, y), x1: Math.max(box.x1, x), y1: Math.max(box.y1, y) }), { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity });
 
-/** Each pixel's part (PLAN_PARTS index + 1), PLAN_EQUIPMENT for equipment, 0 for background. */
-export function applyCutPlan(plan: CutPlan, image: PlanImage): Uint8Array {
+/**
+ * Each pixel's part (PLAN_PARTS index + 1), PLAN_EQUIPMENT for equipment, 0 for background. `seeds` (same encoding, 0 for
+ * none) are pixels already known, such as the part model's sure pixels: they are fixed like strokes and grown from.
+ */
+export function applyCutPlan(plan: CutPlan, image: PlanImage, seeds?: ArrayLike<number>): Uint8Array {
   const { width, height, foreground, data } = image; const size = width * height; const labels = new Uint8Array(size);
   const fill = (polygons: readonly PlanPolygon[], label: number) => {
     for (const polygon of polygons) {
@@ -50,6 +53,7 @@ export function applyCutPlan(plan: CutPlan, image: PlanImage): Uint8Array {
   // Hard regions: equipment first, then body parts in priority order, each taking only pixels nobody has.
   fill(plan.equipment ?? [], PLAN_EQUIPMENT);
   for (const part of PRIORITY) fill(polygonsOf(plan.parts?.[part]), PLAN_PARTS.indexOf(part) + 1);
+  if (seeds) for (let index = 0; index < size; index += 1) if (seeds[index] && foreground[index] && !labels[index]) labels[index] = seeds[index];
   // Strokes, 3 px wide, on character pixels not already taken.
   for (const [name, value] of Object.entries(plan.scribbles ?? {})) {
     const label = PLAN_PARTS.indexOf(name as PlanPart) + 1; if (label <= 0) continue;

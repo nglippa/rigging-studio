@@ -16,6 +16,8 @@ import { buildCharacterConsistencyContext } from "@/src/character-generation/con
 // without it tainted the canvas, so foreground analysis always failed and Use Guide stayed disabled.
 import { estimateForeground, extractPartToDataUrl, pixelImageToDataUrl, readImagePixels } from "@/src/character-generation/segmentation/partImageProcessor";
 import { detectPose } from "@/src/character-generation/pose/poseDetector";
+import { detectParts } from "@/src/part-cutter/partModelDetector";
+import type { PartPrediction } from "@/src/part-cutter/partModel";
 import { forgetActiveDiskProject } from "@/app/studio-ui/ProjectStorageMenu";
 import { takeStageNotice } from "@/app/studio-ui/stageNotice";
 import { estimateView, poseToLandmarks, type ViewEstimate } from "@/src/character-generation/pose/poseLandmarks";
@@ -334,10 +336,16 @@ export function PartCutterWorkspace() {
    * Cuts every body part that is not done yet, as one undoable step. Each joint comes from the pose model when it is
    * confident about that joint, and from the silhouette otherwise; each part is then cut along its limb between them.
    */
+  /** The part model's answer for each pixel, or null when the model is not installed or fails (the joints are the fallback). */
+  const findParts = async (): Promise<PartPrediction | null> => {
+    if (!source || !state) return null;
+    try { const parts = await detectParts(source.image); return parts && parts.labels.length === state.sourceCanvasSize.width * state.sourceCanvasSize.height ? parts : null; }
+    catch { return null; }
+  };
   const cutAllParts = async () => {
     if (!state || !foreground) { setMessage("Foreground analysis is still finishing. Try again in a moment."); return; }
     setMessage("Finding the character's joints…");
-    const pose = await findPose();
+    const [pose, partPrediction] = await Promise.all([findPose(), findParts()]);
     const posed = pose && Object.keys(pose.joints).length ? pose : null;
     let outcome: ReturnType<typeof guideAllBodyParts> | null = null; let robed = false;
     execute("Cut all parts", (current) => {
@@ -349,7 +357,7 @@ export function PartCutterWorkspace() {
       // hand are kept, so then only the missing ones are filled in the older way.
       const colours = sourceColoursRef.current;
       const fresh = colours && !current.parts.some((part) => (GUIDED_BODY_ORDER as readonly string[]).includes(part.semanticType));
-      if (fresh) { const auto = autoCutBodyParts({ ...current, anatomicalGuide }, foreground, colours); outcome = { state: auto.state, cut: auto.cut as typeof GUIDED_BODY_ORDER[number][], missed: [], hidden: auto.hidden as typeof GUIDED_BODY_ORDER[number][] }; }
+      if (fresh) { const auto = autoCutBodyParts({ ...current, anatomicalGuide }, foreground, colours, undefined, partPrediction); outcome = { state: auto.state, cut: auto.cut as typeof GUIDED_BODY_ORDER[number][], missed: [], hidden: auto.hidden as typeof GUIDED_BODY_ORDER[number][] }; }
       else outcome = guideAllBodyParts({ ...current, anatomicalGuide }, foreground, undefined, colours ?? undefined);
       // A character described in a long robe or dress keeps the cloth over its legs in one piece (see foldLegsIntoSkirt).
       if (SKIRT_WORDS.test(project.originalUserPrompt ?? "")) {

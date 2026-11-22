@@ -9,7 +9,8 @@
  * about 2–3% of the figure's height, where the silhouette guide and the pose model were 4–6% off.
  */
 import type { PartCutterState } from "./schema";
-import { applyCutPlan, PLAN_PARTS, type CutPlan, type PlanPoint } from "./cutPlan";
+import { applyCutPlan, PLAN_EQUIPMENT, PLAN_PARTS, type CutPlan, type PlanPoint } from "./cutPlan";
+import { partModelSeeds, type PartPrediction } from "./partModel";
 import { commitGuidedSelection, GUIDED_BODY_ORDER, initializeGuidedManual } from "./guidedManual";
 
 type Point = { readonly x: number; readonly y: number };
@@ -226,14 +227,68 @@ export function centreOnLegs(joints: Joints, legs: Joints, sources: Readonly<Rec
   return out;
 }
 
-export type AutoCutResult = { readonly state: PartCutterState; readonly cut: readonly string[]; readonly hidden: readonly string[]; readonly joints: Joints };
+/**
+ * Equipment is held: a piece the model calls equipment that touches no hand or forearm (antennae, a ponytail's tip) is
+ * given to the body part it borders most.
+ */
+export function heldEquipmentOnly(labels: Uint8Array, width: number, height: number): Uint8Array {
+  const out = new Uint8Array(labels); const seen = new Uint8Array(labels.length);
+  const holding = new Set(["leftHand", "rightHand", "leftForearm", "rightForearm"].map((part) => PLAN_PARTS.indexOf(part as (typeof PLAN_PARTS)[number]) + 1));
+  for (let start = 0; start < labels.length; start += 1) {
+    if (labels[start] !== PLAN_EQUIPMENT || seen[start]) continue;
+    const piece: number[] = []; const stack = [start]; seen[start] = 1; const borders = new Map<number, number>(); let held = false;
+    while (stack.length) {
+      const index = stack.pop()!; piece.push(index); const x = index % width;
+      for (const next of [x > 0 ? index - 1 : -1, x + 1 < width ? index + 1 : -1, index - width, index + width]) {
+        if (next < 0 || next >= labels.length) continue; const label = labels[next];
+        if (label === PLAN_EQUIPMENT) { if (!seen[next]) { seen[next] = 1; stack.push(next); } }
+        else if (label) { if (holding.has(label)) held = true; borders.set(label, (borders.get(label) ?? 0) + 1); }
+      }
+    }
+    if (held || !borders.size) continue;
+    const owner = [...borders].sort((a, b) => b[1] - a[1])[0][0]; for (const index of piece) out[index] = owner;
+  }
+  void height; return out;
+}
+
+/**
+ * The cut from the part model's sure pixels, grown along the drawing. One correction from the drawing itself: the model has
+ * learned that cloth over the legs is torso (robes, coats, tabards), and it says so for baggy trousers too. When the legs
+ * stand apart in the silhouette (legJoints), the hip line is known, so torso seeds below it between the legs are dropped
+ * and each thigh gets the usual stroke along its bone.
+ */
+function cutFromPrediction(given: PartPrediction, legs: Joints | null, joints: Joints, image: { width: number; height: number; data: ArrayLike<number>; foreground: ArrayLike<number> }): Uint8Array {
+  const { width, height } = image; const prediction = { ...given, labels: heldEquipmentOnly(given.labels, width, height) };
+  const seeds = partModelSeeds(prediction, width, height);
+  const torso = PLAN_PARTS.indexOf("torso") + 1; const thighs: Record<string, PlanPoint[][]> = {};
+  // Legs that stand apart above the knees: the crotch, the highest row with background between the two knees' columns, is
+  // above the knees. A robe or long coat only opens at its hem, below them.
+  const apart = (): boolean => {
+    if (!legs?.leftHip || !legs.rightHip || !legs.leftKnee || !legs.rightKnee) return false;
+    const hipY = Math.round(Math.max(legs.leftHip.y, legs.rightHip.y)); const kneeY = Math.min(legs.leftKnee.y, legs.rightKnee.y);
+    const xa = Math.round(Math.min(legs.leftKnee.x, legs.rightKnee.x)); const xb = Math.round(Math.max(legs.leftKnee.x, legs.rightKnee.x));
+    for (let y = hipY; y < kneeY; y += 1) for (let x = xa; x <= xb; x += 1) if (!image.foreground[y * width + x]) return true;
+    return false;
+  };
+  if (legs?.leftHip && legs.rightHip && legs.leftKnee && legs.rightKnee && apart()) {
+    const hipY = Math.max(legs.leftHip.y, legs.rightHip.y); const reach = Math.abs(legs.rightHip.x - legs.leftHip.x) / 2;
+    const x0 = Math.min(legs.leftHip.x, legs.rightHip.x) - reach; const x1 = Math.max(legs.leftHip.x, legs.rightHip.x) + reach;
+    let dropped = 0; let area = 0; for (let index = 0; index < width * height; index += 1) if (image.foreground[index]) area += 1;
+    for (let y = Math.ceil(hipY) + 1; y < height; y += 1) for (let x = Math.max(0, Math.floor(x0)); x <= Math.min(width - 1, Math.ceil(x1)); x += 1) if (seeds[y * width + x] === torso) { seeds[y * width + x] = 0; dropped += 1; }
+    // Only when the model really put torso on the legs (more than a sliver): a robe's hem over the boots leaves no thigh.
+    if (dropped > area * .01) { const plan = bonePlan(joints); for (const part of ["leftThigh", "rightThigh"]) if (plan.scribbles?.[part]) thighs[part] = plan.scribbles[part] as PlanPoint[][]; }
+  }
+  return applyCutPlan({ scribbles: thighs }, image, seeds);
+}
+
+export type AutoCutResult ={ readonly state: PartCutterState; readonly cut: readonly string[]; readonly hidden: readonly string[]; readonly joints: Joints };
 
 /**
  * Cuts every body part from the guide's joints (its leg joints replaced by legJoints when the legs are readable). Each part
  * is committed through commitGuidedSelection, so it is one guided cut per part: undo, ownership and review behave as for
  * Use Guide. A part that gets no pixels is reported hidden and skipped.
  */
-export function autoCutBodyParts(state: PartCutterState, foreground: readonly number[], colours: ArrayLike<number>, at?: string): AutoCutResult {
+export function autoCutBodyParts(state: PartCutterState, foreground: readonly number[], colours: ArrayLike<number>, at?: string, prediction?: PartPrediction | null): AutoCutResult {
   const { width, height } = state.sourceCanvasSize;
   const fromGuide = Object.fromEntries((state.anatomicalGuide?.landmarks ?? []).map((landmark) => [landmark.landmarkId, landmark.point])) as Record<string, Point>;
   const sources = Object.fromEntries((state.anatomicalGuide?.landmarks ?? []).map((landmark) => [landmark.landmarkId, landmark.source])) as Record<string, string | undefined>;
@@ -241,7 +296,11 @@ export function autoCutBodyParts(state: PartCutterState, foreground: readonly nu
   let top = height; let bottom = -1; let left = width; let right = -1;
   for (let index = 0; index < width * height; index += 1) if (foreground[index]) { const x = index % width; const y = (index - x) / width; if (y < top) top = y; if (y > bottom) bottom = y; if (x < left) left = x; if (x > right) right = x; }
   const joints: Joints = settleArms(legs ? { ...centreOnLegs(fromGuide, legs, sources, (left + right) / 2, bottom - top + 1), ...legs } : fromGuide, state.anatomicalGuide?.adaptiveMetadata?.proportions === "adult" ? undefined : bottom - top + 1);
-  const labels = applyCutPlan(addMassStrokes(bonePlan(joints), joints, width, height, foreground), { width, height, data: colours, foreground });
+  const image = { width, height, data: colours, foreground };
+  // With the part model: its sure pixels are the seeds and the drawing places the seams; anything left unreached takes the
+  // model's own answer. Without it: a stroke along each bone from the joints.
+  const labels = prediction ? cutFromPrediction(prediction, legs, joints, image) : applyCutPlan(addMassStrokes(bonePlan(joints), joints, width, height, foreground), image);
+  if (prediction) for (let index = 0; index < labels.length; index += 1) if (foreground[index] && !labels[index]) labels[index] = prediction.labels[index];
   let current = initializeGuidedManual(state, at); const cut: string[] = []; const hidden: string[] = [];
   for (const semantic of GUIDED_BODY_ORDER) {
     const label = PLAN_PARTS.indexOf(semantic as (typeof PLAN_PARTS)[number]) + 1;

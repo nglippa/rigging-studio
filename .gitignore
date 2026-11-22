@@ -48,6 +48,7 @@ next-env.d.ts
 
 # Pose model weights, fetched by scripts/fetch-pose-model.sh (npm run setup:pose)
 /public/models/dwpose/
+/public/models/partseg/
 
 # Background services started by npm run studio:up
 /.studio/

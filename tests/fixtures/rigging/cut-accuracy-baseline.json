@@ -62,5 +62,41 @@
   "robed-wizard": {
     "strict": 0.8655,
     "tolerant": 0.9109
+  },
+  "cat-thief": {
+    "strict": 0.8098,
+    "tolerant": 0.8996
+  },
+  "elf-ranger": {
+    "strict": 0.8193,
+    "tolerant": 0.8899
+  },
+  "goblin-shaman": {
+    "strict": 0.906,
+    "tolerant": 0.9694
+  },
+  "horned-knight": {
+    "strict": 0.7844,
+    "tolerant": 0.8972
+  },
+  "pirate-captain": {
+    "strict": 0.776,
+    "tolerant": 0.8401
+  },
+  "posed-caped-paladin": {
+    "strict": 0.6833,
+    "tolerant": 0.8043
+  },
+  "purple-witch": {
+    "strict": 0.6856,
+    "tolerant": 0.7353
+  },
+  "red-samurai": {
+    "strict": 0.7388,
+    "tolerant": 0.8538
+  },
+  "white-priestess": {
+    "strict": 0.8622,
+    "tolerant": 0.9081
   }
 }

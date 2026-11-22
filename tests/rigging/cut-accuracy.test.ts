@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import { loadImage, readTruth, scoreCut, seamTolerantAccuracy, truthLabels, truthNames } from "../../scripts/cut-bench.mjs";
-import { cutAllParts } from "../../scripts/cut-pipeline.mjs";
+import { cutAllParts, partModelPath } from "../../scripts/cut-pipeline.mjs";
 
 /**
  * Cut all parts, run as the app runs it, against hand-labelled parts (tests/fixtures/rigging/part-truth, see
@@ -11,7 +11,12 @@ import { cutAllParts } from "../../scripts/cut-pipeline.mjs";
  * UPDATE_CUT_BASELINE=1 npx vitest run tests/rigging/cut-accuracy.test.ts (recording only ever raises a baseline).
  */
 type Baseline = Record<string, { readonly strict: number; readonly tolerant: number }>;
-const baselineUrl = new URL("../fixtures/rigging/cut-accuracy-baseline.json", import.meta.url);
+// The cut with the part model installed (public/models/partseg) and without it are two different cuts, each with its own
+// baseline. With the model the bench characters are its training data, so that baseline guards the model path against
+// breakage (export, decoding, the rules around it); how well it does on unseen sprites is the cross-validation in
+// docs/part-cutting.md.
+const withModel = existsSync(partModelPath) && process.env.CUT_PART_MODEL !== "0";
+const baselineUrl = new URL(withModel ? "../fixtures/rigging/cut-accuracy-baseline.model.json" : "../fixtures/rigging/cut-accuracy-baseline.json", import.meta.url);
 const baseline: Baseline = existsSync(baselineUrl) ? JSON.parse(readFileSync(baselineUrl, "utf8")) : {};
 const update = process.env.UPDATE_CUT_BASELINE === "1";
 const modelInstalled = existsSync(fileURLToPath(new URL("../../public/models/dwpose/dw-ll_ucoco_384.onnx", import.meta.url)));
