@@ -32,15 +32,39 @@ There are two measures:
 Where the art draws no line (a knee in plain trousers), the exact seam is a convention that careful people place
 differently.
 
-On the 11-character bench (November 2026) the cut scores **91.1% strict and 96.8% seam-tolerant**. The worst character
-scores 85.5% and 93.0%. Two reference points show what that means:
+On the 16-character bench (November 2026) the cut scores **88.0% strict and 94.4% seam-tolerant**. The worst character
+(caped-paladin) scores 71.0% and 81.3%.
+
+The bench has two groups:
+
+- **The first 11 characters** were picked by hand. They average 91.1% strict and 96.8% seam-tolerant.
+- **The 5 later ones** are fresh Studio generations, taken as they came: dwarf-ranger, robed-wizard, lizard-spearman,
+  cloaked-rogue and caped-paladin. They score 71–87% strict.
+
+Expect new sprites to cut like the second group. Read the bench mean as a lower bound on the error, not as a typical
+result.
+
+Two reference points show what these numbers mean:
 
 - With exact, hand-marked joints the same method reaches 93.0% and 97.5%.
 - Two independent AI planners following the conventions below agreed with the labels on 89–91% of pixels strict and
   95–96% seam-tolerant. That is human-level agreement.
 
 So strict accuracy above about 93% is not a sensible target. Seam-tolerant accuracy is the number to watch. Most of what
-remains wrong comes from joint positions, mostly elbows and wrists.
+remains wrong comes from joint positions.
+
+On the generated sprites, the largest errors are these (share of body pixels, summed over four characters):
+
+| Error | Share | Cause |
+|---|---|---|
+| Shoulder pads and the top of the sleeve given to the torso | 13.9 | The upper-arm stroke sits mid-bone, so the torso reaches the shoulder first. |
+| Hip plates given to the torso | 9.0 | The plates are counted as thighs by the conventions below. |
+| Knee placed too low | 6.2 | The labels put the knee at a boot or wrap top. |
+| Cloak or robe beside a hand given to the hand | 5.6 | |
+| Elbow too low | 4.6 | |
+
+Fixing the shoulder needs a rule that tells a large pad from a shoulder joint that already sits on the sleeve. See
+"Tried and rejected".
 
 ## Making sprites that cut well
 
@@ -115,7 +139,7 @@ What belongs to which part:
 - **head**: hair (including ponytails and braids), hats, helmets, hoods, ears, face and beard, down to the chin or jaw,
   or the lower rim of a hood or helmet.
 - **torso**: the neck below the chin, plus collar, chest, belly, tunic, coat, vest, armour, apron, belt and pouches. It
-  also takes anything hanging from the shoulders or waist as one piece: capes, cloaks, tunic skirts, loincloths, short
+  also takes tails, and anything hanging from the shoulders or waist as one piece: capes, cloaks, tunic skirts, loincloths, short
   robes, and shorts drawn as one band.
 - **upper arms**: from the shoulder to the elbow, including sleeve caps, shoulder pads and cloth draped over that
   shoulder.
@@ -163,3 +187,8 @@ Where the seams go:
 | Elbow at the arm's midpoint | Worse. |
 | Neck from a dip in the outline's width | Worse. |
 | Wider torso strokes | Worse. |
+| Narrower torso strokes | Worse (cat-mage −1.7). |
+| Longer upper-arm stroke (from .3 of shoulder to elbow) | Means down; dwarf-ranger −1.2. |
+| Extra upper-arm stroke at the shoulder, reaching out over a pad | +2–3 on paladin, rogue and lizard. −1.5 to −2.3 on dwarf, robot, archer and cat-mage, whose shoulder joint already sits on the sleeve. |
+| The same stroke, only where the pad's colour differs from a chest sample | Best variant raised both means (88.2 / 94.7), but archer fell 1.3. It also depends on a hand-picked colour threshold. Untested: compare the pad with the colour already under the upper-arm stroke, not with a chest sample. |
+| Knee at the largest colour change between .35 and .65 of hip to ankle | Means flat. |

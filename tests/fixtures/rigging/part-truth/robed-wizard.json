@@ -1,0 +1,23 @@
+{
+ "image": "tests/fixtures/rigging/cut/robed-wizard.png",
+ "view": "front",
+ "pairedLimbs": false,
+ "note": "Robe to the ankles: the hip is the hem, so thighs and lower legs are hidden and only the boots (feet) show below it. Hood, face and beard are head. The flared dark-blue flap below the right hand is robe (torso). Sleeves bend nowhere visible, so elbows are halfway from shoulder to cuff; the red cuffs are sleeve (forearm). The staff is equipment.",
+ "scribbles": {
+  "head": [[[460, 440], [540, 440]], [[480, 472], [520, 472]], [[407, 375], [605, 375]], [[399, 313], [597, 313]], [[365, 420], [372, 455]], [[640, 420], [632, 455]], [[500, 120], [500, 200]]],
+  "torso": [[[420, 560], [600, 560]], [[420, 615], [580, 615]], [[430, 750], [640, 750]], [[420, 850], [620, 850]], [[720, 760], [780, 790]], [[519, 520], [530, 829]]],
+  "leftUpperArm": [[[352, 532], [342, 556]]],
+  "leftForearm": [[[322, 583], [330, 600]], [[330, 625], [335, 648]]],
+  "leftHand": [[[265, 622], [298, 622]], [[270, 655], [300, 655]]],
+  "rightUpperArm": [[[640, 500], [660, 535]]],
+  "rightForearm": [[[680, 600], [700, 632]], [[670, 672], [720, 672]]],
+  "rightHand": [[[680, 713], [722, 713]]],
+  "leftFoot": [[[410, 898], [458, 898]]],
+  "rightFoot": [[[592, 898], [640, 898]]]
+ },
+ "parts": {},
+ "equipment": [
+  [[212, 405], [300, 405], [310, 470], [302, 540], [300, 597], [262, 597], [255, 560], [230, 540], [212, 500]],
+  [[278, 684], [322, 684], [335, 760], [345, 860], [348, 902], [300, 902], [290, 790]]
+ ]
+}

@@ -1,0 +1,29 @@
+{
+ "image": "tests/fixtures/rigging/cut/cloaked-rogue.png",
+ "view": "three-quarter",
+ "pairedLimbs": true,
+ "note": "Hood, face and beard are head, down to the hood's rim. The cloak (including where it hangs below the near arm) and the green tunic skirt are torso; the hip is the tunic hem. Thighs are the bare skin strips between hem and boot; the knee is the boot top; the ankle is the boot instep (hard polygons). Near arm: shoulder pauldron and the green cloth over it are upper arm, the elbow guard and bracer forearm. Far arm is in shadow behind the body. The dagger blade is equipment.",
+ "scribbles": {
+  "head": [[[514, 378], [516, 191]], [[338, 323], [690, 323]], [[339, 213], [691, 213]], [[560, 420], [620, 420]]],
+  "torso": [[[500, 470], [560, 470]], [[450, 560], [580, 560]], [[450, 640], [600, 640]], [[480, 740], [620, 740]], [[280, 770], [318, 725]], [[345, 755], [385, 765]]],
+  "leftUpperArm": [[[380, 470], [420, 500]], [[345, 545], [385, 565]]],
+  "leftForearm": [[[330, 615], [385, 615]], [[320, 670], [365, 670]]],
+  "leftHand": [[[325, 710], [370, 712]], [[385, 680], [392, 700]]],
+  "rightUpperArm": [[[630, 480], [640, 530]]],
+  "rightForearm": [[[645, 575], [655, 605]]],
+  "rightHand": [[[668, 655], [705, 655]]],
+  "leftThigh": [[[400, 789], [422, 789]]],
+  "leftLowerLeg": [[[390, 840], [460, 840]]],
+  "leftFoot": [[[385, 925], [470, 925]]],
+  "rightThigh": [[[552, 789], [585, 789]]],
+  "rightLowerLeg": [[[550, 835], [620, 835]]],
+  "rightFoot": [[[560, 912], [660, 912]]]
+ },
+ "parts": {
+  "leftFoot": [[350, 893], [505, 893], [505, 968], [350, 968]],
+  "rightFoot": [[515, 880], [705, 880], [705, 955], [515, 955]]
+ },
+ "equipment": [
+  [[728, 418], [788, 418], [782, 485], [730, 585], [706, 622], [672, 618], [684, 560], [714, 480]]
+ ]
+}

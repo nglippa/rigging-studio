@@ -46,5 +46,21 @@
   "dwarf-ranger": {
     "strict": 0.8023,
     "tolerant": 0.8979
+  },
+  "caped-paladin": {
+    "strict": 0.7096,
+    "tolerant": 0.8134
+  },
+  "cloaked-rogue": {
+    "strict": 0.8412,
+    "tolerant": 0.9184
+  },
+  "lizard-spearman": {
+    "strict": 0.8158,
+    "tolerant": 0.9083
+  },
+  "robed-wizard": {
+    "strict": 0.8655,
+    "tolerant": 0.9109
   }
 }

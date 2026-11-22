@@ -1,0 +1,26 @@
+{
+ "image": "tests/fixtures/rigging/cut/lizard-spearman.png",
+ "view": "front",
+ "pairedLimbs": false,
+ "note": "Head is the lizard head to the jaw; the green neck below it is torso. The tail is torso (it hangs from the waist like a cape). The kilt is torso, so the hip is its hem; the thighs are the bare green strips below it, the knee is the top of the leg wraps, the ankle is the top of the sandal. Shoulder pads are upper arm; the right bracer is forearm. The left arm is mostly behind the spear: shoulder pad and upper green strip are upper arm, the lower green strip forearm. The spear above the hand is equipment.",
+ "scribbles": {
+  "head": [[[522, 347], [519, 202]], [[385, 304], [657, 304]], [[383, 219], [655, 219]]],
+  "torso": [[[470, 420], [540, 420]], [[460, 560], [600, 560]], [[440, 640], [600, 640]], [[420, 720], [600, 720]], [[420, 770], [620, 770]], [[690, 725], [790, 725]], [[815, 700], [828, 650]]],
+  "leftUpperArm": [[[382, 445], [385, 490]], [[380, 520], [380, 552]]],
+  "leftForearm": [[[380, 568], [380, 588]]],
+  "leftHand": [[[275, 540], [318, 540]], [[290, 575], [328, 575]]],
+  "rightUpperArm": [[[620, 430], [660, 470]], [[650, 530], [680, 540]]],
+  "rightForearm": [[[660, 600], [690, 610]]],
+  "rightHand": [[[650, 662], [690, 665]]],
+  "leftThigh": [[[405, 797], [470, 797]]],
+  "leftLowerLeg": [[[410, 835], [470, 835]]],
+  "leftFoot": [[[360, 895], [460, 895]]],
+  "rightThigh": [[[570, 800], [630, 800]]],
+  "rightLowerLeg": [[[570, 845], [640, 845]]],
+  "rightFoot": [[[590, 900], [650, 900]]]
+ },
+ "parts": {},
+ "equipment": [
+  [[135, 130], [260, 130], [275, 330], [310, 420], [332, 492], [300, 497], [265, 497], [240, 420], [200, 345], [135, 250]]
+ ]
+}

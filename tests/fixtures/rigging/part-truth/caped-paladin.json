@@ -1,0 +1,26 @@
+{
+ "image": "tests/fixtures/rigging/cut/caped-paladin.png",
+ "view": "three-quarter",
+ "pairedLimbs": true,
+ "note": "Hair, face and beard are head to the beard's bottom. Breastplate, belt, the blue tabard hanging between the legs and the blue cape are torso. The grey plates hanging from the belt on either side of the tabard are hip armour, so thigh, from the belt down to the knee cop; the knee is the greave top, the ankle the sabaton top. On both arms the pauldron is upper arm, the next plate forearm, and the gauntlet with its cuff hand. The mace head is equipment.",
+ "scribbles": {
+  "head": [[[487, 358], [475, 262]], [[392, 330], [574, 330]], [[385, 273], [567, 273]], [[622, 378], [650, 366]]],
+  "torso": [[[440, 500], [560, 500]], [[420, 600], [580, 600]], [[470, 680], [500, 780]], [[410, 455], [460, 455]], [[745, 700], [755, 800]], [[705, 790], [725, 825]]],
+  "leftUpperArm": [[[365, 450], [380, 500]]],
+  "leftForearm": [[[355, 580], [385, 600]]],
+  "leftHand": [[[275, 600], [320, 600]], [[285, 637], [320, 640]]],
+  "rightUpperArm": [[[600, 450], [660, 470]]],
+  "rightForearm": [[[660, 580], [700, 590]]],
+  "rightHand": [[[675, 668], [710, 668]], [[655, 697], [700, 697]], [[675, 730], [705, 735]]],
+  "leftThigh": [[[375, 680], [395, 680]], [[375, 740], [400, 740]], [[420, 775], [435, 775]]],
+  "leftLowerLeg": [[[395, 825], [440, 825]]],
+  "leftFoot": [[[360, 890], [440, 890]]],
+  "rightThigh": [[[565, 680], [615, 680]], [[565, 750], [620, 750]], [[580, 775], [620, 775]]],
+  "rightLowerLeg": [[[580, 830], [630, 830]]],
+  "rightFoot": [[[590, 905], [660, 905]]]
+ },
+ "parts": {},
+ "equipment": [
+  [[198, 440], [325, 440], [328, 520], [318, 556], [290, 566], [262, 574], [200, 574]]
+ ]
+}
