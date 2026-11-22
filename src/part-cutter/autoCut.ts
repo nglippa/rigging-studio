@@ -28,9 +28,13 @@ export function legJoints(width: number, height: number, foreground: ArrayLike<n
   for (let index = 0; index < width * height; index += 1) if (foreground[index]) { const y = Math.floor(index / width); if (y < top) top = y; if (y > bottom) bottom = y; }
   if (bottom < 0) return null;
   const h = bottom - top + 1; const minGap = Math.max(2, Math.round(h * .006)); const minRun = Math.max(3, Math.round(h * .02));
+  // A garment seen between the legs (a cape hanging behind them): its colour and the gap it fills, while it is tracked.
+  const lastW = (run: Run) => run.b - run.a + 1;
+  let cape: { r: number; g: number; b: number; from: number; to: number } | null = null;
+  const capeLike = (index: number) => Math.hypot(colours![index * 4] - cape!.r, colours![index * 4 + 1] - cape!.g, colours![index * 4 + 2] - cape!.b) < 45;
   const runs = (y: number): Run[] => {
     const out: Run[] = []; let a = -1; let gap = 0;
-    for (let x = 0; x < width; x += 1) { if (foreground[y * width + x]) { if (a < 0) a = x; gap = 0; } else if (a >= 0 && ++gap > minGap) { out.push({ a, b: x - gap }); a = -1; gap = 0; } }
+    for (let x = 0; x < width; x += 1) { if (foreground[y * width + x] && !(cape && x >= cape.from && x <= cape.to && capeLike(y * width + x))) { if (a < 0) a = x; gap = 0; } else if (a >= 0 && ++gap > minGap) { out.push({ a, b: x - gap }); a = -1; gap = 0; } }
     if (a >= 0) out.push({ a, b: width - 1 });
     return out.filter((run) => run.b - run.a + 1 >= minRun);
   };
@@ -43,7 +47,23 @@ export function legJoints(width: number, height: number, foreground: ArrayLike<n
   const stretch: { readonly y: number; readonly l: Run; readonly r: Run }[] = [];
   let missed = 0; const tolerance = Math.max(2, Math.round(h * .02));
   for (let y = footY; y > top + h * .3; y -= 1) {
-    const row = runs(y);
+    let row = runs(y);
+    if (!cape && colours && stretch.length && !(row.find((run) => run.b >= left.a - 4 && run.a <= left.b + 4) !== row.find((run) => run.b >= right.a - 4 && run.a <= right.b + 4) && row.length > 1)) {
+      // The legs merged. If the gap between them is filled with one colour that also shows beside the legs, it is a cape hanging behind: arm it and look again.
+      const wide = stretch.slice(-Math.max(3, Math.round(h * .02))).reduce((best, row) => (row.r.a - row.l.b > best.r.a - best.l.b ? row : best));
+      const from = wide.l.b + 1; const to = wide.r.a - 1; const sample: number[] = [];
+      const band = Math.max(2, Math.round(h * .02)); let cells = 0;
+      for (let by = y; by > y - band; by -= 1) for (let x = from; x <= to; x += 1) { const index = by * width + x; cells += 1; if (foreground[index] && colours[index * 4] + colours[index * 4 + 1] + colours[index * 4 + 2] > 40) sample.push(index); }
+      const mean = (indices: number[], c: number) => indices.reduce((sum, index) => sum + colours[index * 4 + c], 0) / Math.max(1, indices.length);
+      if (to - from >= Math.min(lastW(left), lastW(right)) * .25 && sample.length > cells * .5) {
+        const m = { r: mean(sample, 0), g: mean(sample, 1), b: mean(sample, 2) };
+        const uniform = sample.filter((index) => Math.hypot(colours[index * 4] - m.r, colours[index * 4 + 1] - m.g, colours[index * 4 + 2] - m.b) < 45).length > sample.length * .75;
+        // A cape also shows beside the legs, in the same colour; a tunic or the seat of trousers does not reach out past them.
+        const legWidth = (lastW(wide.l) + lastW(wide.r)) / 2; let beside = 0;
+        for (let by = y; by > y - band; by -= 1) for (let x = 0; x < width; x += 1) if ((x < wide.l.a || x > wide.r.b) && foreground[by * width + x] && Math.hypot(colours[(by * width + x) * 4] - m.r, colours[(by * width + x) * 4 + 1] - m.g, colours[(by * width + x) * 4 + 2] - m.b) < 45) beside += 1;
+        if (uniform && beside > band * legWidth * .25) { cape = { ...m, from, to }; row = runs(y); }
+      }
+    }
     const nl = row.find((run) => run.b >= left.a - 4 && run.a <= left.b + 4); const nr = row.find((run) => run.b >= right.a - 4 && run.a <= right.b + 4);
     const split = Boolean(nl && nr && nl !== nr);
     const between = split && footY - y > h * .1 && row.some((run) => run !== nl && run !== nr && run.a > nl!.b && run.b < nr!.a && (run.b - run.a) > (nr!.a - nl!.b) * .4);
@@ -176,7 +196,7 @@ export function addMassStrokes(plan: CutPlan, joints: Joints, width: number, hei
   for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) { const index = y * width + x; if (!foreground[index]) continue; if (x > 0) relax(index, index - 1, 1); if (y > 0) { relax(index, index - width, 1); if (x > 0) relax(index, index - width - 1, 1.414); if (x < width - 1) relax(index, index - width + 1, 1.414); } }
   for (let y = height - 1; y >= 0; y -= 1) for (let x = width - 1; x >= 0; x -= 1) { const index = y * width + x; if (!foreground[index]) continue; if (x < width - 1) relax(index, index + 1, 1); if (y < height - 1) { relax(index, index + width, 1); if (x > 0) relax(index, index + width - 1, 1.414); if (x < width - 1) relax(index, index + width + 1, 1.414); } }
   const isFar = (index: number) => foreground[index] && dist[index] > far && Number.isFinite(dist[index]);
-  const low = neck.y + (pelvis.y - neck.y) * .2; const high = pelvis.y + figure * .05;
+  const low = neck.y + (pelvis.y - neck.y) * .2; const high = pelvis.y + figure * .1;
   const seen = new Uint8Array(size); const extra: PlanPoint[][] = [];
   for (let start = 0; start < size; start += 1) {
     if (seen[start] || !isFar(start)) continue;

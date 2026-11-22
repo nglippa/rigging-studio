@@ -4,8 +4,8 @@
     "tolerant": 0.9946
   },
   "cat-mage": {
-    "strict": 0.8934,
-    "tolerant": 0.9598
+    "strict": 0.9049,
+    "tolerant": 0.9663
   },
   "dwarf": {
     "strict": 0.8588,
@@ -36,11 +36,15 @@
     "tolerant": 0.9948
   },
   "robot": {
-    "strict": 0.972,
+    "strict": 0.9764,
     "tolerant": 0.9987
   },
   "skeleton": {
     "strict": 0.8824,
     "tolerant": 0.9607
+  },
+  "dwarf-ranger": {
+    "strict": 0.8023,
+    "tolerant": 0.8979
   }
 }
