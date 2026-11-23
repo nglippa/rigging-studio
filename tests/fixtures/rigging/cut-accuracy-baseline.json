@@ -394,5 +394,205 @@
   "zombie": {
     "strict": 0.9237,
     "tolerant": 0.9808
+  },
+  "badger-miner": {
+    "strict": 0.8215,
+    "tolerant": 0.9035
+  },
+  "bat-scout": {
+    "strict": 0.5864,
+    "tolerant": 0.6644
+  },
+  "bear-overalls": {
+    "strict": 0.781,
+    "tolerant": 0.8589
+  },
+  "bighead-wizard": {
+    "strict": 0.8493,
+    "tolerant": 0.9114
+  },
+  "cat-knight": {
+    "strict": 0.7597,
+    "tolerant": 0.8502
+  },
+  "cloak-sorcerer": {
+    "strict": 0.7699,
+    "tolerant": 0.8178
+  },
+  "clown": {
+    "strict": 0.8775,
+    "tolerant": 0.962
+  },
+  "crocodile-warrior": {
+    "strict": 0.7321,
+    "tolerant": 0.7951
+  },
+  "crow-rogue": {
+    "strict": 0.8488,
+    "tolerant": 0.9332
+  },
+  "crystal-golem": {
+    "strict": 0.8036,
+    "tolerant": 0.8974
+  },
+  "cyclops": {
+    "strict": 0.622,
+    "tolerant": 0.737
+  },
+  "diver": {
+    "strict": 0.8905,
+    "tolerant": 0.9544
+  },
+  "dog-sheriff": {
+    "strict": 0.8854,
+    "tolerant": 0.9419
+  },
+  "dragon-warrior": {
+    "strict": 0.5998,
+    "tolerant": 0.6752
+  },
+  "elephant-merchant": {
+    "strict": 0.889,
+    "tolerant": 0.9563
+  },
+  "fox-mage": {
+    "strict": 0.6917,
+    "tolerant": 0.7819
+  },
+  "frilled-lizard": {
+    "strict": 0.8256,
+    "tolerant": 0.9276
+  },
+  "frog-knight": {
+    "strict": 0.8909,
+    "tolerant": 0.947
+  },
+  "giraffe-scholar": {
+    "strict": 0.8495,
+    "tolerant": 0.9115
+  },
+  "goat-bard": {
+    "strict": 0.8648,
+    "tolerant": 0.9418
+  },
+  "gorgon": {
+    "strict": 0.863,
+    "tolerant": 0.903
+  },
+  "gorilla-brawler": {
+    "strict": 0.7097,
+    "tolerant": 0.8148
+  },
+  "greatsword-samurai": {
+    "strict": 0.8558,
+    "tolerant": 0.9336
+  },
+  "harpy": {
+    "strict": 0.7543,
+    "tolerant": 0.8537
+  },
+  "hedgehog-wanderer": {
+    "strict": 0.8753,
+    "tolerant": 0.9497
+  },
+  "hunchback": {
+    "strict": 0.8187,
+    "tolerant": 0.911
+  },
+  "jester": {
+    "strict": 0.7802,
+    "tolerant": 0.8597
+  },
+  "kangaroo-boxer": {
+    "strict": 0.5801,
+    "tolerant": 0.6699
+  },
+  "monkey-acrobat": {
+    "strict": 0.7533,
+    "tolerant": 0.8318
+  },
+  "moth-mystic": {
+    "strict": 0.4698,
+    "tolerant": 0.5718
+  },
+  "mouse-adventurer": {
+    "strict": 0.8848,
+    "tolerant": 0.945
+  },
+  "ogre": {
+    "strict": 0.8985,
+    "tolerant": 0.9667
+  },
+  "owl-wizard": {
+    "strict": 0.5613,
+    "tolerant": 0.6131
+  },
+  "panda-monk": {
+    "strict": 0.8343,
+    "tolerant": 0.9082
+  },
+  "parka-hunter": {
+    "strict": 0.862,
+    "tolerant": 0.9273
+  },
+  "pauldron-knight": {
+    "strict": 0.8007,
+    "tolerant": 0.8954
+  },
+  "penguin-chef": {
+    "strict": 0.8313,
+    "tolerant": 0.8904
+  },
+  "pig-farmer": {
+    "strict": 0.8791,
+    "tolerant": 0.946
+  },
+  "pumpkin-knight": {
+    "strict": 0.8364,
+    "tolerant": 0.9309
+  },
+  "raccoon-thief": {
+    "strict": 0.7515,
+    "tolerant": 0.844
+  },
+  "rhino-warrior": {
+    "strict": 0.8422,
+    "tolerant": 0.9234
+  },
+  "shield-dwarf": {
+    "strict": 0.6886,
+    "tolerant": 0.7594
+  },
+  "sloth": {
+    "strict": 0.7992,
+    "tolerant": 0.8872
+  },
+  "snail-postman": {
+    "strict": 0.4249,
+    "tolerant": 0.5101
+  },
+  "stilt-walker": {
+    "strict": 0.7723,
+    "tolerant": 0.8589
+  },
+  "tiger-warrior": {
+    "strict": 0.7908,
+    "tolerant": 0.8984
+  },
+  "tortoise-sage": {
+    "strict": 0.5586,
+    "tolerant": 0.7258
+  },
+  "tower-shield-warrior": {
+    "strict": 0.7701,
+    "tolerant": 0.8659
+  },
+  "tree-creature": {
+    "strict": 0.8135,
+    "tolerant": 0.8742
+  },
+  "werewolf": {
+    "strict": 0.6763,
+    "tolerant": 0.755
   }
 }

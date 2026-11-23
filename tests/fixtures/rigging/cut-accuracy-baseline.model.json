@@ -1,398 +1,598 @@
 {
   "alchemist": {
-    "strict": 0.978,
-    "tolerant": 0.9999
+    "strict": 0.9766,
+    "tolerant": 1
   },
   "angel-paladin": {
-    "strict": 0.9852,
-    "tolerant": 0.9999
+    "strict": 0.9825,
+    "tolerant": 0.9998
   },
   "archbishop": {
-    "strict": 0.9903,
-    "tolerant": 0.9997
+    "strict": 0.9885,
+    "tolerant": 0.9995
   },
   "archer": {
-    "strict": 0.9853,
+    "strict": 0.9826,
     "tolerant": 0.9984
   },
   "automaton": {
-    "strict": 0.9888,
-    "tolerant": 1
-  },
-  "barbarian": {
-    "strict": 0.9862,
+    "strict": 0.9886,
     "tolerant": 0.9999
   },
-  "bear-warrior": {
-    "strict": 0.9876,
-    "tolerant": 0.9999
-  },
-  "beekeeper": {
-    "strict": 0.976,
-    "tolerant": 0.9993
-  },
-  "bird-ranger": {
-    "strict": 0.9851,
-    "tolerant": 1
-  },
-  "black-knight": {
-    "strict": 0.977,
-    "tolerant": 0.9982
-  },
-  "blue-samurai": {
-    "strict": 0.9808,
+  "badger-miner": {
+    "strict": 0.9809,
     "tolerant": 0.9996
   },
+  "barbarian": {
+    "strict": 0.9806,
+    "tolerant": 0.9992
+  },
+  "bat-scout": {
+    "strict": 0.9821,
+    "tolerant": 1
+  },
+  "bear-overalls": {
+    "strict": 0.9877,
+    "tolerant": 1
+  },
+  "bear-warrior": {
+    "strict": 0.9864,
+    "tolerant": 0.9998
+  },
+  "beekeeper": {
+    "strict": 0.9752,
+    "tolerant": 0.9992
+  },
+  "bighead-wizard": {
+    "strict": 0.9862,
+    "tolerant": 1
+  },
+  "bird-ranger": {
+    "strict": 0.9824,
+    "tolerant": 0.9999
+  },
+  "black-knight": {
+    "strict": 0.9731,
+    "tolerant": 0.9991
+  },
+  "blue-samurai": {
+    "strict": 0.9769,
+    "tolerant": 0.9993
+  },
   "boxer": {
-    "strict": 0.9842,
+    "strict": 0.9798,
     "tolerant": 1
   },
   "caped-knight-walk": {
-    "strict": 0.9826,
-    "tolerant": 0.9999
-  },
-  "caped-paladin": {
-    "strict": 0.9817,
+    "strict": 0.9783,
     "tolerant": 1
   },
+  "caped-paladin": {
+    "strict": 0.9778,
+    "tolerant": 1
+  },
+  "cat-knight": {
+    "strict": 0.9848,
+    "tolerant": 0.9999
+  },
   "cat-mage": {
-    "strict": 0.9779,
+    "strict": 0.974,
     "tolerant": 0.9995
   },
   "cat-thief": {
-    "strict": 0.9685,
-    "tolerant": 0.9931
+    "strict": 0.9645,
+    "tolerant": 0.9929
   },
   "child-adventurer": {
-    "strict": 0.9864,
-    "tolerant": 1
+    "strict": 0.9844,
+    "tolerant": 0.9999
+  },
+  "cloak-sorcerer": {
+    "strict": 0.9905,
+    "tolerant": 0.9999
   },
   "cloaked-ranger": {
-    "strict": 0.9891,
-    "tolerant": 0.9998
+    "strict": 0.9875,
+    "tolerant": 0.9994
   },
   "cloaked-rogue": {
-    "strict": 0.9838,
+    "strict": 0.9783,
+    "tolerant": 0.9999
+  },
+  "clown": {
+    "strict": 0.9781,
     "tolerant": 1
+  },
+  "crocodile-warrior": {
+    "strict": 0.9878,
+    "tolerant": 0.9999
   },
   "crossbowman": {
-    "strict": 0.9834,
-    "tolerant": 0.9996
+    "strict": 0.9846,
+    "tolerant": 0.9989
+  },
+  "crow-rogue": {
+    "strict": 0.9836,
+    "tolerant": 0.9985
+  },
+  "crystal-golem": {
+    "strict": 0.9841,
+    "tolerant": 1
+  },
+  "cyclops": {
+    "strict": 0.9732,
+    "tolerant": 0.9982
   },
   "dancer": {
-    "strict": 0.9735,
-    "tolerant": 1
+    "strict": 0.9621,
+    "tolerant": 0.9989
   },
   "dark-assassin": {
-    "strict": 0.9888,
-    "tolerant": 1
+    "strict": 0.986,
+    "tolerant": 0.9998
   },
   "demon-warlord": {
-    "strict": 0.9803,
+    "strict": 0.978,
     "tolerant": 1
   },
   "desert-nomad": {
-    "strict": 0.985,
-    "tolerant": 0.9998
-  },
-  "druid": {
-    "strict": 0.984,
-    "tolerant": 0.9999
-  },
-  "dwarf": {
-    "strict": 0.987,
-    "tolerant": 0.9999
-  },
-  "dwarf-miner": {
-    "strict": 0.9848,
-    "tolerant": 1
-  },
-  "dwarf-plate": {
-    "strict": 0.9836,
-    "tolerant": 0.9999
-  },
-  "dwarf-ranger": {
-    "strict": 0.9811,
-    "tolerant": 1
-  },
-  "dwarf-smith": {
-    "strict": 0.9855,
-    "tolerant": 0.9999
-  },
-  "dwarf-warrior": {
-    "strict": 0.9865,
-    "tolerant": 0.9998
-  },
-  "elf-archer": {
-    "strict": 0.9741,
-    "tolerant": 0.9959
-  },
-  "elf-princess": {
-    "strict": 0.991,
-    "tolerant": 1
-  },
-  "elf-ranger": {
-    "strict": 0.9852,
-    "tolerant": 0.9986
-  },
-  "eyepatch-pirate": {
-    "strict": 0.9839,
-    "tolerant": 0.9998
-  },
-  "farmer": {
-    "strict": 0.9868,
-    "tolerant": 0.9999
-  },
-  "fire-mage": {
-    "strict": 0.9887,
-    "tolerant": 1
-  },
-  "flute-bard": {
-    "strict": 0.986,
+    "strict": 0.9814,
     "tolerant": 0.9997
   },
-  "fox-rogue-front": {
-    "strict": 0.9865,
+  "diver": {
+    "strict": 0.9821,
     "tolerant": 1
   },
-  "fox-rogue-side": {
+  "dog-sheriff": {
+    "strict": 0.9872,
+    "tolerant": 1
+  },
+  "dragon-warrior": {
+    "strict": 0.9809,
+    "tolerant": 0.9977
+  },
+  "druid": {
     "strict": 0.9826,
     "tolerant": 0.9999
   },
-  "frog-adventurer": {
-    "strict": 0.9771,
-    "tolerant": 0.9999
-  },
-  "gnome-tinker": {
-    "strict": 0.9902,
-    "tolerant": 0.9999
-  },
-  "gnome-wizard": {
-    "strict": 0.9885,
-    "tolerant": 1
-  },
-  "goblin-archer": {
-    "strict": 0.989,
-    "tolerant": 0.9993
-  },
-  "goblin-shaman": {
-    "strict": 0.9868,
-    "tolerant": 0.9998
-  },
-  "goblin-side": {
-    "strict": 0.9858,
-    "tolerant": 0.9999
-  },
-  "goblin-warrior": {
-    "strict": 0.9869,
-    "tolerant": 1
-  },
-  "gold-knight": {
-    "strict": 0.9836,
-    "tolerant": 0.9995
-  },
-  "grandmother-witch": {
-    "strict": 0.9899,
-    "tolerant": 1
-  },
-  "gunslinger": {
-    "strict": 0.987,
-    "tolerant": 1
-  },
-  "hacker": {
-    "strict": 0.9861,
-    "tolerant": 0.9998
-  },
-  "halfling-bard": {
-    "strict": 0.9758,
-    "tolerant": 0.9953
-  },
-  "halfling-cook": {
-    "strict": 0.9895,
-    "tolerant": 1
-  },
-  "hearthcap-tinker": {
-    "strict": 0.9847,
-    "tolerant": 0.9998
-  },
-  "horned-knight": {
-    "strict": 0.983,
-    "tolerant": 0.9997
-  },
-  "hyena-raider": {
-    "strict": 0.9863,
-    "tolerant": 0.9997
-  },
-  "ice-sorceress": {
-    "strict": 0.9914,
-    "tolerant": 1
-  },
-  "knight": {
-    "strict": 0.9825,
-    "tolerant": 0.9969
-  },
-  "kobold-scout": {
-    "strict": 0.9893,
-    "tolerant": 1
-  },
-  "kungfu-monk": {
-    "strict": 0.9822,
-    "tolerant": 1
-  },
-  "lion-gladiator": {
-    "strict": 0.9844,
-    "tolerant": 1
-  },
-  "lizard-spearman": {
-    "strict": 0.9853,
-    "tolerant": 1
-  },
-  "merchant": {
-    "strict": 0.9915,
-    "tolerant": 1
-  },
-  "minotaur": {
-    "strict": 0.989,
-    "tolerant": 1
-  },
-  "monk": {
-    "strict": 0.9816,
-    "tolerant": 1
-  },
-  "mummy": {
-    "strict": 0.9892,
-    "tolerant": 0.9996
-  },
-  "mushroom-villager": {
-    "strict": 0.9843,
-    "tolerant": 0.9993
-  },
-  "necromancer": {
-    "strict": 0.9889,
-    "tolerant": 0.9998
-  },
-  "ninja": {
-    "strict": 0.9882,
-    "tolerant": 1
-  },
-  "orc": {
-    "strict": 0.981,
-    "tolerant": 0.9999
-  },
-  "orc-shaman": {
-    "strict": 0.9848,
-    "tolerant": 1
-  },
-  "pirate-captain": {
-    "strict": 0.988,
-    "tolerant": 1
-  },
-  "plague-doctor": {
-    "strict": 0.9911,
-    "tolerant": 1
-  },
-  "posed-caped-paladin": {
-    "strict": 0.9782,
-    "tolerant": 0.999
-  },
-  "purple-witch": {
-    "strict": 0.9907,
-    "tolerant": 0.9998
-  },
-  "rabbit-courier": {
-    "strict": 0.9867,
-    "tolerant": 1
-  },
-  "red-samurai": {
+  "dwarf": {
     "strict": 0.9799,
-    "tolerant": 0.9999
+    "tolerant": 0.9993
   },
-  "robed-wizard": {
-    "strict": 0.9861,
-    "tolerant": 0.9994
-  },
-  "robot": {
-    "strict": 0.9901,
-    "tolerant": 1
-  },
-  "sailor": {
-    "strict": 0.9872,
-    "tolerant": 0.9998
-  },
-  "scarecrow": {
-    "strict": 0.989,
-    "tolerant": 1
-  },
-  "shark-brawler": {
-    "strict": 0.9858,
-    "tolerant": 1
-  },
-  "shieldmaiden": {
-    "strict": 0.9888,
-    "tolerant": 0.9988
-  },
-  "skeleton": {
-    "strict": 0.9842,
-    "tolerant": 1
-  },
-  "skeleton-warrior": {
-    "strict": 0.9758,
-    "tolerant": 0.995
-  },
-  "smith-woman": {
-    "strict": 0.9896,
-    "tolerant": 0.9999
-  },
-  "space-marine": {
-    "strict": 0.973,
-    "tolerant": 0.9978
-  },
-  "stone-golem": {
-    "strict": 0.9879,
-    "tolerant": 1
-  },
-  "sumo": {
-    "strict": 0.985,
-    "tolerant": 1
-  },
-  "town-guard": {
-    "strict": 0.9886,
-    "tolerant": 1
-  },
-  "tribal-warrior": {
-    "strict": 0.9872,
-    "tolerant": 1
-  },
-  "troll": {
-    "strict": 0.9875,
-    "tolerant": 0.9997
-  },
-  "vampire-huntress": {
-    "strict": 0.9885,
-    "tolerant": 1
-  },
-  "vampire-lord": {
-    "strict": 0.9915,
-    "tolerant": 0.9999
-  },
-  "warrior-queen": {
-    "strict": 0.985,
-    "tolerant": 1
-  },
-  "white-priestess": {
-    "strict": 0.9913,
-    "tolerant": 0.9999
-  },
-  "wizard-student": {
-    "strict": 0.9899,
-    "tolerant": 0.9997
-  },
-  "wolf-hunter": {
+  "dwarf-miner": {
     "strict": 0.9845,
     "tolerant": 1
   },
-  "zombie": {
-    "strict": 0.9848,
+  "dwarf-plate": {
+    "strict": 0.982,
+    "tolerant": 0.9999
+  },
+  "dwarf-ranger": {
+    "strict": 0.9751,
+    "tolerant": 1
+  },
+  "dwarf-smith": {
+    "strict": 0.9815,
+    "tolerant": 1
+  },
+  "dwarf-warrior": {
+    "strict": 0.9847,
+    "tolerant": 0.9995
+  },
+  "elephant-merchant": {
+    "strict": 0.9872,
+    "tolerant": 1
+  },
+  "elf-archer": {
+    "strict": 0.9716,
+    "tolerant": 0.9967
+  },
+  "elf-princess": {
+    "strict": 0.9885,
+    "tolerant": 1
+  },
+  "elf-ranger": {
+    "strict": 0.9826,
+    "tolerant": 0.9992
+  },
+  "eyepatch-pirate": {
+    "strict": 0.9827,
+    "tolerant": 0.9997
+  },
+  "farmer": {
+    "strict": 0.9844,
+    "tolerant": 0.9999
+  },
+  "fire-mage": {
+    "strict": 0.9877,
+    "tolerant": 1
+  },
+  "flute-bard": {
+    "strict": 0.984,
+    "tolerant": 0.9999
+  },
+  "fox-mage": {
+    "strict": 0.9807,
+    "tolerant": 0.9996
+  },
+  "fox-rogue-front": {
+    "strict": 0.9714,
+    "tolerant": 0.9981
+  },
+  "fox-rogue-side": {
+    "strict": 0.9741,
+    "tolerant": 0.9987
+  },
+  "frilled-lizard": {
+    "strict": 0.9795,
+    "tolerant": 0.9999
+  },
+  "frog-adventurer": {
+    "strict": 0.9755,
     "tolerant": 0.9998
+  },
+  "frog-knight": {
+    "strict": 0.9889,
+    "tolerant": 0.9994
+  },
+  "giraffe-scholar": {
+    "strict": 0.9848,
+    "tolerant": 0.9986
+  },
+  "gnome-tinker": {
+    "strict": 0.9845,
+    "tolerant": 1
+  },
+  "gnome-wizard": {
+    "strict": 0.9859,
+    "tolerant": 0.9997
+  },
+  "goat-bard": {
+    "strict": 0.9813,
+    "tolerant": 0.9988
+  },
+  "goblin-archer": {
+    "strict": 0.9875,
+    "tolerant": 0.9995
+  },
+  "goblin-shaman": {
+    "strict": 0.9841,
+    "tolerant": 0.9998
+  },
+  "goblin-side": {
+    "strict": 0.9799,
+    "tolerant": 1
+  },
+  "goblin-warrior": {
+    "strict": 0.9867,
+    "tolerant": 0.9998
+  },
+  "gold-knight": {
+    "strict": 0.9803,
+    "tolerant": 0.9995
+  },
+  "gorgon": {
+    "strict": 0.9918,
+    "tolerant": 0.9998
+  },
+  "gorilla-brawler": {
+    "strict": 0.9833,
+    "tolerant": 1
+  },
+  "grandmother-witch": {
+    "strict": 0.9897,
+    "tolerant": 0.9999
+  },
+  "greatsword-samurai": {
+    "strict": 0.984,
+    "tolerant": 0.9996
+  },
+  "gunslinger": {
+    "strict": 0.9855,
+    "tolerant": 1
+  },
+  "hacker": {
+    "strict": 0.9824,
+    "tolerant": 0.9994
+  },
+  "halfling-bard": {
+    "strict": 0.9688,
+    "tolerant": 0.993
+  },
+  "halfling-cook": {
+    "strict": 0.9877,
+    "tolerant": 1
+  },
+  "harpy": {
+    "strict": 0.9817,
+    "tolerant": 1
+  },
+  "hearthcap-tinker": {
+    "strict": 0.9804,
+    "tolerant": 0.9994
+  },
+  "hedgehog-wanderer": {
+    "strict": 0.9857,
+    "tolerant": 1
+  },
+  "horned-knight": {
+    "strict": 0.9788,
+    "tolerant": 0.9997
+  },
+  "hunchback": {
+    "strict": 0.9818,
+    "tolerant": 0.9998
+  },
+  "hyena-raider": {
+    "strict": 0.9848,
+    "tolerant": 0.9997
+  },
+  "ice-sorceress": {
+    "strict": 0.9905,
+    "tolerant": 0.9999
+  },
+  "jester": {
+    "strict": 0.9662,
+    "tolerant": 0.9978
+  },
+  "kangaroo-boxer": {
+    "strict": 0.9818,
+    "tolerant": 1
+  },
+  "knight": {
+    "strict": 0.9797,
+    "tolerant": 0.9975
+  },
+  "kobold-scout": {
+    "strict": 0.9863,
+    "tolerant": 0.9999
+  },
+  "kungfu-monk": {
+    "strict": 0.9756,
+    "tolerant": 1
+  },
+  "lion-gladiator": {
+    "strict": 0.9823,
+    "tolerant": 0.9999
+  },
+  "lizard-spearman": {
+    "strict": 0.9752,
+    "tolerant": 0.9999
+  },
+  "merchant": {
+    "strict": 0.9888,
+    "tolerant": 1
+  },
+  "minotaur": {
+    "strict": 0.9863,
+    "tolerant": 1
+  },
+  "monk": {
+    "strict": 0.9772,
+    "tolerant": 0.9999
+  },
+  "monkey-acrobat": {
+    "strict": 0.9808,
+    "tolerant": 1
+  },
+  "moth-mystic": {
+    "strict": 0.9834,
+    "tolerant": 0.9999
+  },
+  "mouse-adventurer": {
+    "strict": 0.9908,
+    "tolerant": 1
+  },
+  "mummy": {
+    "strict": 0.9887,
+    "tolerant": 0.9995
+  },
+  "mushroom-villager": {
+    "strict": 0.9794,
+    "tolerant": 0.9982
+  },
+  "necromancer": {
+    "strict": 0.9864,
+    "tolerant": 0.9996
+  },
+  "ninja": {
+    "strict": 0.9851,
+    "tolerant": 0.9999
+  },
+  "ogre": {
+    "strict": 0.9834,
+    "tolerant": 0.9997
+  },
+  "orc": {
+    "strict": 0.9786,
+    "tolerant": 1
+  },
+  "orc-shaman": {
+    "strict": 0.9836,
+    "tolerant": 1
+  },
+  "owl-wizard": {
+    "strict": 0.9878,
+    "tolerant": 1
+  },
+  "panda-monk": {
+    "strict": 0.9841,
+    "tolerant": 0.9997
+  },
+  "parka-hunter": {
+    "strict": 0.9838,
+    "tolerant": 0.9998
+  },
+  "pauldron-knight": {
+    "strict": 0.9841,
+    "tolerant": 1
+  },
+  "penguin-chef": {
+    "strict": 0.9856,
+    "tolerant": 1
+  },
+  "pig-farmer": {
+    "strict": 0.9882,
+    "tolerant": 1
+  },
+  "pirate-captain": {
+    "strict": 0.985,
+    "tolerant": 0.9998
+  },
+  "plague-doctor": {
+    "strict": 0.9903,
+    "tolerant": 1
+  },
+  "posed-caped-paladin": {
+    "strict": 0.9713,
+    "tolerant": 0.9997
+  },
+  "pumpkin-knight": {
+    "strict": 0.982,
+    "tolerant": 1
+  },
+  "purple-witch": {
+    "strict": 0.988,
+    "tolerant": 1
+  },
+  "rabbit-courier": {
+    "strict": 0.984,
+    "tolerant": 1
+  },
+  "raccoon-thief": {
+    "strict": 0.9854,
+    "tolerant": 1
+  },
+  "red-samurai": {
+    "strict": 0.974,
+    "tolerant": 0.9999
+  },
+  "rhino-warrior": {
+    "strict": 0.9845,
+    "tolerant": 1
+  },
+  "robed-wizard": {
+    "strict": 0.98,
+    "tolerant": 0.9995
+  },
+  "robot": {
+    "strict": 0.9886,
+    "tolerant": 1
+  },
+  "sailor": {
+    "strict": 0.9834,
+    "tolerant": 0.9999
+  },
+  "scarecrow": {
+    "strict": 0.9887,
+    "tolerant": 1
+  },
+  "shark-brawler": {
+    "strict": 0.9849,
+    "tolerant": 1
+  },
+  "shield-dwarf": {
+    "strict": 0.9868,
+    "tolerant": 0.9994
+  },
+  "shieldmaiden": {
+    "strict": 0.9852,
+    "tolerant": 0.9992
+  },
+  "skeleton": {
+    "strict": 0.9781,
+    "tolerant": 0.9999
+  },
+  "skeleton-warrior": {
+    "strict": 0.9633,
+    "tolerant": 0.9919
+  },
+  "sloth": {
+    "strict": 0.9782,
+    "tolerant": 0.999
+  },
+  "smith-woman": {
+    "strict": 0.9876,
+    "tolerant": 0.9997
+  },
+  "snail-postman": {
+    "strict": 0.9726,
+    "tolerant": 0.9997
+  },
+  "space-marine": {
+    "strict": 0.9658,
+    "tolerant": 0.9975
+  },
+  "stilt-walker": {
+    "strict": 0.9797,
+    "tolerant": 1
+  },
+  "stone-golem": {
+    "strict": 0.9861,
+    "tolerant": 1
+  },
+  "sumo": {
+    "strict": 0.9835,
+    "tolerant": 1
+  },
+  "tiger-warrior": {
+    "strict": 0.9703,
+    "tolerant": 0.9948
+  },
+  "tortoise-sage": {
+    "strict": 0.9568,
+    "tolerant": 0.9997
+  },
+  "tower-shield-warrior": {
+    "strict": 0.9651,
+    "tolerant": 0.9966
+  },
+  "town-guard": {
+    "strict": 0.9868,
+    "tolerant": 1
+  },
+  "tree-creature": {
+    "strict": 0.9894,
+    "tolerant": 1
+  },
+  "tribal-warrior": {
+    "strict": 0.9858,
+    "tolerant": 1
+  },
+  "troll": {
+    "strict": 0.9843,
+    "tolerant": 0.9988
+  },
+  "vampire-huntress": {
+    "strict": 0.9885,
+    "tolerant": 0.9998
+  },
+  "vampire-lord": {
+    "strict": 0.986,
+    "tolerant": 0.9989
+  },
+  "warrior-queen": {
+    "strict": 0.9833,
+    "tolerant": 1
+  },
+  "werewolf": {
+    "strict": 0.9813,
+    "tolerant": 1
+  },
+  "white-priestess": {
+    "strict": 0.989,
+    "tolerant": 0.9998
+  },
+  "wizard-student": {
+    "strict": 0.9861,
+    "tolerant": 0.9994
+  },
+  "wolf-hunter": {
+    "strict": 0.9796,
+    "tolerant": 1
+  },
+  "zombie": {
+    "strict": 0.9842,
+    "tolerant": 0.9999
   }
 }

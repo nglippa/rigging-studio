@@ -49,30 +49,35 @@ differently. Two independent planners following the conventions below agreed wit
 and 95–96% seam-tolerant, so strict accuracy above about 93% is not a sensible target. Seam-tolerant accuracy is the
 number to watch.
 
-The bench has 99 hand-labelled characters (November 2026): 11 picked by hand, and 88 fresh Studio generations taken as
-they came. Besides robes, capes, cloaks, armour, tails and side and three-quarter views, it has beast-folk (lion, rabbit,
-shark, hyena), undead (skeleton, mummy, zombie), a stone golem and a clockwork automaton, wings (angel, demon, bird-folk),
-very wide and very thin builds, a child, gowns, bare skin, raised-arm and fighting poses, two-handed weapons and many
-held items (shields, lanterns, flasks, baskets, tablets, books, instruments).
+The bench has 149 hand-labelled characters (November 2026): 11 picked by hand, and 138 fresh Studio generations taken
+as they came. Besides robes, capes, cloaks, armour, tails and side and three-quarter views, it has beast-folk (about 35
+species, from lion and shark to elephant, giraffe, tortoise, snail and moth), undead (skeleton, mummy, zombie), golems
+of stone and crystal, a clockwork automaton, a tree creature, wings (angel, demon, harpy, bat, bird-folk, moth), very
+wide, very thin and hunched builds, a tiny-headed ogre, a child, gowns, a puffy parka, a diving suit, jesters
+and clowns, bare skin, raised-arm and fighting poses, two-handed weapons and many held items (shields up to tower size,
+a boulder, lanterns, flasks, baskets, tablets, books, instruments). All are upright: the part set is a humanoid rig.
 
 The part model is measured by **4-fold cross-validation** (`npm run part-model:crossval`): each character is cut by a
 model trained without it, so these are the numbers to expect on a new sprite.
 
 | | Strict (mean) | Seam-tolerant (mean) | Worst character |
 |---|---|---|---|
-| With the part model | **94.8%** | **98.3%** | 68.0% / 77.1% |
-| Without it (joints and strokes) | 80.6% | 88.3% | 44.4% / 52.6% |
+| With the part model | **95.0%** | **98.4%** | 56.4% / 62.7% |
+| Without it (joints and strokes) | 79.4% | 87.3% | 42.5% / 51.0% |
 
-With the model, 92 of the 99 characters are at or above 95% seam-tolerant. The fairest measure of progress is the 25
-characters labelled before the model existed: as the bench grew from 25 to 37 to 49 to 99 they went from 96.8 to 97.3
-to 97.9 to 97.9 seam-tolerant. The 50 newest, mostly shapes the bench had not seen, score 94.7/98.0 on first sight. Labels
-from the third round on were drafted by the model and then corrected, which favours it a little. Where it is still
-weakest, each a shape with one or two examples on the bench:
+With the model, 139 of the 149 characters are at or above 95% seam-tolerant. The fairest measure of progress is the 25
+characters labelled before the model existed: as the bench grew from 25 to 37 to 49 to 99 to 149 they went from 96.8 to
+97.3 to 97.9 to 97.9 to 98.4 seam-tolerant. The 50 added in the round before went from 98.0 on first sight to 98.9. The
+50 newest, chosen to be harder (animal-folk, wings, shells, raised arms, odd proportions), score 94.1/97.4 on first
+sight. Labels from the third round on were drafted by the model and then corrected, which favours it a little. Last
+round's weakest shapes recovered once the bench had more of them (dancer 77.1 → 96.2, angel-paladin 90.8 → 97.0). Where
+it is still weakest, each a shape with one or two examples on the bench:
 
-- **Arms raised above the head** (dancer 68.0/77.1).
-- **Wings** (demon-warlord 82.3/88.7, angel-paladin 84.9/90.8): wings are torso, like capes.
-- **Big held shields and worn gloves** (gold-knight 86.2/91.2, boxer 88.7/93.2).
-- **A cape over posed legs, baggy trousers** (posed-caped-paladin 86.6/94.3, cat-thief 86.3/93.6).
+- **Shells** (snail-postman 56.4/62.7, tortoise-sage 70.2/82.7): the labels give a shell to the torso, the model gives
+  it to the head. The snail's shell domes over the head like a hood, so this one is the closest call on the bench.
+- **Tails on climbers and hangers** (monkey-acrobat 85.2/89.1, sloth 86.6/90.9).
+- **Open hands raised in costume** (clown 86.2/91.6, jester 89.9/93.6) and a boulder lifted overhead (cyclops 88.2/94.0).
+- **Wings, big shields and gloves** (demon-warlord 88.1/93.6, gold-knight 89.6/94.9, boxer 90.1/94.4).
 
 Every labelled character added makes the model better on the next one: label it, retrain, and rerun the
 cross-validation.
@@ -183,8 +188,8 @@ What belongs to which part:
 - **head**: hair (including ponytails and braids), hats, helmets, hoods, ears, face and beard, down to the chin or jaw,
   or the lower rim of a hood or helmet.
 - **torso**: the neck below the chin, plus collar, chest, belly, tunic, coat, vest, armour, apron, belt and pouches. It
-  also takes tails, and anything hanging from the shoulders or waist as one piece: capes, cloaks, tunic skirts, loincloths, short
-  robes, and shorts drawn as one band.
+  also takes tails, wings, shells and anything hanging from the shoulders or waist as one piece: capes, cloaks, tunic
+  skirts, loincloths, short robes, and shorts drawn as one band.
 - **upper arms**: from the shoulder to the elbow, including sleeve caps, shoulder pads and cloth draped over that
   shoulder.
 - **forearms**: from the elbow to the wrist, including bracers and bare skin between a sleeve and a glove.
