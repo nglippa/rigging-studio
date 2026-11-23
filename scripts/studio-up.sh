@@ -12,7 +12,8 @@ listening() { lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1; }
 start() { # name port command...
   local name=$1 port=$2; shift 2
   if listening "$port"; then echo "$name: already running on port $port"; return; fi
-  nohup "$@" > ".studio/$name.log" 2>&1 &
+  # stdin from /dev/null: the bridge reads stdin (MCP), and a background job reading the terminal is stopped (SIGTTIN).
+  nohup "$@" < /dev/null > ".studio/$name.log" 2>&1 &
   echo $! > ".studio/$name.pid"
   for _ in {1..60}; do listening "$port" && { echo "$name: started on port $port"; return; }; sleep 1; done
   echo "$name: did not start within a minute; see .studio/$name.log"
