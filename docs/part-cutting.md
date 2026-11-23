@@ -49,25 +49,26 @@ differently. Two independent planners following the conventions below agreed wit
 and 95–96% seam-tolerant, so strict accuracy above about 93% is not a sensible target. Seam-tolerant accuracy is the
 number to watch.
 
-The bench has 37 hand-labelled characters (November 2026): 11 picked by hand, and 26 fresh Studio generations taken as
-they came (robes, capes, cloaks, plate and samurai armour, tails, coats, a grass skirt, bare skin, beast-folk, baggy
-trousers, held lutes, axes and hammers, side and three-quarter views).
+The bench has 49 hand-labelled characters (November 2026): 11 picked by hand, and 38 fresh Studio generations taken as
+they came (robes, capes, cloaks, floor-length capes over legs, plate and samurai armour, tails, coats, a grass skirt, bare
+skin, beast-folk, dwarves, goblins and gnomes, baggy trousers, held lutes, axes, hammers and canes, side and
+three-quarter views).
 
 The part model is measured by **4-fold cross-validation** (`npm run part-model:crossval`): each character is cut by a
 model trained without it, so these are the numbers to expect on a new sprite.
 
 | | Strict (mean) | Seam-tolerant (mean) | Worst character |
 |---|---|---|---|
-| With the part model | **93.3%** | **97.9%** | 84.7% / 93.1% |
-| Without it (joints and strokes) | 83.0% | 90.4% | 64.9% / 73.5% |
+| With the part model | **94.5%** | **98.6%** | 87.5% / 94.1% |
+| Without it (joints and strokes) | 82.2% | 89.8% | 64.9% / 73.5% |
 
-With the model, 33 of the 37 characters are at or above 95% seam-tolerant. On the 25 characters of the previous round
-alone, adding the 12 newest to the training data moved the mean from 91.5/96.8 to 92.3/97.3 and the worst from
-82.0/87.9 to 84.7/93.1. The 12 newest score 95.4/99.1, but their labels were drafted by the earlier model and then
-corrected, which favours it a little; the older 25 are the fairer measure. Where it is still weakest:
+With the model, 47 of the 49 characters are at or above 95% seam-tolerant. The fairest measure of progress is the 25
+characters labelled before the model existed: as the bench grew from 25 to 37 to 49 they went from 91.5/96.8 to
+92.3/97.3 to 93.1/97.9 (strict / seam-tolerant). Newer characters score higher (about 96/99) partly because their
+labels were drafted by the model and then corrected. Where it is still weakest:
 
-- **A cape over posed legs** (posed-caped-paladin 84.7/93.1): legs mostly hidden behind the cape.
-- **Short builds and side views** (dwarf 87.8/93.7, goblin-side 88.5/94.5): the knee and hip seams.
+- **Baggy trousers** (cat-thief 88.2/94.1): the knee seam inside the trousers.
+- **New shapes** (kobold-scout 92.2/94.7, a long tail on short legs): the first of its kind on the bench.
 - **Characters the rules alone cut well** (archer, orc, goblin-side): the model is slightly worse strict than the cut
   without it, because it moves seams a few pixels.
 
@@ -101,7 +102,9 @@ Things to know:
   Its confidence is not a usable signal of a bad cut; the cross-validation is.
 - **On the bench characters themselves it scores near 100%**, because they are its training data. The accuracy test
   (`npm run test:cut`) keeps a separate baseline for that path (`cut-accuracy-baseline.model.json`), which only guards
-  the export, the decoding and the rules around the model against breakage.
+  the export, the decoding and the rules around the model against breakage. A retrained model fits its training data a little
+  differently, so after a retrain record that baseline afresh: empty the file to `{}`, then run the test with
+  `UPDATE_CUT_BASELINE=1`.
 
 ## Making sprites that cut well
 

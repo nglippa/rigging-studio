@@ -146,5 +146,53 @@
   "wolf-hunter": {
     "strict": 0.6728,
     "tolerant": 0.78
+  },
+  "caped-knight-walk": {
+    "strict": 0.7309,
+    "tolerant": 0.858
+  },
+  "cloaked-ranger": {
+    "strict": 0.896,
+    "tolerant": 0.9506
+  },
+  "dwarf-miner": {
+    "strict": 0.7849,
+    "tolerant": 0.8876
+  },
+  "dwarf-plate": {
+    "strict": 0.8486,
+    "tolerant": 0.9432
+  },
+  "dwarf-warrior": {
+    "strict": 0.8104,
+    "tolerant": 0.9049
+  },
+  "gnome-wizard": {
+    "strict": 0.8852,
+    "tolerant": 0.9526
+  },
+  "goblin-archer": {
+    "strict": 0.8087,
+    "tolerant": 0.88
+  },
+  "goblin-warrior": {
+    "strict": 0.84,
+    "tolerant": 0.9165
+  },
+  "halfling-cook": {
+    "strict": 0.8854,
+    "tolerant": 0.9572
+  },
+  "kobold-scout": {
+    "strict": 0.6932,
+    "tolerant": 0.7649
+  },
+  "vampire-lord": {
+    "strict": 0.6836,
+    "tolerant": 0.7509
+  },
+  "warrior-queen": {
+    "strict": 0.6915,
+    "tolerant": 0.7959
   }
 }
