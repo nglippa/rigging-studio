@@ -98,5 +98,53 @@
   "white-priestess": {
     "strict": 0.8622,
     "tolerant": 0.9081
+  },
+  "barbarian": {
+    "strict": 0.8689,
+    "tolerant": 0.9393
+  },
+  "bear-warrior": {
+    "strict": 0.8607,
+    "tolerant": 0.9425
+  },
+  "desert-nomad": {
+    "strict": 0.781,
+    "tolerant": 0.8653
+  },
+  "dwarf-smith": {
+    "strict": 0.9122,
+    "tolerant": 0.9753
+  },
+  "frog-adventurer": {
+    "strict": 0.8452,
+    "tolerant": 0.9294
+  },
+  "gnome-tinker": {
+    "strict": 0.8885,
+    "tolerant": 0.9435
+  },
+  "halfling-bard": {
+    "strict": 0.7747,
+    "tolerant": 0.8741
+  },
+  "minotaur": {
+    "strict": 0.6491,
+    "tolerant": 0.7354
+  },
+  "monk": {
+    "strict": 0.7651,
+    "tolerant": 0.8485
+  },
+  "necromancer": {
+    "strict": 0.7437,
+    "tolerant": 0.8179
+  },
+  "troll": {
+    "strict": 0.8258,
+    "tolerant": 0.895
+  },
+  "wolf-hunter": {
+    "strict": 0.6728,
+    "tolerant": 0.78
   }
 }

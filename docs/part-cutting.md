@@ -49,22 +49,27 @@ differently. Two independent planners following the conventions below agreed wit
 and 95–96% seam-tolerant, so strict accuracy above about 93% is not a sensible target. Seam-tolerant accuracy is the
 number to watch.
 
-The bench has 25 hand-labelled characters (November 2026): 11 picked by hand, and 14 fresh Studio generations taken as
-they came (robes, capes, cloaks, plate and samurai armour, tails, coats, a grass skirt, side and three-quarter views).
+The bench has 37 hand-labelled characters (November 2026): 11 picked by hand, and 26 fresh Studio generations taken as
+they came (robes, capes, cloaks, plate and samurai armour, tails, coats, a grass skirt, bare skin, beast-folk, baggy
+trousers, held lutes, axes and hammers, side and three-quarter views).
 
 The part model is measured by **4-fold cross-validation** (`npm run part-model:crossval`): each character is cut by a
 model trained without it, so these are the numbers to expect on a new sprite.
 
 | | Strict (mean) | Seam-tolerant (mean) | Worst character |
 |---|---|---|---|
-| With the part model | **91.5%** | **96.8%** | 82.0% / 87.9% |
-| Without it (joints and strokes) | 84.5% | 91.6% | 68.3% / 73.5% |
+| With the part model | **93.3%** | **97.9%** | 84.7% / 93.1% |
+| Without it (joints and strokes) | 83.0% | 90.4% | 64.9% / 73.5% |
 
-With the model, 21 of the 25 characters are at or above 95% seam-tolerant. The fresh generations gain the most (the
-pirate captain 77.6 → 97.7, the witch 68.6 → 97.7, the horned knight 78.4 → 93.7 strict). Where it is still weakest:
+With the model, 33 of the 37 characters are at or above 95% seam-tolerant. On the 25 characters of the previous round
+alone, adding the 12 newest to the training data moved the mean from 91.5/96.8 to 92.3/97.3 and the worst from
+82.0/87.9 to 84.7/93.1. The 12 newest score 95.4/99.1, but their labels were drafted by the earlier model and then
+corrected, which favours it a little; the older 25 are the fairer measure. Where it is still weakest:
 
-- **Side views and unusual builds** (hearthcap-tinker 82.3%, goblin-side 89.1%): few of them in the training data.
-- **Baggy trousers** (cat-thief 82.0%): the trousers rule recovers most of it, the knee seam is the rest.
+- **A cape over posed legs** (posed-caped-paladin 84.7/93.1): legs mostly hidden behind the cape.
+- **Short builds and side views** (dwarf 87.8/93.7, goblin-side 88.5/94.5): the knee and hip seams.
+- **Characters the rules alone cut well** (archer, orc, goblin-side): the model is slightly worse strict than the cut
+  without it, because it moves seams a few pixels.
 
 Every labelled character added makes the model better on the next one: label it, retrain, and rerun the
 cross-validation.
