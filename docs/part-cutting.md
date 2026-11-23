@@ -49,28 +49,30 @@ differently. Two independent planners following the conventions below agreed wit
 and 95–96% seam-tolerant, so strict accuracy above about 93% is not a sensible target. Seam-tolerant accuracy is the
 number to watch.
 
-The bench has 49 hand-labelled characters (November 2026): 11 picked by hand, and 38 fresh Studio generations taken as
-they came (robes, capes, cloaks, floor-length capes over legs, plate and samurai armour, tails, coats, a grass skirt, bare
-skin, beast-folk, dwarves, goblins and gnomes, baggy trousers, held lutes, axes, hammers and canes, side and
-three-quarter views).
+The bench has 99 hand-labelled characters (November 2026): 11 picked by hand, and 88 fresh Studio generations taken as
+they came. Besides robes, capes, cloaks, armour, tails and side and three-quarter views, it has beast-folk (lion, rabbit,
+shark, hyena), undead (skeleton, mummy, zombie), a stone golem and a clockwork automaton, wings (angel, demon, bird-folk),
+very wide and very thin builds, a child, gowns, bare skin, raised-arm and fighting poses, two-handed weapons and many
+held items (shields, lanterns, flasks, baskets, tablets, books, instruments).
 
 The part model is measured by **4-fold cross-validation** (`npm run part-model:crossval`): each character is cut by a
 model trained without it, so these are the numbers to expect on a new sprite.
 
 | | Strict (mean) | Seam-tolerant (mean) | Worst character |
 |---|---|---|---|
-| With the part model | **94.5%** | **98.6%** | 87.5% / 94.1% |
-| Without it (joints and strokes) | 82.2% | 89.8% | 64.9% / 73.5% |
+| With the part model | **94.8%** | **98.3%** | 68.0% / 77.1% |
+| Without it (joints and strokes) | 80.6% | 88.3% | 44.4% / 52.6% |
 
-With the model, 47 of the 49 characters are at or above 95% seam-tolerant. The fairest measure of progress is the 25
-characters labelled before the model existed: as the bench grew from 25 to 37 to 49 they went from 91.5/96.8 to
-92.3/97.3 to 93.1/97.9 (strict / seam-tolerant). Newer characters score higher (about 96/99) partly because their
-labels were drafted by the model and then corrected. Where it is still weakest:
+With the model, 92 of the 99 characters are at or above 95% seam-tolerant. The fairest measure of progress is the 25
+characters labelled before the model existed: as the bench grew from 25 to 37 to 49 to 99 they went from 96.8 to 97.3
+to 97.9 to 97.9 seam-tolerant. The 50 newest, mostly shapes the bench had not seen, score 94.7/98.0 on first sight. Labels
+from the third round on were drafted by the model and then corrected, which favours it a little. Where it is still
+weakest, each a shape with one or two examples on the bench:
 
-- **Baggy trousers** (cat-thief 88.2/94.1): the knee seam inside the trousers.
-- **New shapes** (kobold-scout 92.2/94.7, a long tail on short legs): the first of its kind on the bench.
-- **Characters the rules alone cut well** (archer, orc, goblin-side): the model is slightly worse strict than the cut
-  without it, because it moves seams a few pixels.
+- **Arms raised above the head** (dancer 68.0/77.1).
+- **Wings** (demon-warlord 82.3/88.7, angel-paladin 84.9/90.8): wings are torso, like capes.
+- **Big held shields and worn gloves** (gold-knight 86.2/91.2, boxer 88.7/93.2).
+- **A cape over posed legs, baggy trousers** (posed-caped-paladin 86.6/94.3, cat-thief 86.3/93.6).
 
 Every labelled character added makes the model better on the next one: label it, retrain, and rerun the
 cross-validation.
