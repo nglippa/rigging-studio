@@ -49,35 +49,44 @@ differently. Two independent planners following the conventions below agreed wit
 and 95–96% seam-tolerant, so strict accuracy above about 93% is not a sensible target. Seam-tolerant accuracy is the
 number to watch.
 
-The bench has 149 hand-labelled characters (November 2026): 11 picked by hand, and 138 fresh Studio generations taken
-as they came. Besides robes, capes, cloaks, armour, tails and side and three-quarter views, it has beast-folk (about 35
-species, from lion and shark to elephant, giraffe, tortoise, snail and moth), undead (skeleton, mummy, zombie), golems
-of stone and crystal, a clockwork automaton, a tree creature, wings (angel, demon, harpy, bat, bird-folk, moth), very
-wide, very thin and hunched builds, a tiny-headed ogre, a child, gowns, a puffy parka, a diving suit, jesters
-and clowns, bare skin, raised-arm and fighting poses, two-handed weapons and many held items (shields up to tower size,
-a boulder, lanterns, flasks, baskets, tablets, books, instruments). All are upright: the part set is a humanoid rig.
+The bench has 196 hand-labelled characters (November 2026): 11 picked by hand, and 185 fresh Studio generations. Besides
+robes, capes, cloaks, armour, tails and side and three-quarter views, it has beast-folk (about 45 species, from lion and
+shark to elephant, giraffe, squirrel, lemur and chameleon), shells (tortoises, turtles, snails, a hermit crab, an
+armadillo, a beetle), undead (skeleton, mummy, zombie), golems of stone and crystal, a gargoyle, a clockwork automaton,
+a tree creature, wings (angel, demon, fairy, harpy, bat, bird-folk, moth, bee, dragonfly, phoenix), very wide, very thin
+and hunched builds, a tiny-headed ogre, children, gowns, a puffy parka, a diving suit, jesters, clowns and a mime, bare
+skin, arms raised overhead (a dancer, a cheerleader, a strongman with a barbell, a giant lifting a rock), boxing gloves
+and gauntlets, two-handed weapons and many held items (kite, round and tower shields, a boulder, a hawk, lanterns,
+flasks, baskets, tablets, books, instruments). All are upright: the part set is a humanoid rig.
 
 The part model is measured by **4-fold cross-validation** (`npm run part-model:crossval`): each character is cut by a
 model trained without it, so these are the numbers to expect on a new sprite.
 
 | | Strict (mean) | Seam-tolerant (mean) | Worst character |
 |---|---|---|---|
-| With the part model | **95.0%** | **98.4%** | 56.4% / 62.7% |
-| Without it (joints and strokes) | 79.4% | 87.3% | 42.5% / 51.0% |
+| With the part model | **94.8%** | **98.2%** | 73.9% / 78.2% |
+| Without it (joints and strokes) | 77.8% | 85.7% | 42.5% / 51.0% |
 
-With the model, 139 of the 149 characters are at or above 95% seam-tolerant. The fairest measure of progress is the 25
-characters labelled before the model existed: as the bench grew from 25 to 37 to 49 to 99 to 149 they went from 96.8 to
-97.3 to 97.9 to 97.9 to 98.4 seam-tolerant. The 50 added in the round before went from 98.0 on first sight to 98.9. The
-50 newest, chosen to be harder (animal-folk, wings, shells, raised arms, odd proportions), score 94.1/97.4 on first
-sight. Labels from the third round on were drafted by the model and then corrected, which favours it a little. Last
-round's weakest shapes recovered once the bench had more of them (dancer 77.1 → 96.2, angel-paladin 90.8 → 97.0). Where
-it is still weakest, each a shape with one or two examples on the bench:
+With the model, 178 of the 196 characters are at or above 95% seam-tolerant. The fairest measure of progress is the 25
+characters labelled before the model existed: as the bench grew from 25 to 37 to 49 to 99 to 149 to 196 they went from
+96.8 to 97.3 to 97.9 to 97.9 to 98.4 to 98.4 seam-tolerant. Each later round improves once the next is added: the 50
+from round five went from 98.0 on first sight to 99.1, those from round six from 97.4 to 98.2. The 47 newest were
+generated to target the weakest shapes (shells, tails on climbers, raised open hands, wings, big shields, gloves) and
+score 93.3/96.7 on first sight. Labels from the third round on were drafted by the model and then corrected, which
+favours it a little.
 
-- **Shells** (snail-postman 56.4/62.7, tortoise-sage 70.2/82.7): the labels give a shell to the torso, the model gives
-  it to the head. The snail's shell domes over the head like a hood, so this one is the closest call on the bench.
-- **Tails on climbers and hangers** (monkey-acrobat 85.2/89.1, sloth 86.6/90.9).
-- **Open hands raised in costume** (clown 86.2/91.6, jester 89.9/93.6) and a boulder lifted overhead (cyclops 88.2/94.0).
-- **Wings, big shields and gloves** (demon-warlord 88.1/93.6, gold-knight 89.6/94.9, boxer 90.1/94.4).
+Targeting a weak shape works: with a handful more examples of each, last round's weakest recovered (snail-postman
+62.7 → 95.7, monkey-acrobat 89.1 → 99.1, sloth 90.9 → 98.0, cyclops 94.0 → 99.7, boxer 94.4 → 100, jester 93.6 → 97.6).
+Where it is still weakest:
+
+- **Big shapes behind or over the head** (squirrel-scout 73.9/78.2, a tail fanned out behind the head; shells that dome
+  over it: snail-gardener 75.3/80.5, armadillo-ranger 81.1/86.7, tortoise-sage 78.0/88.4).
+- **The flip side of the same lesson.** Having learned that a big shape around the head is often torso (shell, tail,
+  wings) or equipment (a rock, pom-poms), the model now gives an elephant's ears to the torso (elephant-merchant
+  85.2/87.7) and a diver's round helmet to equipment (diver 87.4/90.6); both were near 100 before. More big-eared and
+  big-helmeted characters are the fix.
+- **Arms hidden or raised overhead** (boxer-guard 82.3/86.6, gloves held up at the face; hill-giant 91.5, ballet-dancer
+  91.9, cheerleader 92.9).
 
 Every labelled character added makes the model better on the next one: label it, retrain, and rerun the
 cross-validation.
@@ -95,7 +104,7 @@ Mac's GPU with PyTorch through `uv`; nothing is sent anywhere.
 |---|---|
 | `scripts/part-model/export-data.mts` | Writes each labelled character's image and per-pixel labels to `.bench/train/` (`npm run part-model:data`). |
 | `scripts/part-model/train.py` | Trains, predicts held-out characters and, with `--export`, writes the ONNX file. |
-| `scripts/part-model/crossval.mts` | The cross-validation behind the table above (`npm run part-model:crossval`, about 25 minutes a fold). |
+| `scripts/part-model/crossval.mts` | The cross-validation behind the table above (`npm run part-model:crossval`, about an hour a fold at 196 characters). |
 | `public/models/partseg/partseg.onnx` | The model the app and the bench load. Git-ignored like the pose model: build it with `npm run part-model:train` (about 30 minutes) and copy it to the Mac Studio with the rest of `public/models`. |
 
 What the training does so the model learns shapes rather than one character's colours: each sample is scaled, moved,

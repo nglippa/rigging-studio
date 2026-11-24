@@ -594,5 +594,193 @@
   "werewolf": {
     "strict": 0.6763,
     "tolerant": 0.755
+  },
+  "angel-knight": {
+    "strict": 0.7121,
+    "tolerant": 0.8185
+  },
+  "armadillo-ranger": {
+    "strict": 0.517,
+    "tolerant": 0.6404
+  },
+  "ballet-dancer": {
+    "strict": 0.8053,
+    "tolerant": 0.879
+  },
+  "bat-wing-demon": {
+    "strict": 0.6002,
+    "tolerant": 0.7007
+  },
+  "bee-soldier": {
+    "strict": 0.677,
+    "tolerant": 0.7899
+  },
+  "beetle-guard": {
+    "strict": 0.7099,
+    "tolerant": 0.8357
+  },
+  "bell-jester": {
+    "strict": 0.758,
+    "tolerant": 0.8195
+  },
+  "blacksmith-gauntlets": {
+    "strict": 0.7788,
+    "tolerant": 0.8753
+  },
+  "boxer-guard": {
+    "strict": 0.6477,
+    "tolerant": 0.7149
+  },
+  "casting-wizard": {
+    "strict": 0.8372,
+    "tolerant": 0.9196
+  },
+  "chameleon-rogue": {
+    "strict": 0.7437,
+    "tolerant": 0.8316
+  },
+  "cheerleader": {
+    "strict": 0.7505,
+    "tolerant": 0.8328
+  },
+  "conductor": {
+    "strict": 0.8009,
+    "tolerant": 0.8745
+  },
+  "dragonfly-scout": {
+    "strict": 0.6547,
+    "tolerant": 0.7365
+  },
+  "fairy": {
+    "strict": 0.455,
+    "tolerant": 0.5444
+  },
+  "falconer": {
+    "strict": 0.8156,
+    "tolerant": 0.8911
+  },
+  "fox-thief": {
+    "strict": 0.9008,
+    "tolerant": 0.9524
+  },
+  "gargoyle": {
+    "strict": 0.5202,
+    "tolerant": 0.6008
+  },
+  "gecko-climber": {
+    "strict": 0.8072,
+    "tolerant": 0.8837
+  },
+  "glove-clown": {
+    "strict": 0.7667,
+    "tolerant": 0.8567
+  },
+  "gold-shield-paladin": {
+    "strict": 0.7989,
+    "tolerant": 0.864
+  },
+  "harlequin": {
+    "strict": 0.8957,
+    "tolerant": 0.9579
+  },
+  "hermit-crab-merchant": {
+    "strict": 0.5334,
+    "tolerant": 0.6479
+  },
+  "hill-giant": {
+    "strict": 0.6737,
+    "tolerant": 0.816
+  },
+  "juggler": {
+    "strict": 0.8734,
+    "tolerant": 0.93
+  },
+  "kangaroo-guard": {
+    "strict": 0.4931,
+    "tolerant": 0.5632
+  },
+  "kite-shield-knight": {
+    "strict": 0.8909,
+    "tolerant": 0.9434
+  },
+  "lemur-acrobat": {
+    "strict": 0.5842,
+    "tolerant": 0.6779
+  },
+  "mime": {
+    "strict": 0.8616,
+    "tolerant": 0.9337
+  },
+  "monkey-pirate": {
+    "strict": 0.7621,
+    "tolerant": 0.8397
+  },
+  "orangutan-sage": {
+    "strict": 0.8362,
+    "tolerant": 0.9207
+  },
+  "owl-archer": {
+    "strict": 0.8365,
+    "tolerant": 0.8965
+  },
+  "phoenix-mage": {
+    "strict": 0.5845,
+    "tolerant": 0.6682
+  },
+  "red-panda-archer": {
+    "strict": 0.7271,
+    "tolerant": 0.7986
+  },
+  "sloth-monk": {
+    "strict": 0.8934,
+    "tolerant": 0.959
+  },
+  "snail-gardener": {
+    "strict": 0.553,
+    "tolerant": 0.6328
+  },
+  "spartan": {
+    "strict": 0.8346,
+    "tolerant": 0.9256
+  },
+  "spiked-gauntlet-knight": {
+    "strict": 0.7458,
+    "tolerant": 0.8294
+  },
+  "squirrel-scout": {
+    "strict": 0.5069,
+    "tolerant": 0.5872
+  },
+  "strongman": {
+    "strict": 0.8172,
+    "tolerant": 0.8984
+  },
+  "tortoise-elder": {
+    "strict": 0.4664,
+    "tolerant": 0.557
+  },
+  "tower-shield-guard": {
+    "strict": 0.9029,
+    "tolerant": 0.9601
+  },
+  "turtle-knight": {
+    "strict": 0.7387,
+    "tolerant": 0.8107
+  },
+  "turtle-monk": {
+    "strict": 0.5826,
+    "tolerant": 0.6452
+  },
+  "viking-shield": {
+    "strict": 0.9076,
+    "tolerant": 0.9542
+  },
+  "waving-child": {
+    "strict": 0.7809,
+    "tolerant": 0.8665
+  },
+  "wrestler": {
+    "strict": 0.7707,
+    "tolerant": 0.8451
   }
 }
