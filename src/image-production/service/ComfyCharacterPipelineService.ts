@@ -308,7 +308,9 @@ export class ComfyCharacterPipelineService {
     return studio ? studio.run(label, job) : job();
   }
 
-  private execute(capability: ImageProductionCapability, values: Readonly<Record<string, ImageProductionJson>>): Promise<readonly ImageProviderOutput[]> {
+  private async execute(capability: ImageProductionCapability, values: Readonly<Record<string, ImageProductionJson>>): Promise<readonly ImageProviderOutput[]> {
+    // Between the model calls of one pipeline job, Command Center's queued work goes first (a no-op when nothing waits).
+    await this.production.studio?.yieldIfWanted(capability);
     return this.executeOnStudio(capability, values);
   }
 

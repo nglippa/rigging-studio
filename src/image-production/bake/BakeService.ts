@@ -218,6 +218,8 @@ export class BakeService {
         frames = await this.production.studio.run(`Polish ${clip.name}`, async () => {
           const out: RgbaImage[] = []; this.update(jobId, { waiting: undefined });
           for (const drawing of drawings) {
+            // Command Center's queued work goes first between drawings: a long bake hands the Studio over and resumes.
+            if (out.length && await this.production.studio.yieldIfWanted(`Polish ${clip.name}`, (waiting) => this.update(jobId, { waiting }))) this.update(jobId, { waiting: undefined });
             // The model needs room to draw: a sprite drawn 1:1 is a few dozen pixels, where the skeleton's sticks are as wide
             // as the arms and their colours were painted onto the character. Both images are enlarged by whole pixels to
             // at least 384 tall (the result is sampled back to the art grid either way).

@@ -7,6 +7,8 @@
  *   CC_HEAVY_LEASE        Command Center's lease file. Default: ~/Projects/command-center/basic-qwen-bonsai/.research/heavy-model.lease
  *   CC_HEAVY_LEASE_HOST   SSH host holding that file, when Command Center runs on another Mac (on the Studio: "mini").
  *   CC_MEDIA_STATUS_URL   the media service status. Default: http://10.77.77.2:11436/cc/media/status
+ *   CC_STATE_URL          Command Center's operational state, whose queue depth decides when a long job hands the Studio
+ *                         over. Default: http://127.0.0.1:8787/api/operational-state/v2 when Command Center is on this Mac.
  */
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -81,6 +83,21 @@ export async function studioAdmission(statusUrl: string): Promise<string | null>
   return null;
 }
 
+/** Jobs waiting in Command Center's queue (operational-state v2 `queueDepth`, the total's pending); null when not readable. */
+export function commandCenterPending(state: unknown): number | null {
+  const depth = (state as { sections?: { queueDepth?: { status?: unknown; items?: unknown } } } | null)?.sections?.queueDepth;
+  if (!depth || depth.status === "unavailable" || !Array.isArray(depth.items)) return null;
+  const total = depth.items.find((item: { kind?: unknown }) => item?.kind === "total") as { pending?: unknown } | undefined;
+  return typeof total?.pending === "number" && Number.isFinite(total.pending) ? total.pending : null;
+}
+
+export async function commandCenterDemand(stateUrl: string): Promise<number | null> {
+  try {
+    const response = await fetch(stateUrl, { signal: AbortSignal.timeout(5_000) });
+    return response.ok ? commandCenterPending(await response.json()) : null;
+  } catch { return null; } // Command Center down or unreachable: nothing to hand over to
+}
+
 type GateStatus = { readonly engine?: string; readonly ready?: boolean; readonly guard_refusal?: string | null };
 
 async function gateStatus(gate: URL): Promise<GateStatus | null> {
@@ -129,8 +146,10 @@ export function createStudioQueue(engineReachable: () => Promise<boolean>, log: 
   const lease = host || existsSync(path.dirname(file)) ? new CommandCenterLease(file, host, log) : null;
   if (!lease) log("Command Center is not on this Mac and CC_HEAVY_LEASE_HOST is unset: Studio jobs use the Studio status checks only");
   const statusUrl = process.env.CC_MEDIA_STATUS_URL ?? "http://10.77.77.2:11436/cc/media/status";
+  const stateUrl = process.env.CC_STATE_URL || (host ? null : "http://127.0.0.1:8787/api/operational-state/v2");
   return new StudioWorkQueue({
     lease, log,
+    demand: lease && stateUrl ? () => commandCenterDemand(stateUrl) : undefined,
     admit: () => studioAdmission(statusUrl),
     start: () => startEngine(wakeUrl, engineReachable),
     stop: () => stopEngine(wakeUrl),

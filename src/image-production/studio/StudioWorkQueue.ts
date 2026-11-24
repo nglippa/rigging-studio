@@ -9,6 +9,11 @@
  *   3. The engine is started for the work and nothing earlier: no model is loaded just because the app is open.
  *   4. When the queue is empty for a short grace period (so "Cut all parts" loads once, not once per part), the engine is
  *      stopped, the stop confirmed, and only then is the lease released.
+ *   5. Command Center's queue goes first between units of work: when it has jobs waiting (its queueDepth), a long job hands
+ *      the Studio over at its next checkpoint (every job boundary, and `yieldIfWanted` inside long jobs such as a bake):
+ *      the engine is stopped, the lease released, and the job waits, however long that takes, until Command Center has
+ *      taken its work, then reloads and carries on. If Command Center leaves the lease untouched for `handoverMs` (work
+ *      scheduled for later), the job takes the Studio back and does not hand over again until that queue changes.
  */
 
 /** Command Center's heavy-model lease: a non-blocking exclusive lock. */
@@ -26,6 +31,10 @@ export type StudioWorkQueueOptions = {
   readonly start: () => Promise<void>;
   /** Unloads the engine and resolves once it is confirmed stopped (throws when that cannot be confirmed). */
   readonly stop: () => Promise<void>;
+  /** How many jobs Command Center has waiting for the lease (its queueDepth total pending); null when it cannot be read. */
+  readonly demand?: () => Promise<number | null>;
+  /** How long a handed-over lease may sit untaken while Command Center still reports work, before the job takes it back. */
+  readonly handoverMs?: number;
   readonly graceMs?: number;
   readonly pollMs?: number;
   /** The longest a job waits for the Studio before it is refused. */
@@ -54,6 +63,8 @@ export class StudioWorkQueue {
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private stopping: Promise<void> | null = null;
   private lastStopError: string | null = null;
+  /** The Command Center queue size the last hand-over left untaken; not handed over for again until it changes. */
+  private ignoredDemand: number | null = null;
 
   constructor(private readonly options: StudioWorkQueueOptions) {}
 
@@ -69,6 +80,7 @@ export class StudioWorkQueue {
       if (this.idleTimer) { clearTimeout(this.idleTimer); this.idleTimer = null; }
       if (this.stopping) await this.stopping.catch(() => undefined);
       try {
+        if (this.engine === "running") await this.yieldIfWanted(label, onWait);
         await this.open(label, onWait);
         this.running = label;
         return await job();
@@ -81,15 +93,58 @@ export class StudioWorkQueue {
     return result;
   }
 
+  /**
+   * A checkpoint for long jobs, called between units of work while the job holds the Studio: when Command Center has jobs
+   * waiting, hands the Studio over (engine stopped, lease released), waits for Command Center to take its work, and loads
+   * the engine again before returning. Resolves true when it handed over.
+   */
+  async yieldIfWanted(label: string, onWait?: (reason: string) => void): Promise<boolean> {
+    if (!this.options.lease || !this.options.demand || !this.leaseHeld) return false;
+    const wanted = await this.demand();
+    if (!wanted) { this.ignoredDemand = null; return false; }
+    if (wanted === this.ignoredDemand) return false;
+    await this.handOver(label, wanted, onWait);
+    return true;
+  }
+
   /** Unloads now (bridge shutdown). */
   async shutdown(): Promise<void> {
     if (this.idleTimer) { clearTimeout(this.idleTimer); this.idleTimer = null; }
     await this.unload();
   }
 
-  private async open(label: string, onWait?: (reason: string) => void): Promise<void> {
+  private async demand(): Promise<number> {
+    try { const pending = await this.options.demand!(); return typeof pending === "number" && pending > 0 ? pending : 0; }
+    catch { return 0; }
+  }
+
+  private async handOver(label: string, wanted: number, onWait?: (reason: string) => void): Promise<void> {
+    const reason = `Command Center has ${wanted} job${wanted === 1 ? "" : "s"} waiting; the Mac Studio is handed over until it has taken them`;
+    this.waiting = label; onWait?.(reason); this.options.log?.(`Studio queue: ${label}: ${reason}`);
+    await this.unload();
+    const lease = this.options.lease!;
+    const handoverMs = this.options.handoverMs ?? 15_000;
+    let seen = wanted; let freeSince: number | null = null;
+    for (;;) {
+      await new Promise((resolve) => setTimeout(resolve, this.options.pollMs ?? 5_000));
+      const pending = await this.demand();
+      if (!pending) { this.ignoredDemand = null; break; }
+      if (pending !== seen) { seen = pending; freeSince = null; } // Command Center is working through its queue
+      if (await lease.tryAcquire()) {
+        // Free while work is still reported: Command Center is between passes, or the work is not due yet.
+        freeSince ??= Date.now();
+        if (Date.now() - freeSince >= handoverMs) { this.leaseHeld = true; this.ignoredDemand = pending; break; }
+        await lease.release();
+      } else freeSince = null;
+    }
+    this.waiting = null;
+    // Taken back mid-job: waiting for the Studio now must not fail the job at the entry deadline.
+    await this.open(label, onWait, Number.POSITIVE_INFINITY);
+  }
+
+  private async open(label: string, onWait?: (reason: string) => void, maxWaitMs = this.options.maxWaitMs ?? 20 * 60_000): Promise<void> {
     if (this.engine === "running" && (this.leaseHeld || !this.options.lease)) return;
-    const deadline = Date.now() + (this.options.maxWaitMs ?? 20 * 60_000);
+    const deadline = Date.now() + maxWaitMs;
     let lastReason: string | null = null;
     for (;;) {
       let reason: string | null = null;
