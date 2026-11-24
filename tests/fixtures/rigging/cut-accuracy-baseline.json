@@ -782,5 +782,197 @@
   "wrestler": {
     "strict": 0.7707,
     "tolerant": 0.8451
+  },
+  "angel-harpist": {
+    "strict": 0.6371,
+    "tolerant": 0.6847
+  },
+  "armadillo-miner": {
+    "strict": 0.6145,
+    "tolerant": 0.7519
+  },
+  "arms-crossed-dancer": {
+    "strict": 0.7404,
+    "tolerant": 0.8468
+  },
+  "astronaut": {
+    "strict": 0.9001,
+    "tolerant": 0.9582
+  },
+  "backpack-traveller": {
+    "strict": 0.5525,
+    "tolerant": 0.6681
+  },
+  "bat-folk": {
+    "strict": 0.6367,
+    "tolerant": 0.7268
+  },
+  "bearded-hood-wizard": {
+    "strict": 0.7588,
+    "tolerant": 0.8361
+  },
+  "big-ear-goblin": {
+    "strict": 0.7638,
+    "tolerant": 0.8448
+  },
+  "brass-diver": {
+    "strict": 0.8163,
+    "tolerant": 0.9092
+  },
+  "dome-robot": {
+    "strict": 0.9061,
+    "tolerant": 0.9631
+  },
+  "donkey-farmer": {
+    "strict": 0.8344,
+    "tolerant": 0.9323
+  },
+  "elephant-guard": {
+    "strict": 0.8231,
+    "tolerant": 0.8965
+  },
+  "elephant-sailor": {
+    "strict": 0.9142,
+    "tolerant": 0.9693
+  },
+  "elephant-wizard": {
+    "strict": 0.7437,
+    "tolerant": 0.813
+  },
+  "elf-mage": {
+    "strict": 0.8581,
+    "tolerant": 0.9342
+  },
+  "face-covered-wizard": {
+    "strict": 0.8257,
+    "tolerant": 0.9227
+  },
+  "face-guard-boxer": {
+    "strict": 0.616,
+    "tolerant": 0.6913
+  },
+  "fennec-merchant": {
+    "strict": 0.8845,
+    "tolerant": 0.9468
+  },
+  "firefighter": {
+    "strict": 0.7589,
+    "tolerant": 0.8395
+  },
+  "fox-tail-mage": {
+    "strict": 0.8543,
+    "tolerant": 0.9344
+  },
+  "goalkeeper": {
+    "strict": 0.7111,
+    "tolerant": 0.7675
+  },
+  "great-helm-knight": {
+    "strict": 0.7941,
+    "tolerant": 0.8877
+  },
+  "helmet-miner": {
+    "strict": 0.8281,
+    "tolerant": 0.9172
+  },
+  "hermit-crab-wanderer": {
+    "strict": 0.4594,
+    "tolerant": 0.5481
+  },
+  "kangaroo-face-boxer": {
+    "strict": 0.6388,
+    "tolerant": 0.7292
+  },
+  "kettlebell-lifter": {
+    "strict": 0.7503,
+    "tolerant": 0.8533
+  },
+  "koala-ranger": {
+    "strict": 0.8188,
+    "tolerant": 0.8876
+  },
+  "lion-mane-warrior": {
+    "strict": 0.852,
+    "tolerant": 0.9208
+  },
+  "log-lifter": {
+    "strict": 0.6502,
+    "tolerant": 0.765
+  },
+  "mariachi": {
+    "strict": 0.8421,
+    "tolerant": 0.8973
+  },
+  "mouse-baker": {
+    "strict": 0.8566,
+    "tolerant": 0.8925
+  },
+  "musketeer": {
+    "strict": 0.8132,
+    "tolerant": 0.9019
+  },
+  "owl-scholar": {
+    "strict": 0.6447,
+    "tolerant": 0.706
+  },
+  "peacock-dancer": {
+    "strict": 0.4215,
+    "tolerant": 0.5076
+  },
+  "pom-pom-cheerleader": {
+    "strict": 0.814,
+    "tolerant": 0.8715
+  },
+  "rabbit-knight": {
+    "strict": 0.7949,
+    "tolerant": 0.8941
+  },
+  "rabbit-parcel-courier": {
+    "strict": 0.5375,
+    "tolerant": 0.6269
+  },
+  "rabbit-thief": {
+    "strict": 0.5354,
+    "tolerant": 0.635
+  },
+  "saluting-soldier": {
+    "strict": 0.771,
+    "tolerant": 0.8442
+  },
+  "shell-diver": {
+    "strict": 0.8496,
+    "tolerant": 0.9241
+  },
+  "snail-wizard": {
+    "strict": 0.5514,
+    "tolerant": 0.6933
+  },
+  "space-knight": {
+    "strict": 0.6472,
+    "tolerant": 0.7327
+  },
+  "squirrel-archer": {
+    "strict": 0.5434,
+    "tolerant": 0.6376
+  },
+  "top-hat-gentleman": {
+    "strict": 0.8438,
+    "tolerant": 0.9263
+  },
+  "turtle-sailor": {
+    "strict": 0.8983,
+    "tolerant": 0.9535
+  },
+  "twin-bun-girl": {
+    "strict": 0.9318,
+    "tolerant": 0.976
+  },
+  "wide-hat-explorer": {
+    "strict": 0.6973,
+    "tolerant": 0.789
+  },
+  "wide-hat-witch": {
+    "strict": 0.7629,
+    "tolerant": 0.845
   }
 }

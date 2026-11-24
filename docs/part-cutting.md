@@ -49,44 +49,45 @@ differently. Two independent planners following the conventions below agreed wit
 and 95–96% seam-tolerant, so strict accuracy above about 93% is not a sensible target. Seam-tolerant accuracy is the
 number to watch.
 
-The bench has 196 hand-labelled characters (November 2026): 11 picked by hand, and 185 fresh Studio generations. Besides
-robes, capes, cloaks, armour, tails and side and three-quarter views, it has beast-folk (about 45 species, from lion and
-shark to elephant, giraffe, squirrel, lemur and chameleon), shells (tortoises, turtles, snails, a hermit crab, an
-armadillo, a beetle), undead (skeleton, mummy, zombie), golems of stone and crystal, a gargoyle, a clockwork automaton,
-a tree creature, wings (angel, demon, fairy, harpy, bat, bird-folk, moth, bee, dragonfly, phoenix), very wide, very thin
-and hunched builds, a tiny-headed ogre, children, gowns, a puffy parka, a diving suit, jesters, clowns and a mime, bare
-skin, arms raised overhead (a dancer, a cheerleader, a strongman with a barbell, a giant lifting a rock), boxing gloves
-and gauntlets, two-handed weapons and many held items (kite, round and tower shields, a boulder, a hawk, lanterns,
-flasks, baskets, tablets, books, instruments). All are upright: the part set is a humanoid rig.
+The bench has 244 hand-labelled characters (November 2026): 11 picked by hand, and 233 fresh Studio generations. Besides
+robes, capes, cloaks, armour, tails and side and three-quarter views, it has beast-folk (about 50 species, from lion and
+shark to elephant, giraffe, squirrel, lemur, koala and chameleon), shells (tortoises, turtles, snails, hermit crabs,
+armadillos, a beetle), undead (skeleton, mummy, zombie), golems of stone and crystal, a gargoyle, a clockwork automaton,
+a robot with a dome head, a tree creature, wings (angel, demon, fairy, harpy, bat, bird-folk, owl, moth, bee, dragonfly,
+phoenix), a peacock's fan, big ears (elephants, rabbits, a fennec, a mouse, a donkey, goblins, elves), round and tall
+helmets (divers, an astronaut, a great-helm, miners, a firefighter), wide hats (witch, sombrero, top hat), a lion's mane,
+big hair, very wide, very thin and hunched builds, a tiny-headed ogre, children, gowns, a puffy parka, jesters, clowns
+and a mime, bare skin, arms raised overhead or covering the face (a dancer, cheerleaders, a strongman, a giant lifting a
+rock, a goalkeeper), boxing gloves and gauntlets, a worn backpack, two-handed weapons and many held items (kite, round
+and tower shields, a boulder, a log, a hawk, lanterns, flasks, baskets, books, instruments). All are upright: the part
+set is a humanoid rig.
 
 The part model is measured by **4-fold cross-validation** (`npm run part-model:crossval`): each character is cut by a
 model trained without it, so these are the numbers to expect on a new sprite.
 
 | | Strict (mean) | Seam-tolerant (mean) | Worst character |
 |---|---|---|---|
-| With the part model | **94.8%** | **98.2%** | 73.9% / 78.2% |
-| Without it (joints and strokes) | 77.8% | 85.7% | 42.5% / 51.0% |
+| With the part model | **95.0%** | **98.3%** | 76.5% / 82.5% |
+| Without it (joints and strokes) | 77.1% | 85.1% | 42.2% / 50.8% |
 
-With the model, 178 of the 196 characters are at or above 95% seam-tolerant. The fairest measure of progress is the 25
-characters labelled before the model existed: as the bench grew from 25 to 37 to 49 to 99 to 149 to 196 they went from
-96.8 to 97.3 to 97.9 to 97.9 to 98.4 to 98.4 seam-tolerant. Each later round improves once the next is added: the 50
-from round five went from 98.0 on first sight to 99.1, those from round six from 97.4 to 98.2. The 47 newest were
-generated to target the weakest shapes (shells, tails on climbers, raised open hands, wings, big shields, gloves) and
-score 93.3/96.7 on first sight. Labels from the third round on were drafted by the model and then corrected, which
-favours it a little.
+With the model, 222 of the 244 characters are at or above 95% seam-tolerant. The fairest measure of progress is the 25
+characters labelled before the model existed: as the bench grew from 25 to 37 to 49 to 99 to 149 to 196 to 244 they
+went from 96.8 to 97.3 to 97.9 to 97.9 to 98.4 to 98.4 to 98.3 seam-tolerant. Each later round improves once the next
+is added: the 50 from round five went from 98.0 on first sight to 98.8, round six from 97.4 to 98.4, round seven from
+96.7 to 97.8. Labels from the third round on were drafted by the model and then corrected, which favours it a little.
 
-Targeting a weak shape works: with a handful more examples of each, last round's weakest recovered (snail-postman
-62.7 → 95.7, monkey-acrobat 89.1 → 99.1, sloth 90.9 → 98.0, cyclops 94.0 → 99.7, boxer 94.4 → 100, jester 93.6 → 97.6).
-Where it is still weakest:
+Targeting a weak shape works, and so does undoing a side effect. Round seven added shells, tails, wings and raised
+arms; with a few more examples of each, the round before's weakest recovered (snail-postman 62.7 → 95.7, monkey-acrobat
+89.1 → 99.1, cyclops 94.0 → 99.7). It also taught the model that a big shape around the head is often torso or
+equipment, so it gave an elephant's ears to the torso and a diver's round helmet to equipment. Round eight paired the
+two on purpose: big ears, round and tall helmets, wide hats, manes and big hair (all head) beside fanned tails, domed
+shells, raised wings and a backpack in the same place (all torso). Elephant-merchant went 87.7 → 99.9, diver 90.6 → 100
+and squirrel-scout 78.2 → 99.5; the 48 new characters score 95.1/97.9 on first sight. Where it is still weakest:
 
-- **Big shapes behind or over the head** (squirrel-scout 73.9/78.2, a tail fanned out behind the head; shells that dome
-  over it: snail-gardener 75.3/80.5, armadillo-ranger 81.1/86.7, tortoise-sage 78.0/88.4).
-- **The flip side of the same lesson.** Having learned that a big shape around the head is often torso (shell, tail,
-  wings) or equipment (a rock, pom-poms), the model now gives an elephant's ears to the torso (elephant-merchant
-  85.2/87.7) and a diver's round helmet to equipment (diver 87.4/90.6); both were near 100 before. More big-eared and
-  big-helmeted characters are the fix.
-- **Arms hidden or raised overhead** (boxer-guard 82.3/86.6, gloves held up at the face; hill-giant 91.5, ballet-dancer
-  91.9, cheerleader 92.9).
+- **One-of-a-kind silhouettes around the head**: a backpack taller than the head (backpack-traveller 76.5/82.5), shells
+  wrapping the head like a hood (armadillo-ranger 77.0/82.7, armadillo-miner 80.6/86.7), a peacock's fan
+  (84.1/87.7), and a brass helmet on a brass suit with no seam between them (brass-diver 81.5/85.1).
+- **Gloves held up at the face** (boxer-guard 83.0/87.4) and costume hands (clown 85.6/89.5).
 
 Every labelled character added makes the model better on the next one: label it, retrain, and rerun the
 cross-validation.
