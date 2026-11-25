@@ -49,7 +49,9 @@ differently. Two independent planners following the conventions below agreed wit
 and 95–96% seam-tolerant, so strict accuracy above about 93% is not a sensible target. Seam-tolerant accuracy is the
 number to watch.
 
-The bench has 244 hand-labelled characters (November 2026): 11 picked by hand, and 233 fresh Studio generations. Besides
+The bench has 324 labelled characters (November 2026): 11 picked by hand, 233 fresh Studio generations, and 80 ordinary
+game sprites added in round nine (villagers, knights, mages, farmers and the like, with `typ-` names). The 80 ordinary
+sprites' labels are mostly the model's own drafts, so their scores are reported separately below. Besides
 robes, capes, cloaks, armour, tails and side and three-quarter views, it has beast-folk (about 50 species, from lion and
 shark to elephant, giraffe, squirrel, lemur, koala and chameleon), shells (tortoises, turtles, snails, hermit crabs,
 armadillos, a beetle), undead (skeleton, mummy, zombie), golems of stone and crystal, a gargoyle, a clockwork automaton,
@@ -67,10 +69,28 @@ model trained without it, so these are the numbers to expect on a new sprite.
 
 | | Strict (mean) | Seam-tolerant (mean) | Worst character |
 |---|---|---|---|
-| With the part model | **95.0%** | **98.3%** | 76.5% / 82.5% |
-| Without it (joints and strokes) | 77.1% | 85.1% | 42.2% / 50.8% |
+| With the part model, the 244 hand-corrected characters | **95.1%** | **98.3%** | 74.8% / 79.0% |
+| With the part model, the 80 ordinary sprites (inflated: model-drafted labels) | 97.6% | 99.7% | |
+| With the part model, all 324 | 95.7% | 98.7% | 74.8% / 79.0% |
+| Without it (joints and strokes), all 324 | 78.5% | 86.3% | 42.2% / 50.8% |
 
-With the model, 222 of the 244 characters are at or above 95% seam-tolerant. The fairest measure of progress is the 25
+With the model, 305 of the 324 characters are at or above 95% seam-tolerant (225 of the 244 hand-corrected ones).
+
+**Held-out ordinary sprites.** Twenty more ordinary sprites (`tests/fixtures/rigging/part-holdout/`) were labelled
+independently, rules-only drafts replaced by hand-drawn polygons, and are never trained on. Score them with
+`CUT_TRUTH_DIR=tests/fixtures/rigging/part-holdout npx tsx scripts/cut-bench.mts score`:
+
+| Model | Strict (mean) | Seam-tolerant (mean) | Worst |
+|---|---|---|---|
+| Round 8 (244 characters) | 90.1% | 96.5% | 77.4% / 86.6% (typ-gladiator) |
+| Round 9 (324, with the 80 ordinary sprites) | 90.1% | 96.5% | 77.3% / 86.6% (typ-gladiator) |
+| Without the model | 80.0% | 88.2% | 58.5% / 67.4% |
+
+Adding the 80 model-drafted ordinary sprites changed nothing on new ordinary sprites: every held-out character moved by
+half a point or less. Training on the model's own drafts teaches it what it already does. To improve on ordinary sprites,
+correct those 80 labels by hand first. The held-out set scores lower than cross-validation because its labels follow
+the conventions strictly where the art draws no seam (knee pads, sleeve cuffs, white clothing the foreground estimate
+drops). The fairest measure of progress is the 25
 characters labelled before the model existed: as the bench grew from 25 to 37 to 49 to 99 to 149 to 196 to 244 they
 went from 96.8 to 97.3 to 97.9 to 97.9 to 98.4 to 98.4 to 98.3 seam-tolerant. Each later round improves once the next
 is added: the 50 from round five went from 98.0 on first sight to 98.8, round six from 97.4 to 98.4, round seven from
@@ -84,9 +104,13 @@ two on purpose: big ears, round and tall helmets, wide hats, manes and big hair 
 shells, raised wings and a backpack in the same place (all torso). Elephant-merchant went 87.7 → 99.9, diver 90.6 → 100
 and squirrel-scout 78.2 → 99.5; the 48 new characters score 95.1/97.9 on first sight. Where it is still weakest:
 
-- **One-of-a-kind silhouettes around the head**: a backpack taller than the head (backpack-traveller 76.5/82.5), shells
-  wrapping the head like a hood (armadillo-ranger 77.0/82.7, armadillo-miner 80.6/86.7), a peacock's fan
-  (84.1/87.7), and a brass helmet on a brass suit with no seam between them (brass-diver 81.5/85.1).
+- **One-of-a-kind silhouettes around the head**: a backpack taller than the head (backpack-traveller 75.1/81.0), shells
+  wrapping the head like a hood (armadillo-ranger 80.3/86.3, armadillo-miner 81.7/87.8, hermit-crab-wanderer
+  74.8/79.7, snail-wizard 75.3/81.7), a peacock's fan (82.8/87.2), and a brass helmet on a brass suit with no seam
+  between them (brass-diver 75.6/79.0). In round nine hermit-crab-wanderer, snail-wizard and brass-diver dropped 6 to 12
+  points. All three sit in cross-validation fold 2, the only fold whose older characters went down (−0.55 seam-tolerant;
+  the other three folds rose 0.1 to 0.3). Read it as one weaker fold-2 training run until a retrain of that fold says
+  otherwise.
 - **Gloves held up at the face** (boxer-guard 83.0/87.4) and costume hands (clown 85.6/89.5).
 
 Every labelled character added makes the model better on the next one: label it, retrain, and rerun the
@@ -202,24 +226,28 @@ What belongs to which part:
   skirts, loincloths, short robes, and shorts drawn as one band.
 - **upper arms**: from the shoulder to the elbow, including sleeve caps, shoulder pads and cloth draped over that
   shoulder.
-- **forearms**: from the elbow to the wrist, including bracers and bare skin between a sleeve and a glove.
-- **hands**: from the wrist, including gloves with their cuffs and wrist wraps. The grip of a held item inside the hand is
-  hand.
+- **forearms**: from the elbow to the wrist, including sleeve cuffs, bracers and bare skin between a sleeve and a glove.
+- **hands**: from the wrist, including gloves with their cuffs and thin wrist wraps. The grip of a held item inside the
+  hand is hand. A frilled or banded sleeve cuff is not a glove: it is forearm.
 - **thighs**: from the hip to the knee: trousers or shorts that split into two legs, hip armour plates, and bare thigh
   below a skirt hem.
 - **lower legs**: from the knee to the ankle: shins, knee pads, sock tops, boot shafts and boot cuffs.
 - **feet**: below the ankle: shoes, the foot of a boot, toes.
-- **equipment**: weapons, shields, staffs, wands, bows and tools held in the hand.
+- **equipment**: weapons, shields, staffs, wands, bows and tools held in the hand. A bow, quiver or weapon slung on the
+  back or worn at the belt is torso, as are satchels, pouches and side capes.
 
 Where the seams go:
 
 - **Neck**: the head's lowest own edge, which is the chin or jaw, the bottom of a beard, or the rim of a hood or helmet.
 - **Shoulder**: where the arm's or sleeve's outline meets the body.
 - **Elbow**: at the bend. On a straight arm with nothing to mark it, halfway from shoulder to wrist.
-- **Wrist**: where the hand, glove or cuff begins.
+- **Wrist**: where bare skin of the hand or the glove begins. A sleeve cuff stays with the forearm.
 - **Hip**: the bottom edge of the belt or waistband. Where a tunic, skirt, loincloth, apron or coat hangs over the legs,
-  the hip is that garment's hem instead.
-- **Knee**: at the bend, the knee pad or the trouser fold. Otherwise, halfway from the hip line to the ankle.
+  the hip is that garment's hem instead. Under a long robe or dress the covered thighs and lower legs get no labels.
+- **Knee**: at the bend, the knee pad or the trouser fold. Otherwise, halfway from the hip line to the ankle. The
+  halfway fallback never overrides what a part includes: when a boot shaft, boot cuff or sock top reaches above
+  halfway, the knee is at its top edge, and bare skin between a hem and a boot top is thigh. Trousers tucked into boots
+  with nothing marking the knee keep the halfway knee when it lies above the boot top.
 - **Ankle**: the top of a shoe. On a boot, it is where the boot's foot meets its shaft (the instep), not the top of the
   boot.
 

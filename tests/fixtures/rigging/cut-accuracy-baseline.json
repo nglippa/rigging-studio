@@ -280,8 +280,8 @@
     "tolerant": 0.8806
   },
   "gold-knight": {
-    "strict": 0.8498,
-    "tolerant": 0.9295
+    "strict": 0.8974,
+    "tolerant": 0.9571
   },
   "grandmother-witch": {
     "strict": 0.662,
@@ -974,5 +974,325 @@
   "wide-hat-witch": {
     "strict": 0.7629,
     "tolerant": 0.845
+  },
+  "typ-archer": {
+    "strict": 0.911,
+    "tolerant": 0.9532
+  },
+  "typ-archer-2": {
+    "strict": 0.8467,
+    "tolerant": 0.9136
+  },
+  "typ-barbarian-warrior": {
+    "strict": 0.8741,
+    "tolerant": 0.9505
+  },
+  "typ-barbarian-warrior-2": {
+    "strict": 0.869,
+    "tolerant": 0.9325
+  },
+  "typ-bard": {
+    "strict": 0.7381,
+    "tolerant": 0.823
+  },
+  "typ-bard-2": {
+    "strict": 0.7429,
+    "tolerant": 0.805
+  },
+  "typ-blacksmith": {
+    "strict": 0.9216,
+    "tolerant": 0.9727
+  },
+  "typ-blacksmith-2": {
+    "strict": 0.9151,
+    "tolerant": 0.9719
+  },
+  "typ-cleric": {
+    "strict": 0.8783,
+    "tolerant": 0.9298
+  },
+  "typ-cleric-2": {
+    "strict": 0.9317,
+    "tolerant": 0.9684
+  },
+  "typ-farmer": {
+    "strict": 0.7117,
+    "tolerant": 0.7804
+  },
+  "typ-farmer-2": {
+    "strict": 0.8936,
+    "tolerant": 0.964
+  },
+  "typ-female-adventurer": {
+    "strict": 0.6384,
+    "tolerant": 0.7401
+  },
+  "typ-female-adventurer-2": {
+    "strict": 0.8532,
+    "tolerant": 0.9266
+  },
+  "typ-female-bard": {
+    "strict": 0.842,
+    "tolerant": 0.9059
+  },
+  "typ-female-bard-2": {
+    "strict": 0.8802,
+    "tolerant": 0.9491
+  },
+  "typ-female-farmer": {
+    "strict": 0.9238,
+    "tolerant": 0.9696
+  },
+  "typ-female-farmer-2": {
+    "strict": 0.6874,
+    "tolerant": 0.7343
+  },
+  "typ-female-guard": {
+    "strict": 0.8528,
+    "tolerant": 0.9335
+  },
+  "typ-female-guard-2": {
+    "strict": 0.8362,
+    "tolerant": 0.9259
+  },
+  "typ-female-healer": {
+    "strict": 0.7022,
+    "tolerant": 0.7461
+  },
+  "typ-female-healer-2": {
+    "strict": 0.8382,
+    "tolerant": 0.8964
+  },
+  "typ-female-knight": {
+    "strict": 0.788,
+    "tolerant": 0.9055
+  },
+  "typ-female-knight-2": {
+    "strict": 0.7718,
+    "tolerant": 0.8858
+  },
+  "typ-female-mage": {
+    "strict": 0.8108,
+    "tolerant": 0.8991
+  },
+  "typ-female-mage-2": {
+    "strict": 0.8967,
+    "tolerant": 0.9416
+  },
+  "typ-female-monk": {
+    "strict": 0.7064,
+    "tolerant": 0.7542
+  },
+  "typ-female-monk-2": {
+    "strict": 0.7434,
+    "tolerant": 0.7899
+  },
+  "typ-female-pirate": {
+    "strict": 0.8148,
+    "tolerant": 0.9036
+  },
+  "typ-female-pirate-2": {
+    "strict": 0.8859,
+    "tolerant": 0.9553
+  },
+  "typ-female-ranger": {
+    "strict": 0.8725,
+    "tolerant": 0.9457
+  },
+  "typ-female-ranger-2": {
+    "strict": 0.8484,
+    "tolerant": 0.9262
+  },
+  "typ-female-scientist": {
+    "strict": 0.7729,
+    "tolerant": 0.8365
+  },
+  "typ-female-scientist-2": {
+    "strict": 0.538,
+    "tolerant": 0.6143
+  },
+  "typ-female-soldier": {
+    "strict": 0.8124,
+    "tolerant": 0.9047
+  },
+  "typ-female-soldier-2": {
+    "strict": 0.8242,
+    "tolerant": 0.9114
+  },
+  "typ-female-thief": {
+    "strict": 0.7063,
+    "tolerant": 0.7608
+  },
+  "typ-female-thief-2": {
+    "strict": 0.7358,
+    "tolerant": 0.8023
+  },
+  "typ-female-warrior": {
+    "strict": 0.8167,
+    "tolerant": 0.9178
+  },
+  "typ-female-warrior-2": {
+    "strict": 0.7882,
+    "tolerant": 0.8774
+  },
+  "typ-hooded-rogue": {
+    "strict": 0.7032,
+    "tolerant": 0.7968
+  },
+  "typ-hooded-rogue-2": {
+    "strict": 0.8596,
+    "tolerant": 0.9568
+  },
+  "typ-hunter": {
+    "strict": 0.8746,
+    "tolerant": 0.9494
+  },
+  "typ-hunter-2": {
+    "strict": 0.7954,
+    "tolerant": 0.8929
+  },
+  "typ-king": {
+    "strict": 0.8901,
+    "tolerant": 0.9477
+  },
+  "typ-king-2": {
+    "strict": 0.8597,
+    "tolerant": 0.9089
+  },
+  "typ-knight": {
+    "strict": 0.8858,
+    "tolerant": 0.9568
+  },
+  "typ-knight-2": {
+    "strict": 0.7736,
+    "tolerant": 0.8636
+  },
+  "typ-merchant": {
+    "strict": 0.8178,
+    "tolerant": 0.9183
+  },
+  "typ-merchant-2": {
+    "strict": 0.8625,
+    "tolerant": 0.9538
+  },
+  "typ-monk": {
+    "strict": 0.8903,
+    "tolerant": 0.9243
+  },
+  "typ-monk-2": {
+    "strict": 0.7311,
+    "tolerant": 0.8021
+  },
+  "typ-ninja": {
+    "strict": 0.7662,
+    "tolerant": 0.8475
+  },
+  "typ-ninja-2": {
+    "strict": 0.7055,
+    "tolerant": 0.7869
+  },
+  "typ-noble": {
+    "strict": 0.8571,
+    "tolerant": 0.9207
+  },
+  "typ-noble-2": {
+    "strict": 0.8717,
+    "tolerant": 0.9482
+  },
+  "typ-old-wizard": {
+    "strict": 0.9466,
+    "tolerant": 0.975
+  },
+  "typ-old-wizard-2": {
+    "strict": 0.8046,
+    "tolerant": 0.8585
+  },
+  "typ-paladin": {
+    "strict": 0.7712,
+    "tolerant": 0.8698
+  },
+  "typ-paladin-2": {
+    "strict": 0.8563,
+    "tolerant": 0.9392
+  },
+  "typ-pirate": {
+    "strict": 0.7806,
+    "tolerant": 0.8469
+  },
+  "typ-pirate-2": {
+    "strict": 0.8859,
+    "tolerant": 0.9618
+  },
+  "typ-prince": {
+    "strict": 0.8849,
+    "tolerant": 0.9518
+  },
+  "typ-prince-2": {
+    "strict": 0.9111,
+    "tolerant": 0.9693
+  },
+  "typ-princess": {
+    "strict": 0.869,
+    "tolerant": 0.9038
+  },
+  "typ-princess-2": {
+    "strict": 0.8959,
+    "tolerant": 0.9396
+  },
+  "typ-samurai": {
+    "strict": 0.9032,
+    "tolerant": 0.9762
+  },
+  "typ-samurai-2": {
+    "strict": 0.8986,
+    "tolerant": 0.969
+  },
+  "typ-scholar": {
+    "strict": 0.6925,
+    "tolerant": 0.7787
+  },
+  "typ-scholar-2": {
+    "strict": 0.8546,
+    "tolerant": 0.9414
+  },
+  "typ-soldier": {
+    "strict": 0.8379,
+    "tolerant": 0.9211
+  },
+  "typ-soldier-2": {
+    "strict": 0.7333,
+    "tolerant": 0.8607
+  },
+  "typ-tavern-keeper": {
+    "strict": 0.8928,
+    "tolerant": 0.9541
+  },
+  "typ-tavern-keeper-2": {
+    "strict": 0.9327,
+    "tolerant": 0.9883
+  },
+  "typ-town-guard": {
+    "strict": 0.8601,
+    "tolerant": 0.9466
+  },
+  "typ-town-guard-2": {
+    "strict": 0.8949,
+    "tolerant": 0.9559
+  },
+  "typ-young-adventurer": {
+    "strict": 0.8958,
+    "tolerant": 0.9577
+  },
+  "typ-young-adventurer-2": {
+    "strict": 0.8964,
+    "tolerant": 0.9453
+  },
+  "typ-young-wizard": {
+    "strict": 0.8999,
+    "tolerant": 0.941
+  },
+  "typ-young-wizard-2": {
+    "strict": 0.9135,
+    "tolerant": 0.9533
   }
 }

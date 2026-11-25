@@ -59,7 +59,8 @@ type Polygon = readonly Point[];
  */
 export type PartTruth = { readonly image: string; readonly view: string; readonly pairedLimbs?: boolean; readonly parts?: Readonly<Record<string, Polygon | readonly Polygon[]>>; readonly scribbles?: Readonly<Record<string, Polygon | readonly Polygon[]>>; readonly equipment?: readonly Polygon[]; readonly note?: string };
 
-export const TRUTH_DIR = "tests/fixtures/rigging/part-truth";
+// CUT_TRUTH_DIR=tests/fixtures/rigging/part-holdout scores the held-out typical sprites, which training never sees.
+export const TRUTH_DIR = process.env.CUT_TRUTH_DIR ?? "tests/fixtures/rigging/part-truth";
 export const EQUIPMENT = 255;
 
 
