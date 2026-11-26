@@ -78,7 +78,9 @@ model trained without it, so these are the numbers to expect on a new sprite.
 With the model, 284 of the 324 characters are at or above 95% seam-tolerant (217 of the 244 older ones, 67 of the 80
 ordinary sprites). Round nine read 95.1/98.3 on the older 244 and 97.6/99.7 on the ordinary 80; the ordinary figure was
 inflated by the model-drafted labels, and the hand labels bring it down to the held-out level below. The older 244 moved
-by −1.0/−0.3, inside seed-to-seed noise.
+by −1.0/−0.3, inside seed-to-seed noise. Most ordinary sprites come in pairs (`typ-knight` and
+`typ-knight-2`) that land in different folds, so cross-validation on the 80 still sees each one's sibling and reads a
+little high; the held-out set has no siblings and is the measure to trust for ordinary sprites.
 
 **Held-out ordinary sprites.** Twenty more ordinary sprites (`tests/fixtures/rigging/part-holdout/`) were labelled
 independently, rules-only drafts replaced by hand-drawn polygons, and are never trained on. Score them with
@@ -86,6 +88,7 @@ independently, rules-only drafts replaced by hand-drawn polygons, and are never 
 
 | Model | Strict (mean) | Seam-tolerant (mean) | Worst |
 |---|---|---|---|
+| Round 7 (196 characters; the Studio's model in November 2026) | 90.1% | 96.5% | 77.7% / 86.8% (typ-gladiator) |
 | Round 8 (244 characters) | 90.1% | 96.5% | 77.4% / 86.6% (typ-gladiator) |
 | Round 9 (324, with the 80 ordinary sprites, model-drafted) | 90.1% | 96.5% | 77.3% / 86.6% (typ-gladiator) |
 | Round 10 (324, the 80 relabelled by hand) | 90.4% | 96.4% | 78.1% / 87.0% (typ-gladiator) |
