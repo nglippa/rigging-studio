@@ -20,7 +20,8 @@ SWAP = np.arange(256, dtype=np.int64); SWAP[255] = 15
 for a, b in [(3, 6), (4, 7), (5, 8), (9, 12), (10, 13), (11, 14)]: SWAP[a], SWAP[b] = b, a
 REMAP = np.arange(256, dtype=np.int64); REMAP[255] = 15
 dev = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
-torch.manual_seed(0); random.seed(0); np.random.seed(0)
+SEED = int(os.environ.get("PART_SEED", "0"))  # another seed measures run-to-run variance
+torch.manual_seed(SEED); random.seed(SEED); np.random.seed(SEED)
 
 def load(name):
     img = np.array(Image.open(f"{D}/{name}.png").convert("RGBA")); lab = np.array(Image.open(f"{D}/{name}.lab.png"))[..., 0].astype(np.int64)

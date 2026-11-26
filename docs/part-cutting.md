@@ -51,7 +51,8 @@ number to watch.
 
 The bench has 324 labelled characters (November 2026): 11 picked by hand, 233 fresh Studio generations, and 80 ordinary
 game sprites added in round nine (villagers, knights, mages, farmers and the like, with `typ-` names). The 80 ordinary
-sprites' labels are mostly the model's own drafts, so their scores are reported separately below. Besides
+sprites were first labelled from the model's own drafts and then, in round ten, redrawn by hand as polygons like the
+rest. Besides
 robes, capes, cloaks, armour, tails and side and three-quarter views, it has beast-folk (about 50 species, from lion and
 shark to elephant, giraffe, squirrel, lemur, koala and chameleon), shells (tortoises, turtles, snails, hermit crabs,
 armadillos, a beetle), undead (skeleton, mummy, zombie), golems of stone and crystal, a gargoyle, a clockwork automaton,
@@ -69,12 +70,15 @@ model trained without it, so these are the numbers to expect on a new sprite.
 
 | | Strict (mean) | Seam-tolerant (mean) | Worst character |
 |---|---|---|---|
-| With the part model, the 244 hand-corrected characters | **95.1%** | **98.3%** | 74.8% / 79.0% |
-| With the part model, the 80 ordinary sprites (inflated: model-drafted labels) | 97.6% | 99.7% | |
-| With the part model, all 324 | 95.7% | 98.7% | 74.8% / 79.0% |
-| Without it (joints and strokes), all 324 | 78.5% | 86.3% | 42.2% / 50.8% |
+| With the part model, the 244 older characters | **94.1%** | **98.0%** | 71.2% / 75.7% |
+| With the part model, the 80 ordinary sprites | 91.4% | 97.2% | 77.8% / 83.5% (typ-female-mage) |
+| With the part model, all 324 | 93.5% | 97.8% | 71.2% / 75.7% |
+| Without it (joints and strokes), all 324 | 77.9% | 85.9% | 42.2% / 50.8% |
 
-With the model, 305 of the 324 characters are at or above 95% seam-tolerant (225 of the 244 hand-corrected ones).
+With the model, 284 of the 324 characters are at or above 95% seam-tolerant (217 of the 244 older ones, 67 of the 80
+ordinary sprites). Round nine read 95.1/98.3 on the older 244 and 97.6/99.7 on the ordinary 80; the ordinary figure was
+inflated by the model-drafted labels, and the hand labels bring it down to the held-out level below. The older 244 moved
+by −1.0/−0.3, inside seed-to-seed noise.
 
 **Held-out ordinary sprites.** Twenty more ordinary sprites (`tests/fixtures/rigging/part-holdout/`) were labelled
 independently, rules-only drafts replaced by hand-drawn polygons, and are never trained on. Score them with
@@ -83,12 +87,15 @@ independently, rules-only drafts replaced by hand-drawn polygons, and are never 
 | Model | Strict (mean) | Seam-tolerant (mean) | Worst |
 |---|---|---|---|
 | Round 8 (244 characters) | 90.1% | 96.5% | 77.4% / 86.6% (typ-gladiator) |
-| Round 9 (324, with the 80 ordinary sprites) | 90.1% | 96.5% | 77.3% / 86.6% (typ-gladiator) |
+| Round 9 (324, with the 80 ordinary sprites, model-drafted) | 90.1% | 96.5% | 77.3% / 86.6% (typ-gladiator) |
+| Round 10 (324, the 80 relabelled by hand) | 90.4% | 96.4% | 78.1% / 87.0% (typ-gladiator) |
 | Without the model | 80.0% | 88.2% | 58.5% / 67.4% |
 
 Adding the 80 model-drafted ordinary sprites changed nothing on new ordinary sprites: every held-out character moved by
-half a point or less. Training on the model's own drafts teaches it what it already does. To improve on ordinary sprites,
-correct those 80 labels by hand first. The held-out set scores lower than cross-validation because its labels follow
+half a point or less. Training on the model's own drafts teaches it what it already does. Redrawing all 80 by hand
+(round ten) did not move it either: +0.3 strict, −0.1 seam-tolerant, 14 of 20 characters up by up to 1.7 points and
+typ-student down 4.4/5.3. So label quality on ordinary sprites is not what limits the model on new ones; the
+remaining held-out errors are mostly forearms and thighs, the seams the art does not draw. The held-out set scores lower than cross-validation because its labels follow
 the conventions strictly where the art draws no seam (knee pads, sleeve cuffs, white clothing the foreground estimate
 drops). The fairest measure of progress is the 25
 characters labelled before the model existed: as the bench grew from 25 to 37 to 49 to 99 to 149 to 196 to 244 they
@@ -104,14 +111,18 @@ two on purpose: big ears, round and tall helmets, wide hats, manes and big hair 
 shells, raised wings and a backpack in the same place (all torso). Elephant-merchant went 87.7 → 99.9, diver 90.6 → 100
 and squirrel-scout 78.2 → 99.5; the 48 new characters score 95.1/97.9 on first sight. Where it is still weakest:
 
-- **One-of-a-kind silhouettes around the head**: a backpack taller than the head (backpack-traveller 75.1/81.0), shells
-  wrapping the head like a hood (armadillo-ranger 80.3/86.3, armadillo-miner 81.7/87.8, hermit-crab-wanderer
-  74.8/79.7, snail-wizard 75.3/81.7), a peacock's fan (82.8/87.2), and a brass helmet on a brass suit with no seam
-  between them (brass-diver 75.6/79.0). In round nine hermit-crab-wanderer, snail-wizard and brass-diver dropped 6 to 12
+- **One-of-a-kind silhouettes around the head**: a backpack taller than the head (backpack-traveller 76.8/82.8), shells
+  wrapping the head like a hood (armadillo-ranger 76.9/82.8, armadillo-miner 83.3/89.7, snail-wizard 71.8/79.4,
+  snail-gardener 71.2/76.6), a peacock's fan (85.5/89.9), and a brass helmet on a brass suit with no seam between them
+  (brass-diver 72.1/75.7, now below the 81.6/90.9 it gets without the model); round-ten figures. In round nine hermit-crab-wanderer, snail-wizard and brass-diver dropped 6 to 12
   points. All three sit in cross-validation fold 2, the only fold whose older characters went down (−0.55 seam-tolerant;
-  the other three folds rose 0.1 to 0.3). Read it as one weaker fold-2 training run until a retrain of that fold says
-  otherwise.
-- **Gloves held up at the face** (boxer-guard 83.0/87.4) and costume hands (clown 85.6/89.5).
+  the other three folds rose 0.1 to 0.3). Retraining fold 2 with another seed (`CROSSVAL_FOLDS=2 PART_SEED=1`) gave the
+  same picture: hermit-crab-wanderer 80.8 and snail-wizard 79.6 stayed about 12 points down, and only brass-diver moved
+  (83.5). So it is not one unlucky run. The likeliest cause is dilution: training runs a fixed number of iterations,
+  and 80 more ordinary sprites mean each rare shell shape is seen less often. Seed-to-seed noise on these one-of-a-kind
+  characters is 2 to 5 points, so compare them across rounds with care. In round ten hermit-crab-wanderer came back
+  to 88.8/92.2 while brass-diver fell further, which fits that noise.
+- **Costume hands** (clown 90.5/96.2). Gloves held up at the face are now fine (boxer-guard 92.9/97.7).
 
 Every labelled character added makes the model better on the next one: label it, retrain, and rerun the
 cross-validation.
@@ -282,6 +293,7 @@ Where the seams go:
 | Local edit models repainting the sprite as a flat-colour part map (FLUX.2 Klein 4B, Qwen-Image-Edit 2511), used as the cut, as seeds, as joints or as a judge | Klein follows the anatomy on arms but not legs or tails; best combination 87.9 / 94.4, no better than the engine. Qwen took 7–12 minutes a sprite and repainted chests and torsos. Agreement with the engine only loosely predicted accuracy (correlation 0.5). |
 | Sapiens (Meta's body-part segmenter) without training | Out of its domain: it labelled only 1–41% of each figure and never found a torso or upper arm. |
 | Generating every character in one fixed pose (Klein RefControl pose LoRA) so the joints are known | The pose is followed only roughly (arms about 5% of the figure's height off, held weapons override it); cutting with the skeleton's joints was no better than the engine. |
+| Elbows and knees placed by limb-length ratio over the part model (round 10), alone or only to clamp outlier seams | The ratios vary too much between sprites: elbow at 0.50 ± 0.10 of shoulder-to-wrist, knee at 0.47 ± 0.11 of hip-to-ankle (324 labels). On the held-out set the model's seams are 3.0% (elbow) and 1.7% (knee) of figure height from the true seam; the ratio gives 3.8% and 2.0%, and even with exact shoulders, wrists, hips and ankles only 2.4% and 1.7%. Clamping the model's seam into the 10th–90th percentile range changed 3 elbows (no gain) and 11 knees (worse, 1.9%). |
 | Colour regions given to the nearest bone, with exact joints | 83.0 / 89.9 against 90.5 / 96.0 for strokes on the same joints. |
 | The same stroke, only where the pad's colour differs from a chest sample | Best variant raised both means (88.2 / 94.7), but archer fell 1.3. It also depends on a hand-picked colour threshold. Untested: compare the pad with the colour already under the upper-arm stroke, not with a chest sample. |
 | Knee at the largest colour change between .35 and .65 of hip to ankle | Means flat. |

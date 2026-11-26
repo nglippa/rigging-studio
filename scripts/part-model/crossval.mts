@@ -16,7 +16,10 @@ const folds = Number(process.argv[2] ?? 4); const iterations = Number(process.ar
 const names = truthNames(); const base = (name: string) => name.replace(/^posed-/, "");
 const groups = [...new Set(names.map(base))]; const foldOf = new Map(groups.map((group, index) => [group, index % folds]));
 const lines: string[] = []; const rows: number[][] = [];
+// CROSSVAL_FOLDS=2 (or 1,3) reruns only those folds, e.g. with PART_SEED=1 to measure run-to-run variance.
+const only = process.env.CROSSVAL_FOLDS?.split(",").map(Number);
 for (let fold = 0; fold < folds; fold += 1) {
+  if (only && !only.includes(fold + 1)) continue;
   const test = names.filter((name) => foldOf.get(base(name)) === fold); const train = names.filter((name) => !test.includes(name));
   console.log(`fold ${fold + 1}/${folds}: ${test.join(", ")}`);
   const run = spawnSync("uv", ["run", "--quiet", "--with", "torch", "--with", "pillow", "--with", "numpy", "--with", "segmentation-models-pytorch", "python3", "scripts/part-model/train.py", `cv${fold + 1}`, String(iterations), train.join(","), test.join(",")], { stdio: "inherit" });
